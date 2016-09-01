@@ -3,3 +3,8 @@
   
 # Open Source repository 
   Public open source repository is available at https://sourceforge.net/projects/pgap/
+
+#Publications
+  1. PanOCT: automated clustering of orthologs using conserved gene neighborhood for pan-genomic analysis of bacterial strains and closely related species.
+   Fouts DE1, Brinkac L, Beck E, Inman J, Sutton G.
+   http://www.ncbi.nlm.nih.gov/pubmed/22904089
