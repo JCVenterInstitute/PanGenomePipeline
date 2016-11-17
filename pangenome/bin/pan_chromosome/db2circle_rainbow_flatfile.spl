@@ -1,0 +1,759 @@
+#!/usr/bin/env perl
+#use getopts;
+use Getopt::Std;
+use DBI;
+use FindBin;
+require "$FindBin::Bin/db2circle_rainbow.ph";
+require "$FindBin::Bin/graphical_elements_rainbow.pl";
+
+ 
+############################################################
+#                   start your engines
+############################################################
+$SERVER = "SYBTIGR";
+$dbtype = "Sybase";
+&handle_invocation();
+
+#&Getopts('d:u:p:a:c:f:CDgo:F:G:t:b:w:s:A:h');
+getopts('d:u:p:a:c:f:CDgo:F:G:t:b:w:s:A:h');
+
+$usage = "
+# d database
+# u user
+# p password
+# a asmbl_id
+# c configuration filename
+#   (name_of_feature<tab>layer<tab>FORWARD|REVERSE|BOTH<tab>graphic_type<tab>color[optional])
+# f regular bargraph <datafile name> for customized graphs: x-axis is on bottom of circular ring
+# A average bargraph <datafile name> for customized graphs: x-axis is in center of circular ring
+# s for Chi square graph <ring of circle to draw graph>
+# b for gc graph <ring of circle to draw graph>
+# w window for gc graph
+# C verbose error message on option die
+# D debug mode
+# g create gif output file
+# o output filename for gif file
+# F Features datafile (feat_name<tab>end5<tab>end3<tab>feat_type)
+# G Genome att file for db independent ORF coloring (choose either [-a, -d, -u, -p] or -G)
+#   (feat_type<tab>end5<tab>end3<tab>main_role<tab>feat|locus_name<tab>com_name
+# t tick increment
+
+#Example 1: db2circle.spl -u access -p access -d gpg -a 1268 -c config.file -b 3 -w 2000 -s 4 > mycircle.fig
+#Example 2: db2circle.sp -G myGenome_att.txt -l 2989458 -c configfile > mycircle.fig
+
+";
+
+if ($opt_h) {
+    print "$usage\n";
+    exit;
+}
+
+#we assume the user wants the input from the database of genes.
+$GOTO_DATABASE = 1;
+
+# if user does not want us to use database coordinates he specifies -G, intuitive
+
+$GOTO_DATABASE = 0 if ($opt_G);
+
+($user, $pwd, $database, $asmbl_id, $config_file, $DEBUG, $GIF_TOGGLE, $flat_file, $tick_increment, $att_file) = &handle_options();
+print "User: $user\tPWD: $pwd\tDB: $db\tasmbl_id:$asmbl_id\tConfig: $config_file\tFlat: $flat_file\tAtt_file: $att_file\n" if ($DEBUG);
+
+
+#local($dbproc) = &log_in($database, $SERVER, $user, $pwd) if ($GOTO_DATABASE);
+# setup connection to server if using the database
+local($dbproc) = &ConnectToDb($SERVER,$dbtype,$user,$pwd,$database) if ($GOTO_DATABASE);
+
+use GD;  # the cool perl library to create gifs.
+
+############################################################
+#   set variables, variables set here are used as globals
+############################################################
+
+$spoke_size = $DEFAULT_SPOKE_SIZE;
+
+# user supplies a config file that defines what gets put on what layer.
+
+%config_info = &get_config_info($config_file);
+
+if ($GOTO_DATABASE) { # added check for use of database so it won't look by default
+    $seq_len = &get_asmbl_len($dbproc, $asmbl_id);
+    print STDERR "LEN from db: $seq_len\n";
+}
+elsif (length($config_info{"LENGTH"})) {
+    $seq_len = $config_info{"LENGTH"};
+    print STDERR "LEN from Config: $seq_len\n";
+}
+else {
+    die "please specify LENGTH: <size in bp> in config.file";
+}
+
+
+############################################################
+#                  capture all the information
+############################################################
+
+if ($GOTO_DATABASE) {
+    %genome = &get_genes($dbproc,$database,$asmbl_id);
+}
+else {
+    %genome = &get_genes_from_flatfile($att_file);
+}
+
+if (length($flat_file) > 0) {
+    %genome = &get_features_from_file($flat_file, %genome); 
+}
+
+############################################################
+#                      draw the picture
+############################################################
+
+$COMMENT_NUMBER = 1;
+
+if ($seq_len < 500000)  { # checkpoint added by dfouts to check the size of the molecule and adjust tick_increment on the fly
+$tick_increment = 10000;
+}
+elsif ($seq_len < 20000)  {
+$tick_increment = 400;
+}
+
+
+if ($GIF_TOGGLE) {
+    $max_radius = $GIF_MAX_RADIUS;
+    $border = $GIF_BORDER;
+    $layer_height = $GIF_LAYER_HEIGHT;
+    $gene_height = $GIF_GENE_HEIGHT;
+    $tick_height = $GIF_TICK_HEIGHT;
+    $span_height = $GIF_SPAN_HEIGHT;
+    $text_height = $GIF_TEXT_HEIGHT;
+    $image = &init_image(2 * ($border + $max_radius), 2 * ($border + $max_radius));
+    &place_gif_ticks($tick_increment);
+    &place_gif_circle(0);
+}
+else {
+    $max_radius = $XFIG_MAX_RADIUS;
+    $border = $XFIG_BORDER;
+    $layer_height = $XFIG_LAYER_HEIGHT;
+    $gene_height = $XFIG_GENE_HEIGHT;
+    $tick_height = $XFIG_TICK_HEIGHT;
+    $span_height = $XFIG_SPAN_HEIGHT;
+    $text_height = $XFIG_TEXT_HEIGHT;
+    &init_xfig_drawing();
+    &place_xfig_ticks($tick_increment);
+    &place_xfig_circle("0","1");
+}
+
+# this system does not handle drawing any other graphic elements 
+#  other than GENE. the config file will someday support graphic
+#  types like spans and stuff like that. 
+
+$drawcount = 0;
+foreach $key (keys %genome) {
+    print STDERR "Looking at $genome{$key}->{'feat_name'}...\n" if ($DEBUG);
+    $end5 = $genome{$key} -> {'end5'};
+    $end3 = $genome{$key} -> {'end3'};
+    $color = $genome{$key} -> {'color'};
+    $type = $genome{$key} -> {'feat_type'};
+    print STDERR "key: $key type: $type\tcolor: $color\n" if ($DEBUG);
+    print STDERR "$genome{$key}->{'feat_name'}: $type\t$end5\t$end3\t$color\n" if ($DEBUG);
+
+    $go = 0;
+    $testlayer = $config_info{$type} -> {'FORWARD'} -> {'layer'};
+    $testcolor = $config_info{$type} -> {'FORWARD'} -> {'color'};
+    $testtype = $config_info{$type} -> {'FORWARD'} -> {'graphic_type'};
+    print STDERR "testlayer: $testlayer\ttestcolor: $testcolor\ttesttype: $testtype\n" if ($DEBUG);
+    if (length($config_info{$type} -> {'BOTH'} -> {'layer'}) > 0) {
+
+    # user can override color spec that may have
+    #  came back from get_genes
+    if (length($config_info{$type} -> {'BOTH'} -> {'color'}) > 0) {
+        $color = $config_info{$type} -> {'BOTH'} -> {'color'};
+    }
+
+    $layer = $config_info{$type} -> {'BOTH'} -> {'layer'};
+    ($end5, $end3) = ($end3, $end5) if ($end3 < $end5);
+    $graphic_type = $config_info{$type} -> {'BOTH'} -> {'graphic_type'};
+    $go = 1;
+    }
+    elsif (length($config_info{$type} -> {"FORWARD"} -> {'layer'}) > 0
+    && ($end5 < $end3)) {
+    
+    if (length($config_info{$type} -> {"FORWARD"} -> {'color'}) > 0) {
+        $color = $config_info{$type} -> {"FORWARD"} -> {'color'};
+    }
+
+    $graphic_type = $config_info{$type} -> {"FORWARD"} -> {'graphic_type'};
+    $layer = $config_info{$type} -> {"FORWARD"} -> {'layer'};
+    $go = 1;
+    }
+    elsif (length($config_info{$type} -> {"REVERSE"} -> {'layer'}) > 0
+    && ($end3 < $end5)) {
+    if (length($config_info{$type} -> {"REVERSE"} -> {'color'}) > 0) {
+        $color = $config_info{$type} -> {"REVERSE"} -> {'color'};
+    }
+
+    $graphic_type = $config_info{$type} -> {"REVERSE"} -> {'graphic_type'};
+    $layer = $config_info{$type} -> {"REVERSE"} -> {'layer'};
+    $go = 1;
+    }
+    print STDERR "\tcolor: $color\n" if ($DEBUG);
+    if ($go == 1) {
+    $drawcount++;
+    print STDERR "\tDrawing $genome{$key}->{'feat_name'}\n" if ($DEBUG);
+        if ($graphic_type =~ /BORDER/)  {
+        if ($graphic_type =~ /^TOP/) {
+        print STDERR "printing graphic_type $graphic_type\n";
+        &place_xfig_circle($layer,"3",$gene_height);
+        }
+        elsif ($graphic_type =~ /^BOTTOM/) {
+        print STDERR "printing graphic_type $graphic_type\n";
+        &place_xfig_circle($layer,"3");
+        }
+    }
+        else  {
+        if ($graphic_type =~ /GENE/) {
+        $typ = "GENE";
+        if (length($genome{$key} -> {'com_name'}) > 0) {
+            $comment = $genome{$key} -> {'feat_name'} . " " . $genome{$key} -> {'com_name'};
+        }
+        else {
+            $comment = "";
+        }
+        if ($graphic_type eq "GENE") {
+            $id = $graphic_type;
+        }
+        elsif ($graphic_type =~ /^.*_GENE/) {
+            my @temp = split(/_/,$graphic_type);
+            $id = $temp[0];
+        }
+        elsif ($graphic_type =~ /^GENEid_\d+/) {
+            my @temp = split(/_/,$graphic_type);
+            $id = $temp[1];
+            print STDERR "GENE_id: $graphic_type\n" if ($DEBUG);
+        }
+        }
+        if ($graphic_type =~ /ISLAND/) {
+        $typ = "ISLAND";
+        if ($graphic_type eq "ISLAND") {
+            $id = $graphic_type;
+        }
+        if ($graphic_type =~ /^.*_ISLAND/) {
+            my @temp = split(/_/,$graphic_type);
+            $id = $temp[0];
+        }
+        elsif ($graphic_type =~ /^ISLANDid_\d+/) {
+            my @temp = split(/_/,$graphic_type);
+            $id = $temp[1];
+            print STDERR "ISLAND_id: $graphic_type\n" if ($DEBUG);
+        }
+        }
+        &draw_elements($end5, $end3, $layer, $color, $id, $typ, $comment, $seq_len);
+    }
+    }
+
+}
+local(%BarGraph) = ();
+
+if (length($opt_b) > 0) {
+    ###### GC plot #######
+    $gc_layer = $opt_b;
+    ###### Get  Window ######
+    if (length($opt_w) > 0) {
+    $window = $opt_w;
+    } else {
+    $window = 1000;
+    }
+
+    $sequence = uc(&get_Seq($dbproc,$asmbl_id,$seq_len));
+    
+
+    if ($config_info{'GC_plot'}) {
+    $gc_plot_color = $role_color_lookup{$config_info{'GC_plot'}};
+    } else {
+    $gc_plot_color = $role_color_lookup{"BLACK"};
+    }
+
+    print STDERR "Calculating GC plot information.....\n";
+    (*BarGraph,$highest_gc) = Calculate_GC($sequence,$window,$gc_layer,$gc_plot_color,$seq_len);
+
+    #Normalize Data
+    foreach $key (keys %BarGraph) {
+        $BarGraph{$key}->{'value'} = ($BarGraph{$key}->{'value'}/$highest_gc);
+    }
+
+    local($avg_bar) = &GetAvg(\%BarGraph);
+    print STDERR "AVG: $avg_bar\n" if ($DEBUG);
+    
+    foreach $key (keys %BarGraph) {
+    &avg_value_bar_graph($BarGraph{$key}->{'end5'},
+                 $BarGraph{$key}->{'value'},
+                 $BarGraph{$key}->{'layer'}, 
+                 $BarGraph{$key}->{'color'},$avg_bar);
+    }
+    
+}
+############## Plot Chi square #######################
+if (length($opt_s) > 0) {
+    $chi_layer = $opt_s;
+    print STDERR "Calculating Chi square data....\n";
+
+    if ($config_info{'Chi2_plot'}) {
+    $chi_plot_color = $role_color_lookup{$config_info{'Chi2_plot'}};
+    } else {
+    $chi_plot_color = $role_color_lookup{"BLACK"};
+    }
+    
+    $sequence = uc(&get_Seq($dbproc,$asmbl_id,$seq_len));
+    $fasta_file = &make_fasta_file($asmbl_id,$sequence);
+    
+    (*ChiData,$highest_chi) = Calculate_Chi2($fasta_file); 
+
+    #Normalize Data and Draw
+    foreach $key (sort numerically keys %ChiData) { 
+    $chi_norm = ($ChiData{$key}/$highest_chi);  
+    &draw_bar_graph($key, $chi_norm, $chi_layer, $chi_plot_color);
+    }
+    unlink($fasta_file);
+
+}
+
+############## Plot regular bar graph from file ####################
+if (length($opt_f) > 0) {
+    open(F_IN,$opt_f) || die "cant open $opt_f";
+    while(<F_IN>) {
+    ($end5, $value, $layer, $color) = split(/\s+/);
+
+    if ($role_color_lookup{$color}) {
+        $color = $role_color_lookup{$color}
+    } else {
+        $color = $role_color_lookup{"BLACK"};
+    }
+
+    &draw_bar_graph($end5, $value, $layer, $color);
+    }
+}
+
+############## Plot average bar graph from file ####################
+if (length($opt_A) > 0) {
+    open(F_IN,$opt_A) || die "cant open $opt_A";
+    $count = 0;
+    while(<F_IN>) {
+    ($end5, $value, $layer, $color) = split(/\s+/);
+    $BarGraph{$count}->{'end5'} = $end5;
+    $BarGraph{$count}->{'value'} = $value;
+        $BarGraph{$count}->{'layer'} = $layer;
+    
+    if ($role_color_lookup{$color}) {
+        $color = $role_color_lookup{$color};
+    } else {
+        $color = $role_color_lookup{"BLACK"};
+    }
+    
+    $BarGraph{$count}->{'color'} = $color;
+    $count++;
+    }
+
+    local($avg_bar) = &GetAvg(\%BarGraph);
+    
+    foreach $key (keys %BarGraph) {
+    &avg_value_bar_graph($BarGraph{$key}->{'end5'},
+                 $BarGraph{$key}->{'value'},
+                 $BarGraph{$key}->{'layer'}, 
+                 $BarGraph{$key}->{'color'},$avg_bar);
+    }
+    
+}
+
+$dbproc->disconnect if ($GOTO_DATABASE);
+
+if ($GIF_TOGGLE) {
+    if(length($opt_o) > 0) { # either I write it to disk
+    &write_image_to_disk($opt_o,$image);
+    }
+    else {
+    &write_image_to_stdout($image);
+    }    
+}
+
+print "$drawcount\n" if ($DEBUG);
+
+exit(0);
+
+sub get_features_from_file {
+    local($f, %struct) = @_;
+    my @data = ();
+    open(F_IN,"$f") || die "no can open: $f";
+
+    $count = $struct{'count'};
+
+    while (<F_IN>) {
+    chomp; # changed by Derrick Fouts 04_15_14 from the s/\n// shortcut.
+    @data = split(/\t/); # changed from /\s+/ since file is tab-delimited and also stored in the array @data instead of $_
+    print "\tFetched $_ from file into $count\n" if ($DEBUG);
+    $struct{$count}->{'feat_name'} = $data[0];
+    $struct{$count}->{'end5'} = $data[1];
+    $struct{$count}->{'end3'} = $data[2];
+    $struct{$count}->{'feat_type'} = $data[3];
+    $struct{$count}->{'color'} = $BLACK;
+
+    $count++;
+    }
+    close(F_IN);
+
+    $struct{'count'} = $count;
+    return(%struct);
+}
+
+sub get_genes_from_flatfile { # new by Derrick Fouts, April 8, 2014 to make db independent
+    local($flatfile) = @_;
+    local(%genome, $count);
+    open(ATTFILE,"<$flatfile") || die "no can open: $flatfile";
+    $count = 0;
+    my @seq_data = ();
+    while (<ATTFILE>) {
+    chomp;
+    @seq_data=split(/\t/);
+    $genome{$count}->{'feat_type'} = $seq_data[0];
+    $genome{$count}->{'end5'} = $seq_data[1];
+    $genome{$count}->{'end3'} = $seq_data[2];
+    $genome{$count}->{'role_order'} = $seq_data[3];
+    $genome{$count}->{'feat_name'} = $seq_data[4];
+    $genome{$count}->{'com_name'} = $seq_data[5] if ($seq_data[5] ne "NULL");
+    print STDERR "GET_GENES_FLATFILE:  $count) <$seq_data[0]>, <$seq_data[1]>, <$seq_data[2]>, <$seq_data[3]>, <$seq_data[4]>, <$seq_data[5]>\n" if ($DEBUG);
+    if (!($seq_data[3] eq "")) {
+        # there are no colors for tRNAs and stuff;
+        $genome{$count}->{'color'} = $role_color_lookup{$seq_data[3]};
+        print STDERR "GET_GENES_FLATFILE_color: <$genome{$count}->{'color'}>\n" if ($DEBUG);
+    }
+    else {
+        $genome{$count}->{'color'} = $BLACK
+    }       
+    print STDERR "GET_GENES_FLATFILE_hash: $count) <$genome{$count}->{'feat_name'}>\n" if ($DEBUG);
+    $count++;
+    }
+    close(ATTFILE);
+    $genome{'count'} = $count;
+    return(%genome);
+}
+
+sub get_genes {
+    local($dbproc,$db,$asmbl_id) = @_;
+    local(%genome, $count);
+    local($statementHandle,@x,@results);
+    local($query) = "select feat_type, end5, end3, 'NULL', feat_name, 'NULL'\n"
+    . " from $db..asm_feature where asmbl_id = $asmbl_id\n"
+    . " and feat_type != 'ORF'\n"
+        . " and feat_type not like 'GC'\n"
+        . " union\n"
+        . " select f.feat_type, f.end5, f.end3, r.mainrole, f.feat_name, i.com_name\n"
+        . " from $db..asm_feature f, $db..ident i, egad..roles r, $db..role_link rl\n"
+        . " where f.feat_type like 'ORF'\n"
+        . " and f.asmbl_id = $asmbl_id\n"
+        . " and f.feat_name = i.feat_name\n"
+        . " and f.feat_name *= rl.feat_name\n"
+        . " and rl.role_id *= r.role_id\n"
+        . " union \n"
+        . " select feat_name, end5, end3, 'NULL', feat_name, 'NULL'\n"
+        . " from $db..asm_feature\n"
+        . " where (feat_name like 'erpt' or feat_name like 'repeat%')\n"
+        . " and asmbl_id = $asmbl_id\n";
+
+#    print STDERR "query: $query\n" if($DEBUG);
+
+    $statementHandle = $dbproc->prepare($query);
+
+    if ( !defined $statementHandle) {
+    die "Cannot prepare statement: $DBI::errstr\n";
+    }
+    $count = 0;
+    $statementHandle->execute() || die "failed query: $query\n";
+    
+    if($statementHandle->{syb_more_results} ne "") {
+        while ( @seq_data = $statementHandle->fetchrow() ) {
+#       print "\tFetched $seq_data[5] from db\n" if ($DEBUG);
+        $genome{$count}->{'feat_type'} = $seq_data[0];
+        $genome{$count}->{'end5'} = $seq_data[1];
+        $genome{$count}->{'end3'} = $seq_data[2];
+        $genome{$count}->{'role_order'} = $seq_data[3];
+        $genome{$count}->{'feat_name'} = $seq_data[4];
+        $genome{$count}->{'com_name'} = $seq_data[5] if ($seq_data[5] ne "NULL");
+        if (!($seq_data[3] eq "")) {
+        # there are no colors for tRNAs and stuff;
+        $genome{$count}->{'color'} = $role_color_lookup{$seq_data[3]};
+        }
+        else {
+        $genome{$count}->{'color'} = $BLACK
+        }       
+        $count++;      
+        }
+    }
+    #release the statement handle resources
+    $statementHandle->finish;
+    
+    $genome{'count'} = $count;
+    
+    return(%genome);
+}
+
+
+sub get_asmbl_len {
+   local($dbproc, $x) = @_;
+   local($ret, @r, $query);
+
+   $query = "select datalength(sequence) from assembly where asmbl_id = $x";
+ 
+   print STDERR "--$query\n" if ($DEBUG);
+   @r = &do_sql($dbproc,$query);
+
+   return($r[0]);
+}
+
+sub handle_invocation {
+    local($notta) = @_;
+    local($prog, $invocation, $pwd, $invoke_file);
+
+    $prog = $0;
+    $prog =~ s/.*\///;
+
+    $invocation = $prog . " @ARGV";
+    $pwd = $ENV{'PWD'};
+    $invoke_file = $pwd . "/." . $prog;
+
+    if(-e $invoke_file) {
+        open(F_IN,"$invoke_file") || die "coulnt open $invoke_file";
+        while(<F_IN>) {
+            print STDERR "last invocation: $_";
+        }
+        close(F_IN);
+    }
+    exit(1) if ($invocation =~ /-i/);
+    open(F_OUT,">$invoke_file") || die "coulnt write $invoke_file";
+    print F_OUT "$invocation\n";
+    close(F_OUT);
+}
+
+sub handle_options {
+    local($per_id, $len, $overlap, $seq_num);
+
+    complain_about_options();
+
+    if(length($opt_t) == 0) {
+    $opt_t = $DEFAULT_TICK_INCREMENT;
+    }
+    return($opt_u, $opt_p, $opt_d, $opt_a, $opt_c, $opt_D, $opt_g, $opt_F, $opt_t, $opt_G);
+}
+
+sub complain_about_options { # "I could have been a contender"?
+    local($count);
+
+    if ($opt_C) {
+    print STDERR "An example config.file:\n";
+    print STDERR "ORF\t1\tFORWARD\tGENE\n";
+    print STDERR "ORF\t2\tREVERSE\tGENE\n";
+    print STDERR "tRNA\t3\tBOTH\tGENE\n";
+    print STDERR "rRNA\t4\tBOTH\tGENE\n";
+    print STDERR "LARGE_RPT\t5\tBOTH\tGENE\tBLACK\n";
+    print STDERR "RPT\t5\tBOTH\tGENE\tRED\n";
+    exit(1);
+    }
+
+    if ($GOTO_DATABASE) {
+    die "please specify: \n$0 -u user_name" if ($opt_u eq "");
+    die "please specify: \n$0 -p sybase password" if ($opt_p eq "");
+    die "please specify: \n$0 -d database" if ($opt_d eq "");
+    die "please specify: \n$0 -a asmbl_id" if ($opt_a eq "");
+    }
+    else {
+    die "please specify: \n$0 -G Genome att file" if ($opt_G eq "");
+    }
+    die "please specify: \n$0 -c config_file" if ($opt_c eq "");
+
+    
+}
+
+sub get_config_info {
+    local($f) = @_;
+    local(%c);
+    my @a = ();
+    
+    open(F_IN,"$f") || die "cant open $f";
+    while(<F_IN>) {
+    chomp;
+    @a=split(/\s+/);
+    # items here are specifying non-feature information
+    #  like LENGTH:
+    if (/^\w+:/) {
+        print "Found a non-feature: $_ <$a[0]>, <$a[1]>\n" if ($DEBUG);
+        $a[0] =~ s/://;
+        $c{$a[0]} = $a[1];
+    }
+    else {
+        print "Found feature: <$a[0]> <$a[2]> <$a[1]> <$a[3]> <$a[4]> <$role_color_lookup{$a[4]}>\n" if ($DEBUG);
+        $c{$a[0]} -> {$a[2]} -> {'layer'} = $a[1];
+        $c{$a[0]} -> {$a[2]} -> {'graphic_type'} = $a[3];
+        $c{$a[0]} -> {$a[2]} -> {'color'} = $role_color_lookup{$a[4]} if (length($a[4]) > 0);
+    }
+    }
+    close(F_IN);
+
+    return(%c);
+}
+
+sub Calculate_GC {
+    local($sequence,$window,$gc_layer,$gc_plot_color,$seq_len) = @_;
+    local($count,$highest_gc,$this_window,$total_gc,$j,$g,$c,$_,$num_gc,$total_gc,$pos,$percent_gc);
+    local(%BarGraph);
+    $total_gc = 0;
+    $this_window = $window;
+    $count = 0;
+    $highest_gc = 0;
+    for($j=0;$j<$seq_len;$j+=$window) {
+    $g = 0;
+    $c = 0;
+    $_ = substr($sequence,0,$window);
+    $sequence = substr($sequence,$window);
+    $g += tr/G/G/;
+    $c += tr/C/C/;
+    $num_gc = $g+$c;
+    $total_gc += $num_gc;
+    $pos = $j+$window;
+    if($j + $window > $seq_len) {
+        $this_window = $seq_len - $j;
+    }
+    $percent_gc = ($num_gc/$this_window)*100;
+    
+    $BarGraph{$count}->{'end5'} = $j+$window;
+    $BarGraph{$count}->{'value'} = $percent_gc;
+    $BarGraph{$count}->{'layer'} = $gc_layer;
+    $BarGraph{$count}->{'color'} = $gc_plot_color;
+    print "$BarGraph{$count}->{'end5'}\t$percent_gc\t$gc_layer\n" if $DEBUG;
+    if ($percent_gc > $highest_gc) {
+        $highest_gc = $percent_gc;
+    }
+    $count++;
+    }
+    return(\%BarGraph,$highest_gc);
+}
+
+sub Calculate_Chi2 {
+    local($fasta_file) = @_;
+    local($highest_chi,$cmd,$line,$position,$Chi2,$GC,%ChiData);
+    $highest_chi = 0;
+    $cmd = "selfsim $fasta_file";    
+    open(CMD,"$cmd |") || die "Can not run cmd: $cmd\n";
+    while ($line = <CMD>) {
+    if (!($line =~ /^\#/)) {
+        $line =~ s/\n//g;
+        ($position,$Chi2,$GC) = split(/\t/,$line);
+        $position =~ s/\s+//g;
+        $Chi2 =~ s/\s+//g;      
+        $ChiData{$position} = $Chi2;
+        if ($Chi2 > $highest_chi) {
+        $highest_chi = $Chi2;
+        }
+    }
+    }
+    close(CMD);
+    return(\%ChiData,$highest_chi);
+}
+
+############################## DBI subtroutines #######################################
+
+sub do_sql {
+    local($dbproc,$query,$delimeter) = @_;
+    local($statementHandle,@x,@results);
+    local($i,$result);
+    
+    if($delimeter eq "") {
+    $delimeter = "\t";
+    }
+    print "query: $query\n" if($DEBUG);
+
+    $statementHandle = $dbproc->prepare($query);
+    if ( !defined $statementHandle) {
+    die "Cannot prepare statement: $DBI::errstr\n";
+    }
+    $statementHandle->execute() || die "failed query: $query\n";
+    if($statementHandle->{syb_more_results} ne "") {
+        while ( @row = $statementHandle->fetchrow() ) {
+            push(@results,join($delimeter,@row));
+        }
+    }
+    #release the statement handle resources
+    $statementHandle->finish;
+    return(@results);
+}
+
+sub ConnectToDb {
+    local($server,$dbtype,$user,$passwd,$db) = @_;
+    local($dbproc);
+    print "server: $server dbtype: $dbtype user: $user passwd: $passwd db: $db\n" if (ts ==1);
+    $dbproc = (DBI->connect("dbi:$dbtype:server=$server",$user, $passwd));
+
+    if ( !defined $dbproc ) {
+        die "Cannot connect to Sybase server: $DBI::errstr\n";
+    }
+    $dbproc->do("use $db");
+    return($dbproc);
+}
+
+sub get_Seq {
+    local($dbproc, $asmbl_id,$seq_len) = @_;
+    local($seq,@x,$ret,$query);
+
+    ###### query 3 GIVEN THE LENGTH OF THE SEQUENCE, SET TEXTSIZE
+    $query = "set textsize $seq_len";
+
+    $statementHandle = $dbproc->prepare($query);
+    if ( !defined $statementHandle) {
+        die "Cannot prepare statement: $DBI::errstr\n";
+    }
+    $statementHandle->execute() || die "failed query: $query\n";
+    $statementHandle->finish;
+
+    ###### query 4 NOW GET THE SEQUENCE
+    $query = "select sequence from assembly where asmbl_id=$asmbl_id";
+
+    $statementHandle = $dbproc->prepare($query);
+    if ( !defined $statementHandle) {
+        die "Cannot prepare statement: $DBI::errstr\n";
+    }
+    $statementHandle->execute() || die "failed query: $query\n";
+    if($statementHandle->{syb_more_results} ne "") {
+        while ( @x = $statementHandle->fetchrow() ) {
+            $seq=$x[0];
+        }
+    }
+    $statementHandle->finish;
+    return($seq);    
+}
+
+sub make_fasta_file {
+    local($asmbl,$seq)=@_;
+    local($temp,$name);
+    $name = ">" . $asmbl;
+    $temp = "temp" . $$ . ".fasta";
+
+    open(OUT1, ">$temp");
+    $print_seq = &Convert_To_Fasta($name,$seq);
+    print OUT1 ($print_seq);
+    close(OUT1);
+    return($temp);
+}
+
+sub Convert_To_Fasta {
+    local($name,$seq) = @_;
+    local($i,$fasta_len,$fasta_seq,$tmp_fasta);
+    $fasta_len = 60;
+    $fasta_seq = $name . "\n";
+    for ($i = 0; $i <= length($seq); $i += $fasta_len) {
+        $tmp_fasta = substr($seq, $i, $fasta_len);
+    if ($tmp_fasta) {
+        $fasta_seq .= $tmp_fasta . "\n";
+    }
+    }
+    return($fasta_seq);
+}
+
+sub numerically {
+     $a <=> $b;
+}

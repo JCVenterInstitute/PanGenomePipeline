@@ -1,0 +1,79 @@
+#!/usr/bin/env ruby
+
+require_relative '../../lib/ruby/Newick'
+require 'optparse'
+require 'rubygems'
+require 'ostruct'
+require_relative '../../lib/ruby/fpdf'
+
+opt = OpenStruct.new
+opt.brackets = false
+opt.label = false
+opt.highlights = nil
+opt.file = nil
+opt.raw = false
+opt.good = 75
+
+# add string->integer method for array access, as fpdf 1.53 fails without it on ruby 1.9 and higher
+
+class Array
+  def [](key)
+    if key.kind_of?(String)
+      self.at(key.to_i)
+    else
+      self.at(key)
+    end
+  end
+end
+
+ARGV.options {|o|
+  o.banner << " tree-file [..tree-file]"
+  o.on("-b ", "--opt.brackets ", String, 
+          "load list of label brackets") {|b| opt.brackets = b}
+  o.on("-h ", "--highlights ", String,
+	  "highlight these ids (commas)") {|h| opt.highlights = h} 
+  o.on("-f ", "--file ", String,
+	  "file with ids to highlight") {|f| opt.file = f} 
+  o.on("-l ", "--label ", String, "add label to tree pdf") {|l| opt.label = l}   
+  o.on("-r", "--raw", "draw tree with raw names (false)") {opt.raw = true}
+  o.on("-g ", "--goodboot ", Float, "minimum level of a good bootstrap (default #{opt.good})") {|l| opt.good = l}
+  begin
+    o.parse!
+  rescue
+    STDERR.puts $!.message
+    STDERR.puts o
+    exit(1)
+  end
+  if (ARGV.size < 1)
+    STDERR.puts o
+    exit(1)
+  end
+}
+
+
+highlights = Hash.new
+if (opt.highlights)
+  opt.highlights.split(",").each {|highlight|
+    highlights[highlight] = "red"
+  }
+elsif (opt.file)
+  File.new(opt.file).each {|line|
+    name, color = line.chomp.split(" ")
+    color = "red" if color.nil?
+    highlights[name] = color
+  }
+end
+
+brackets = []
+if (opt.brackets)
+  File.new(opt.brackets).each {|line|
+    x, y1, y2, opt.label, r, p = line.chomp.split(" ")
+    opt.brackets.push([x.to_f, y1.to_f, y2.to_f, opt.label, r, p])
+  }
+end
+
+ARGV.each {|arg|
+  tree = NewickTree.fromFile(arg)
+  tree.draw(arg + ".pdf", "width", linker = :giLink, opt.label, highlights,
+            brackets, opt.raw, opt.good)
+}

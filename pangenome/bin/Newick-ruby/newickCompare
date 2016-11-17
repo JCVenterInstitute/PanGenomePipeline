@@ -1,0 +1,33 @@
+#!/usr/bin/env ruby
+
+require 'Newick'
+
+
+if (ARGV.size != 2)
+  STDERR.printf("usage: %s tree-file tree-file\n", $0)
+  exit(1)
+end
+
+tree1File, tree2File = ARGV
+
+tree1 = NewickTree.fromFile(tree1File)
+tree2 = NewickTree.fromFile(tree2File)
+
+begin
+  diff1, diff2 = tree1.compare(tree2)
+  if (diff1.empty? && diff2.empty?)
+     printf("The trees are identical\n")
+  else
+    printf("Clades in #{tree1File} but not #{tree2File}:\n")
+    diff1.each {|clade|
+      p clade
+    }
+    printf("Clades in #{tree2File} but not #{tree1File}:\n")
+    diff2.each {|clade|
+      p clade
+    }
+  end
+rescue
+  STDERR.printf("The two trees have different taxa and are not comparable\n")
+  exit(1)
+end

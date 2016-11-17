@@ -1,0 +1,196 @@
+Below are descriptions of the files you will see in the "results" directory after a runPangenome.pl launch:
+
+====================================================
+Files generated from pangenome_statistics.pl script
+====================================================
+
+overview_stats: Gives a cluster count breakdown. Lists the number of core, shared and singleton clusters found. 
+all_clusters_member_presence: Tab delimited file. Lists every cluster and shows a 1 or 0 to represent the presence/absence of a member from a genome.
+all_clusters_members.txt: Tab delimited file. Lists every cluster and the locus identifier for each member of the cluster. 
+
+core_clusters.txt: Tab delimited file. Lists only those clusters which have a representative from every genome in the analysis.
+shared_clusters.txt: Tab delimited file. List only those clusters which have a representative from two OR more genomes in the analysis.
+singletons_clusters.txt: Tab delimited file. List clusters containing only one member.
+
+singletons.pep: Fasta file containing the protein sequences for the singleton clusters. Header is locus|cluster number|database|protein name
+singletons.seq: Fasta file containing the nucleotide sequence for the singleton clusters. Header is locus|cluster number|database|protein name
+
+Optional files:
+    role_id_lookup.txt: Lookup file to link a TIGRFAM role id with it's mainrole<tab>sub role name. This file is a JCVI specific file.
+
+    metadata_counts.txt: Lists cluster counts for all meta data label combinations
+    metadata_clusters.txt: Lists all clusters and genome membership along with their associated meta data label
+
+    singletons_no_frame_clusters.txt: Tab delimited file listing the singleton clusters that are not labeled as frameshift by the clustering method.
+    singletons_no_frame.pep: Fasta file containing the protein sequences for the non frameshifted singletons.	     
+    singletons_no_frame.seq: Fasta file containing the nucleotide sequences for the non frameshifted singletons.
+
+
+====================================================
+Files generated from PanOCT clustering method
+====================================================
+
+A group of related files are known as the table files. These files all output one row of output per cluster and use tabs to delimit the
+columns. The columns correspond to the genomes input to PanOCT. The columns are ordered in the same order of appearance as the genome
+tags in the genome tag file with the reference genome first. The -T option specifies printing the cluster number as the first column of
+all of the table files (default is not to print the cluster number). The clusters (rows in the file) are ordered by appearance of the
+feat_id in the reference genome ordered first by molecule number and then by start coordinate. If there is no representative from the
+reference genome in the cluster then the ordering by the second genome in the genome tag file is used and so on. The clusters are
+implicitly numbered from 1 to the number of clusters as determined by this ordering. The table files are:
+
+_matchtable.txt has the feat_id for each member of a cluster. Columns corresponding to genomes which are not represented in a cluster
+contain ---------- instead. Outputting this file is controlled by the -V parameter (YES or NO, default is YES).
+
+_matchtable_0_1.txt uses 0s and 1s for membership in a cluster. Columns corresponding to genomes which are represented in a cluster contain
+a 1 while genomes not in the cluster contain 0 instead. Outputting this file is controlled by the -V parameter (YES or NO, default is YES).
+
+_matchtable_id.txt has the feat_id for each member of a cluster as well as the percent identity of the match to the reference genome
+protein in parenteses following the feat_id. If the cluster does not contain a protein from the reference genome percent identity is given
+to the first feat_id in the row. If the percent identity is 0.00 this means that the match between the proteins either did not exist in the
+Blast file or fell below some cutoff. Columns corresponding to genomes which are not represented in a cluster are left blank instead.
+Outputting this file is controlled by the -V parameter (YES or NO, default is YES).
+
+_id.txt has the feat_id and the feature's name/annotation for the reference genome as the first two columns followed by the percent identity
+of the match to the reference genome protein. If the cluster does not contain a protein from the reference genome a row for that cluster is
+not output. If the percent identity is 0.00 this means that the match between the proteins either did not exist in the Blast file or fell
+below some cutoff. Columns corresponding to genomes which are not represented in a cluster are left blank instead. Outputting this file is
+controlled by the -V parameter (YES or NO, default is YES).
+
+_micro.txt has the feat_id and the feature's name/annotation for the reference genome as the first two columns followed by a score between
+1 (perfect match) to 100 (no match) of the match to the reference genome protein. This file is meant to mimic microarray hybridization data
+to a reference genome based microarray. If the cluster does not contain a protein from the reference genome a row for that cluster is not
+output. Columns corresponding to genomes which are not represented in a cluster are left blank instead. Outputting this file is controlled
+by the -M parameter (YES or NO, default is NO).
+
+_BSR.txt has the feat_id and the feature's name/annotation for the reference genome as the first two columns followed by a Blast Score Ratio
+(BSR) between 1 (perfect match) to 0 (no match) of the match to the reference genome protein. If the cluster does not contain a protein from
+the reference genome a row for that cluster is not output. Columns corresponding to genomes which are not represented in a cluster are left
+blank instead. Outputting this file is controlled by the -N parameter (YES or NO, default is NO).
+
+_hits.txt has the feat_id and the feature's name/annotation in square brackets for the reference genome as the first column followed by the
+feat_id and the feature's name/annotation in square brackets for other members of the cluster. If the cluster does not contain a protein from
+the reference genome a row for that cluster is not output. Columns corresponding to genomes which are not represented in a cluster are left
+blank instead. Outputting this file is controlled by the -H parameter (YES or NO, default is NO).
+
+****************************************************************************************
+
+Another class of PanOCT output files are the matrix files.
+
+Matrix files have entries for a square matrix where the rows and columns correspond to the genomes given to PanOCT representing some pairwise
+measure between the genomes. Labesl for the genomes are the last 7 characters of each genome tag.
+
+The 6 matrix files are:
+
+_pairwise_cutoffs_matrix.txt contains the BSR cutoffs determined for any pair of genomes when the strict orthologs option is used (-S YES,
+default is NO). If a potential ortholog match does not have very much CGN (conserved gene neighbors) then it must exceed the pairwise BSR
+cutoff.
+
+_pairwise_identity_matrix.txt is a similarity matrix where each pairwise entry is the mean percent identity of matches between the genomes
+with high CGN.
+
+_pairwise_BSR_matrix.txt is a similarity matrix where each pairwise entry is the mean BSR score of matches between the genomes with high CGN
+multiplied by 100 to scale the scores between 0 to 100.
+
+_pairwise_BSR_distance_matrix.txt is a distance matrix where each entry in the BSR similarity matrix is subtracted from 100. The format is
+modified to be compatible with the Phylip tree building tool.
+
+_pairwise_cluster_similarity_matrix.txt is a similarity matrix where each pairwise entry is a measure of shared gene content between two
+genomes A and B. The measure used is (number of clusters in common between A and B) / ((number of clusters in A + number of clusters in B) / 2).
+THis measure is then multiplied by 100 to scale the values to be from 0 to 100.
+
+_pairwise_cluster_distance_matrix.txt is a distance matrix for shared gene content where we subtract every element of the above similarity
+matriox from 100.
+
+****************************************************************************************
+
+_missing_blast_results.txt is a file of one feat_id per line where the feat_id was specified in the feature attribute file but did not appear
+at all in the tabular Blast file or only as a search result but not as a query. This should never happen for an all against all Blast search.
+Feat-ids which do not appear at all in the tabular Blast file are ignored.
+
+****************************************************************************************
+
+_histograms.txt is a file of histograms, one per line, that are used by PanOCT to determine pairwise BSR cutoffs for separating paralogs from
+orthologs under the -S YES option. These are histograms of 101 bins: the first 100 bins are evenly divided from >= 0 to < 1 and the last bin
+is = 1. Remember BSR scores are normalized Blast scores from 0 to 1. If no match of a given type exists for a feat_id then the 0 bin is
+incremented. Four types of histograms are labeled and output. Self histograms capture the best match within a genome to a feat_id that is not
+the query feat_id (a paralog).Good_CGN histograms capture the best match between a pair of genomes that has good CGN support (more than half
+of maximum possible)for each feat_id. Best histograms capture the best match between a pair of genomes for each feat_id. Second histograms
+capture the second best match between a pair of genomes for each feat_id (presumably a paralog).
+
+****************************************************************************************
+
+_frameshifts.txt is a file of probable protein fragments that are adjacent or on the ends of contigs. This fragment detection and file generation
+only occurs under the strongly recommended -F option. If a pair of nearly adjacent proteins or nearly at the ends of contigs (the "nearly" is to
+allow for spurious proteins such as bad gene calls or transposon insertions) have mostly nonoverlapping matches to other proteins and fewer full
+length matches to other proteins then the proteins are flagged as fragments of the same gene. The longest matching fragment is "retained" and
+treated as the sole protein of this gene for further analysis. This feat_id is output first on the line and then a tab delimited list of other
+fragments from the same gene is output on the same line.
+
+****************************************************************************************
+
+_fragments_fusions.txt is a file containing feat_ids with labeling that have been determined to be likely protein fragments of a single fragment
+or fusions of multiple proteins. This file is only output if the -U YES option is specified. The determination of probable fragments and fusions
+is based on the length of high quality matches within or between clusters where one protein is significantly shorter than another.The fragments
+identified during frameshift detection and output in the _frameshifts.txt file are not output again here.
+
+****************************************************************************************
+
+_below_cutoff_clusters.txt is a file containing feat_ids of proteins in clusters where the proteins have significantly lower BSR matches than is
+typical as measured by the BSR pairwise cutoffs. This file is only output when -S YES is used.The first column is the cluster number and the second
+column is the feat_id.
+
+****************************************************************************************
+
+_paralog_weights.txt is a file showing the level of paralogous matches between pairs of clusters. For each pair of clusters where at least one high
+quality match exists between members of the different clusters a line is output (first two columns are the cluster numbers, third column is the
+number of matches). The quality of the match is stricter under the recommended -S YES option.
+
+****************************************************************************************
+
+_paralogs.txt is a file containing the single linkage clustering using the links from the _paralog_weights.txt file. Each line is a tab delimited
+set of cluster numbers. Each transposon tends to be a singleton cluster and very large sets of paralogous clusters tend to be transposons.
+
+****************************************************************************************
+
+_cluster_weights.txt contains some basic statistics on each cluster under the -C YES option. Each line has 6 tab delimited columns: cluster number,
+number of high quality matches within the cluster, minimum protein length, maximum protein length, mean protein length, and standard deviation of
+protein length.
+
+****************************************************************************************
+
+There are a series of paired files which can be output to show the layout of clusters in the genomes. A series of percentage thresholds can be
+specified using the -c option. For each threshold a pair of files is output:
+
+_threshold_core_adjacency_matrix.txt (where threshold is replaced by an actual number) shows the layout of "core" clusters where core is defined
+to be clusters with a percentage of genomes present in the cluster >= threshold. The file has two lines per cluster. The first line has the cluster
+number followed by a + or - indicating the relative orientation of the cluster with respect to the preceeding cluster, a : then the feat_id of the
+reference genome or if the reference genome is not in the cluster the first genome in the genome tag file, and the corresponding gene
+name/annotation. The second line shows all core clusters that are adjacent in any genome to the current cluster. Adjaceny is defined as the first
+core cluster beside the current core cluster but will skip over noncore clusters. Each adjacency is shown as a triplet inside parentheses and
+separated by commas. The triplet is: cluster number underscore 5 or 3 to represent the 5' or 3' end of the cluster/gene, cluster number
+underscore 5 or 3, and the number of genomes with this adjacency. The underscore 5 or 3 shows the relative orientation of the clusters.
+Three ||| separate adjaceny for the 5' versus 3' triplets for the given cluster.
+
+_threshold_noncore_adjacency_matrix.txt shows the same kind of adjacency information but for adjacency from a noncore cluster to a core cluster.
+
+****************************************************************************************
+
+_pairwise.txt shows all of the pairwise matches between members of the same cluster. Each line has 6 columns: cluster number, genome tag 1, feat_id 1,
+genome tag 2, feat_id 2, and percent identity. If there is no match above cutoff then 0 is output for percent identity which is not normally a valid
+value. This is only output for -B YES option.
+
+****************************************************************************************
+
+_centroids.fasta is a multi-fasta file containing the protein sequences for the centroids of the clusters. The fasta header line contains:
+>centroid_cluster number feat_id protein name/annotation. This is output using the -d option.
+
+****************************************************************************************
+
+_report.txt contains a few of the parameters PanOCT was called with and the feature counts per genome. "Raw" feature counts are determined by feat_ids
+seen in both the feature attribute file and as query sequences in the tabular Blast file before cutoffs are applied. "Used" feature counts are for
+both query and subject sequences in the tabular Blast file after cutoffs have been applied.
+
+****************************************************************************************
+
+_parameters.txt contains a complete list of PanOCT's parameters that PanOCT was called with and any derived values.
+

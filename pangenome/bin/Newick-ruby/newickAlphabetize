@@ -1,0 +1,12 @@
+#!/usr/bin/env ruby
+
+require 'Newick'
+
+if (ARGV.size != 1)
+  STDERR.printf("usage: %s tree-file\n", $0)
+  exit(1)
+end
+
+file = ARGV.pop
+
+tree = NewickTree.fromFile(file)

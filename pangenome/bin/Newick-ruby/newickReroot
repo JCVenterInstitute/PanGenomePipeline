@@ -1,0 +1,24 @@
+#!/usr/bin/env ruby
+
+require 'Newick'
+
+if (ARGV.size != 1 && ARGV.size != 2)
+  STDERR.printf("usage: %s tree-file [outgroup]\n", $0)
+  exit(1)
+end
+
+treeFile, outgroup = ARGV
+
+tree = NewickTree.fromFile(treeFile)
+
+if (outgroup.nil?)
+  print tree.midpointRoot.to_s + "\n"
+else
+  outNode = tree.findNode(outgroup)
+  if (outNode.nil?)
+    STDERR.printf("taxon #{outgroup} not found in tree!\n")
+    exit(1)
+  else
+     print tree.reroot(outNode).to_s + "\n"
+  end
+end
