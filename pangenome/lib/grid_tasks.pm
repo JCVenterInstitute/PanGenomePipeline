@@ -17,7 +17,7 @@ sub launch_grid_job {
     my $std_error  = "$working_dir/$errfile";
     my $std_out    = "$working_dir/$outfile";
 
-    my $qsub_command = "qsub -P $project_code -e $std_error -o $std_out";
+    my $qsub_command = "qsub -P $project_code -e $std_error -o $std_out -wd $working_dir";
     $qsub_command .= " -l $queue" if $queue;
     $qsub_command .= " -t 1-$job_array_max" if $job_array_max;
 
@@ -105,7 +105,7 @@ sub parse_response {
 sub wait_for_grid_jobs_arrays {
 # given an array of job_ids, wait until they are all done.
 
-    my ( $job_ids, $min, $max ) = @_;
+    my ( $job_ids, $min, $max, $debug ) = @_;
 
     my $lch = build_task_hash_arrays( $job_ids, $min, $max );
     my $stats_hash = build_task_hash_arrays( $job_ids, $min, $max );
@@ -115,7 +115,7 @@ sub wait_for_grid_jobs_arrays {
         for my $job_id ( keys %{$lch} ) {
 
             my $response = `qacct -j $job_id 2>&1`;
-            parse_response_arrays( $response, $lch,$stats_hash );
+            parse_response_arrays( $response, $lch, $stats_hash, $debug );
             sleep 1;
 
         }
