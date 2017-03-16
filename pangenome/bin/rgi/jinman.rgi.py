@@ -813,7 +813,7 @@ def runBlast(inType, inputSeq, threads, outputFile, criteria, data_type, clean, 
 		blastResults["_metadata"] = {"data_type": data_type}
 		pjson = json.dumps(blastResults)
 
-		with open(working_directory+"/"+outputFile+".json", 'w') as f:
+		with open(outputFile+".json", 'w') as f:
 			print>>f, pjson
 		if inType == 'contig':
 			for gene in blastResults:

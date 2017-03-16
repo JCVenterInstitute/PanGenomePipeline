@@ -3,8 +3,8 @@ import os
 import filepaths
 from Bio import SeqIO
 
-script_path = filepaths.determine_path()
 working_directory = os.getcwd()
+script_path = filepaths.determine_path()
 
 path = script_path
 
