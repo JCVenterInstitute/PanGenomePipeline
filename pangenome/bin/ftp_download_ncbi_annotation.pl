@@ -37,6 +37,8 @@ B<--output_prefix>              :   Use the supplied term as the prefix for all 
 
 B<--preserve_assembly_summary>  :   Save a copy of the retrieved assembly_summary.txt file
 
+B<--kingdom>                    :   Choose a kingdom within refseq from which to work in.  [Default is 'bacteria']
+
 B<--assembly_summary_file>      :   Use a previously saved assembly_summary.txt file.
 
 B<--id_length>                  :   Max length of newly generated ids. [Default is 7]
@@ -135,11 +137,13 @@ use LWP::UserAgent;
 
 use Data::Dumper;
 
+my $DEFAULT_KINGDOM = 'bacteria';
 my $DEFAULT_OUTPUT_BASENAME = 'refseq_download';
 my $TODAY = get_date();
 my @DEFAULT_DOWNLOAD_LIST = qw( );
 my $DEFAULT_LOG_LEVEL = 0;
 my $DEFAULT_ID_LENGTH = 7;
+my $working_dir = getcwd();
 
 my $MAX_DOWNLOAD_ATTEMPTS = 3;
 my $SLEEP_TIME = 1;
@@ -156,6 +160,7 @@ GetOptions( \%opts,
             'fasta',
             'gb',
             'id_length=i',
+            'kingdom|k=s',
             'log_file|l=s',
             'log_level=i',
             'mapping_file|m=s',
@@ -169,6 +174,7 @@ GetOptions( \%opts,
             'preserve_assembly_summary',
             'separate_downloads',
             'wgs',
+            'working_dir|w=s',
             'help|h',
             ) || die "Error getting options! $!";
 pod2usage( {-exitval => 0, -verbose => 2} ) if $opts{ help };
@@ -195,14 +201,14 @@ if ( $opts{ assembly_summary_file } ) {
     $data = read_file( $opts{ assembly_summary_file } );
 } else {
     # ... or get the summary file via ftp.
-    my $summary_url = 'ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/bacteria/assembly_summary.txt';
+    my $summary_url = 'ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/'. $opts{ kingdom } . '/assembly_summary.txt';
     _log("Retrieving assembly_summary.txt\n", 1);
     my $response = $ua->get( $summary_url );
     if ( $response->is_success ) {
         $data = $response->decoded_content;
         write_assembly_summary( $data ) if $opts{ preserve_assembly_summary };
     } else {
-        die "ERROR getting assembly_sumamry.txt: $response->status_line";
+        die "ERROR getting assembly_sumamry.txt: " . $response->status_line;
     }
 }
 
@@ -318,6 +324,11 @@ sub filter_on_assembly_data {
 
     my ( $candidates, $field_list,  $mapping, $download ) = @_;
 
+    my $astats_dir = "$working_dir/assembly_stats";
+    mkdir $astats_dir unless ( -d $astats_dir );
+    my $curr_dir = getcwd();
+    chdir $astats_dir;
+
     # print curl config file:
     my $curl_config_file = "./$opts{ output_prefix }.assembly_stats_curl.config";
     open( my $cfh, '>', $curl_config_file ) || die "Can't open $curl_config_file: $!\n";
@@ -369,11 +380,13 @@ sub filter_on_assembly_data {
         }
     }
 
+    chdir $curr_dir;
+
     my $dupe_index = 1;
 
     for my $assembly_accession ( keys %$candidates ) {
 
-        my $assembly_stats_file = $candidates->{ $assembly_accession }->{ stats_file } ;
+        my $assembly_stats_file = "$astats_dir/" . $candidates->{ $assembly_accession }->{ stats_file } ;
         my @asmbl_data = read_file( $assembly_stats_file );
 
         # Just a little assignment of values into a list using an array reference as a hash reference slice:
@@ -381,19 +394,12 @@ sub filter_on_assembly_data {
                 @{$candidates->{ $assembly_accession }}{ @$field_list };
         my $line = $candidates->{ $assembly_accession }->{ line };
 
-        my ( $N50, $contig_count );
-        if ( $assembly_level eq 'Complete Genome' ) {
+        my ( $N50, $contig_count, $total_length, $is_complete );
+        $is_complete = ( $assembly_level eq 'Complete Genome' ) ? 1 : 0;
 
-            $N50 = 'complete';
-            $contig_count = 'complete';
+       ( $N50, $contig_count, $total_length ) = get_assembly_stats( \@asmbl_data, $is_complete );
 
-        } else {
-
-            ( $N50, $contig_count ) = get_N50_and_contig_count( \@asmbl_data );
-
-        }
-
-        if ( $opts{ min_N50 } && $assembly_level ne 'Complete Genome' ) {
+        if ( $opts{ min_N50 } && ! $is_complete ) {
 
             if ( $N50 < $opts{ min_N50 } ) {
                 # failed.  log it.
@@ -404,7 +410,7 @@ sub filter_on_assembly_data {
 
         }
 
-        if ( $opts{ max_contigs } && $assembly_level ne 'Complete Genome' ) {
+        if ( $opts{ max_contigs } && ! $is_complete ) {
 
             if ( $contig_count > $opts{ max_contigs } ) {
                 # failed.  log it.
@@ -418,7 +424,7 @@ sub filter_on_assembly_data {
         my $id = check_row( $biosample, $infraspecific_name, $isolate, $line, $download, $mapping, \$dupe_index );
 
         if ( $id ) {
-            add_rows( $download, $mapping, $id, $biosample, $ftp_link, $infraspecific_name, $isolate, $N50, $contig_count );
+            add_rows( $download, $mapping, $id, $biosample, $ftp_link, $infraspecific_name, $isolate, $N50, $contig_count, $total_length );
         }
 
         unlink $assembly_stats_file;
@@ -486,22 +492,12 @@ sub resolve_dupe {
             my $new_id;
             $dupe_ids{ $id } = 'a';
 
-            # Must differentiate between strain-less and strain-ful duplicates
-            # Give strain-less dupes _DUPE# suffix
-            # Give strain-ful supes a lowercase letter suffix that increments, and shift everything over to preserve length.
+            # add a lowercase letter suffix that increments, and shift everything over to preserve length.
             do {
 
-                if ( $isolate =~ /^$/ ) { # This match means no strain info.
-
-                    $new_id = $id . '_DUPE' . $$dupe_index++;
-
-                } else {
-
-                    $new_id = $id . $dupe_ids{ $id };
-                    $new_id = substr( $new_id, 0 - $opts{ id_length }, $opts{ id_length } );
-                    $dupe_ids{ $id }++;
-
-                }
+                $new_id = $id . $dupe_ids{ $id };
+                $new_id = substr( $new_id, 0 - $opts{ id_length }, $opts{ id_length } );
+                $dupe_ids{ $id }++;
 
             } until ( not exists $download->{ $new_id } ); 
 
@@ -519,17 +515,9 @@ sub resolve_dupe {
         my $new_id;
         do {
 
-            if ( $isolate =~ /^$/ ) { # This match means no strain info.
-
-                $new_id = $id . '_DUPE' . $$dupe_index++;
-
-            } else {
-
-                $new_id = $id . $dupe_ids{ $id };
-                $new_id = substr( $new_id, 0 - $opts{ id_length }, $opts{ id_length } );
-                $dupe_ids{ $id }++;
-
-            }
+            $new_id = $id . $dupe_ids{ $id };
+            $new_id = substr( $new_id, 0 - $opts{ id_length }, $opts{ id_length } );
+            $dupe_ids{ $id }++;
 
         } until ( not exists $download->{ $new_id } );
 
@@ -603,33 +591,41 @@ sub retrieve_assembly_stats_file {
 }
 
 
-sub get_N50_and_contig_count {
+sub get_assembly_stats {
 
-    my ( $asmbl_data ) = @_;
-    my ( $N50, $contig_count );
+    my ( $asmbl_data, $is_complete ) = @_;
+    my ( $N50, $contig_count, $total_length );
+
+    if ( $is_complete ) {
+        $N50 = 'complete';
+        $contig_count = 'complete';
+    }
 
     for my $line ( @$asmbl_data ) {
 
         next if ( $line =~ /^#/ );
         if ( $line =~ /all\tall\tall\tall\tcontig-count\t(\d+)/ ) {
             $contig_count = $1;
-            last if defined $N50;
         }
         if ( $line =~ /all\tall\tall\tall\tcontig-N50\t(\d+)/ ) {
 			$N50 =  $1;	
-            last if defined $contig_count;
 		}
+        if ( $line =~ /all\tall\tall\tall\ttotal-length\t(\d+)/ ) {
+            $total_length = $1;
+        }
+
+        last if ( defined $N50 && defined $contig_count && defined $total_length );
 
     }
 
-    return ( $N50, $contig_count );
+    return ( $N50, $contig_count, $total_length );
 
 }
 
 
 sub add_rows {
 
-    my ( $download, $mapping, $id, $biosample, $ftp_link, $infraspecific_name, $isolate, $N50, $contig_count ) = @_;
+    my ( $download, $mapping, $id, $biosample, $ftp_link, $infraspecific_name, $isolate, $N50, $contig_count, $total_length ) = @_;
 
     # store line for the .downlaod file
     $download->{ $id } = $ftp_link;
@@ -649,7 +645,7 @@ sub add_rows {
 
     $isolate =~ s/strain=(.*)/$1/;
 
-    $mapping->{ $id } = "$biosample\t$infraspecific_name\t$isolate\t$N50\t$contig_count";
+    $mapping->{ $id } = "$biosample\t$infraspecific_name\t$isolate\t$N50\t$contig_count\t$total_length";
     $biosamples{ $biosample }++;
 
 }
@@ -1026,9 +1022,15 @@ sub check_options {
     }
 
     # set up some default values
-    $opts{ id_length } = $opts{ id_length } // $DEFAULT_ID_LENGTH;
-    $opts{ loglevel }  = $opts{ loglevel }  // $DEFAULT_LOG_LEVEL;
-    $opts{ output_prefix } = $opts{ output_prefix } // "$DEFAULT_OUTPUT_BASENAME.$TODAY";
+    $opts{ id_length }      = $opts{ id_length }        // $DEFAULT_ID_LENGTH;
+    $opts{ loglevel }       = $opts{ loglevel }         // $DEFAULT_LOG_LEVEL;
+    $opts{ output_prefix }  = $opts{ output_prefix }    // "$DEFAULT_OUTPUT_BASENAME.$TODAY";
+    $working_dir            = $opts{ working_dir }      // $working_dir;
+    $opts{ kingdom }        = $opts{ kingdom }          // $DEFAULT_KINGDOM;
+    unless ( $opts{ kingdom } =~ /^(bacteria|archaea|fungi|invertebrate|plant|protozoa|vertebrate_mammalian|vertebrate_other|viral)$/ ) {
+        $errors .= "--kingdom MUST be one of the following:\n\tbacteria (default)\n\tarchaea\n\tfungi\n\tplant\n\tprotozoa\n\tvertebrate_mammalian\n\tvertebrate_other\n\tviral\n";
+    } 
+
 
     die $errors if $errors;
 

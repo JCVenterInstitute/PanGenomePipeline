@@ -263,12 +263,12 @@ Citation:  Agnes P. Chan, Granger Sutton, Jessica DePew, Radha Krishnakumar, Yon
 
   Usage: $prog <options>
 Example: $prog -M 0_core_adjacency_vector.txt -W cluster_weights.txt -p L1B1C -l 5 -A L1B1.att -g L1B1.pep > gene_order.txt # for hierarchical/iterative pan-genome runs
-Example: $prog -P -W cluster_weights.txt -M 75_core_adjacency_vector.txt -m 0_core_adjacency_vector.txt -t ../example_tags.txt -l 5 -A Core.att -a fGI.att -I fGI_report.txt -C centroids.fasta > gene_order.txt # fGI analysis
+Example: $prog -P -W cluster_weights.txt -M 95_core_adjacency_vector.txt -m 0_core_adjacency_vector.txt -t ../example_tags.txt -l 5 -A Core.att -a fGI.att -I fGI_report.txt -C centroids.fasta > gene_order.txt # fGI analysis
 Version: $version
 Options:
      -h: print this help page
      -W: cluster weights file from PanOCT output, tab delimited, column 1 is cluster number, column 2 is cluster size [REQUIRED]
-     -M: num_core_adjacency_vector.txt file from PanOCT, num should be 75 for consensus/fGI analysis or 0 for hierarchical PanOCT runs [REQUIRED]
+     -M: num_core_adjacency_vector.txt file from PanOCT, num should be 95 for consensus/fGI analysis or 0 for hierarchical PanOCT runs [REQUIRED]
      -m: num_core_adjacency_vector.txt file from PanOCT, num should be 0 for consensus/fGI analysis, optional (not used for hierarchical PanOCT runs)
      -t: genome tags file name used as input for PanOCT, required for -m and ignored otherwise
      -L: genome groups label file name: first column is genome tag second column is group label used with -m and -T 3
@@ -1696,8 +1696,8 @@ sub print_insertions {
 	    }
 	}
 	my $fGI_type = "";
-	if (((100 * $islands{$core_end}{'size'}) / $num_genomes) >= 75) {
-	    $fGI_type = "fGI_75";
+	if (((100 * $islands{$core_end}{'size'}) / $num_genomes) >= 95) {
+	    $fGI_type = "fGI_95";
 	} elsif (((100 * $islands{$core_end}{'size'}) / $num_genomes) >= 50) {
 	    $fGI_type = "fGI_50";
 	} elsif (((100 * $islands{$core_end}{'size'}) / $num_genomes) >= 25) {

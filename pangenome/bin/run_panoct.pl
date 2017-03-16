@@ -5,11 +5,11 @@ $|++;
 
 =head1 NAME
 
-runPangenome.pl - utility for running the pangenome pipeline
+run_panoct.pl - utility for running the pangenome pipeline
 
 =head1 SYNOPSIS
 
-    USAGE: runPangenome.pl  -d /path/to/genome_list_file
+    USAGE: run_panoct.pl  -d /path/to/genome_list_file
                             -u <sybase user> && -p <sybase password> || -D database_file
                            [
                             --use_nuc
@@ -76,6 +76,8 @@ B<--use_nuc>                    :   use nucleotide versions of blast and input f
 B<--no_graphics>                :   Don't execute the various scripts that produce graphics
 
 =head2 Misc options
+
+B<--log_dir>                    :   Place to write run_panoct.log, along with a small collection of log files
 
 B<--debug>                      :   Integer specifying log message levels.  Lower is more verbose.
 
@@ -221,7 +223,7 @@ TIGR00435
 =head2 Log File
 
 A log file is produced containing various messages, by default this is found at
-working_dir/logs/runPangenome.log
+working_dir/logs/run_panoct.log
 But can be specified using --log_file.  The level of messages (verbosity) can be
 specified using the --debug option, passing in an integer value. 0 results in the
 fewest messages, increasing the number results in more detailed explanation.
@@ -267,6 +269,8 @@ the pangenome.
 
 use Getopt::Long  qw(:config no_ignore_case no_auto_abbrev);
 use Pod::Usage;
+use Capture::Tiny qw{ capture capture_merged };
+use IO::File;
 use Cwd;
 use Cwd 'abs_path';
 use feature qw(switch);
@@ -280,7 +284,7 @@ use File::Temp;
 use FindBin;
 use lib File::Spec->catdir( $FindBin::Bin, '..', 'lib' );
 use SeqToolBox::SeqDB;
-use Pangenome::DB::ProkSybase;
+#use Pangenome::DB::ProkSybase;
 use Pangenome::ConsistencyChecks;
 use Pangenome::Download;
 use Data::Dumper;
@@ -308,6 +312,11 @@ my $CORE_CLUSTER_HISTO_EXEC = "$BIN_DIR/core_cluster_histogram.R";
 my $GENE_ORDER_EXEC         = "$BIN_DIR/gene_order.pl";
 my $PAN_CHROMO_EXEC         = "$BIN_DIR/pan_chromosome/make_pan_chromosome_fig.sh";
 my $ANNOT_EXEC              = "$BIN_DIR/get_go_annotations.pl";
+my $GENOME_PROP_DIR         = "$BIN_DIR/genome_properties";
+my $ALIGN_CLUSTER_EXEC      = "$BIN_DIR/align_clusters.pl";
+my $CHECK_COMBINED_EXEC     = "$BIN_DIR/check_combined_files.pl";
+my $GP_EXEC                 = "$GENOME_PROP_DIR/genome_properties.pl";
+my $EVALUATION_ORDER        = "$GENOME_PROP_DIR/evaluation_order";
 
 $ENV{RUBYLIB}           = "$FindBin::Bin/../lib/ruby";
 my $TREE_SCRIPT_EXEC    = "$BIN_DIR/make_BSR_trees.sh";
@@ -348,14 +357,18 @@ GetOptions( \%opts,
     'panoct_local',
     'blast_local',
     'working_dir|w=s',
-    'no_panoct',
-    'no_trees',
     'gene_att_file|a=s',
     'att_dir|A=s',
     'combined_fasta|f=s',
     'fasta_dir|F=s',
+    'log_dir=s',
     'no_stats',
     'no_new_plot',
+    'no_panoct',
+    'no_trees',
+    'no_annotation',
+    'no_graphics',
+    'no_align_clusters',
     'reference|r=s',
     'role_ids|i=s',
     'terms|t=s',
@@ -428,6 +441,7 @@ if ( (-s "$results_dir/paralogs.txt" ) && ( -s "$results_dir/matchtable_0_1.txt"
 
 }
 
+
 #Step 6: (Optionally) call tree-making scripts.
 unless ( $opts{ no_trees } ) {
 
@@ -439,6 +453,7 @@ unless ( $opts{ no_trees } ) {
 # Step 7: Annotate the clusters.
 unless ( $opts{ no_annotation } ) {
 
+    #call_genome_properties();
     call_annotation_script();
 
 }
@@ -451,6 +466,14 @@ unless ( $opts{ no_graphics } ) {
 
 }
 
+#Step 9: Call align_clusters.pl
+unless ( $opts{ no_align_clusters } ) {
+
+    call_align_clusters( $results_dir );
+
+}
+
+_log( "Pangenome Pipeline Finished.", 0 );
 
 exit(0);
 
@@ -493,7 +516,14 @@ sub call_core_cluster_histogram {
 
     _log( "Creating core_cluster_histogram.pdf:\n". join( ' ', @cmd ), 0 );
 
-    system( @cmd ) == 0 || _die( "Couldn't run $CORE_CLUSTER_HISTO_EXEC: $? $!\n", __LINE__ );
+    my $lf = "$log_dir/core_cluster_histogram.log";
+    my $lh = IO::File->new( $lf, "w+" ) || _die( "Couldn't open $lf for logging: $!", __LINE__ );
+
+    capture_merged{
+
+        system( @cmd ) == 0 || _die( "Couldn't run $CORE_CLUSTER_HISTO_EXEC: $? $!\n", __LINE__ );
+
+    } stdout => $lh;
 
     if ( -s "$working_dir/core_cluster_histogram.pdf" ) {
         move( "$working_dir/core_cluster_histogram.pdf", $plots_dir ) || _log( "WARNING: Problem moving core_cluster_histogram.pdf to $plots_dir: $!", 0 );
@@ -512,17 +542,26 @@ sub create_fGI_info {
     mkdir $fgi_dir || _die( "Couldn't create $fgi_dir: $!", __LINE__ );
  
     my @cmd =   (   $GENE_ORDER_EXEC, '-T', '2', '-W', "$result_dir/cluster_weights.txt",
-                    '-M', "$result_dir/75_core_adjacency_vector.txt",
+                    '-M', "$result_dir/95_core_adjacency_vector.txt",
                     '-m', "$result_dir/0_core_adjacency_vector.txt", '-l', '5',
                     '-t', "$genome_list_file", '-A', "$fgi_dir/Core.att",
                     '-a', "$fgi_dir/fGI.att", '-I', "$fgi_dir/fGI_report.txt",
                     '-C', "$result_dir/centroids.fasta" );
     push( @cmd, '-P' ) unless ( $opts{ nucleotide } );
-    push( @cmd, '>', "$fgi_dir/consensus.txt" );
 
     _log( "Running gene_order.pl:\n" . join( ' ', @cmd ), 0 );
 
-    system( @cmd ) == 0 || _die( "Couldn't run $GENE_ORDER_EXEC: $? $!", __LINE__ );
+    my $of = "$fgi_dir/consensus.txt";
+    my $oh = IO::File->new( $of, "w+" ) || _die( "Couldn't open $of for writing: $!", __LINE__ );
+
+    my $lf = "$log_dir/gene_order.log";
+    my $lh = IO::File->new( $lf, "w+" ) || _die( "Couldn't open $lf for logging: $!", __LINE__ );
+
+    capture{
+
+        system( @cmd ) == 0 || _die( "Couldn't run $GENE_ORDER_EXEC: $? $!", __LINE__ );
+
+    } stdout => $oh, stderr => $lh;
 
     # make_pan_chromosome needs shared_clusters.txt
     my ( $source, $target ) = (  "$result_dir/shared_clusters.txt", "$fgi_dir/shared_clusters.txt" );
@@ -537,11 +576,38 @@ sub create_fGI_info {
 
 sub call_make_pan_chromosome {
 
-    my @cmd =   ( $PAN_CHROMO_EXEC, $working_dir );
+    my @cmd = ( $PAN_CHROMO_EXEC, $working_dir );
 
     _log( "Running make_pan_chromosome:\n" . join( ' ', @cmd ), 0 ); 
 
-    system( @cmd ) == 0 || _die( "Couldn't run $PAN_CHROMO_EXEC: $? $!", __LINE__ );
+    my $lf = "$log_dir/make_pan_chromosome.log";
+    my $lh = IO::File->new( $lf, "w+" ) || _die( "Couldn't open $lf for logging: $!", __LINE__ );
+
+    capture_merged{
+
+        system( @cmd ) == 0 || _die( "Couldn't run $PAN_CHROMO_EXEC: $? $!", __LINE__ );
+
+    } stdout => $lh;
+
+}
+
+
+sub call_align_clusters {
+# Execute the align_clusters.pl script.
+
+    my @cmd = ( $ALIGN_CLUSTER_EXEC, '-m', "$results_dir/matchtable.txt",
+                '-c', $combined_fasta, '-s', "$results_dir/singletons_clusters.txt",
+                '-w', $results_dir, 
+                '-l', "$log_dir/align_clusters.log" );
+    if ( $project_code ) {
+        push( @cmd, '-P', $project_code );
+    } else {
+        push( @cmd, '--no_grid' );
+    }
+
+    _log( "Running align_clusters.pl:\n" . join( ' ', @cmd ), 0 );
+
+    system( @cmd ) == 0 || _die( "Couldn't run $ALIGN_CLUSTER_EXEC: $? $!", __LINE__ );
 
 }
 
@@ -572,14 +638,40 @@ sub call_graphics_scripts {
 }
 
 
+sub call_genome_properties {
+
+    # TODO: Make sure centroids.pep exists for nuc runs.
+
+    my @cmd = ( $GP_EXEC, '-all', '-seqs', 'centroids.pep', '-eval_order', $EVALUATION_ORDER, '-name', 'genome_props' );
+
+    _log( "Running Genome Properties script:\n" . join( ' ', @cmd ), 0 );
+
+    my $lf = "$log_dir/genome_properties.log";
+    my $lh = IO::File->new( $lf, "w+" ) || _die( "Can't open $lf for logging: $!", __LINE__ );
+
+    capture_merged{
+
+        system( @cmd ) == 0 || _die( "Problem running Genome Properties script", __LINE__ );
+
+    } stdout => $lh;
+
+}
+
+
 sub call_annotation_script {
 
-    my @cmd = ( $ANNOT_EXEC, '-i', "$results_dir/centroids.fasta", '-P', $project_code, '-w', $results_dir );
+    my @cmd = ( $ANNOT_EXEC, '-i', "$results_dir/centroids.fasta", '-P', $project_code, '-w', $results_dir, '-l', $log_dir );
     push( @cmd, '--nuc' ) if ( $opts{ use_nuc } );
 
     _log( "Running annotation script:\n" . join( ' ', @cmd ), 0 );
 
-    system( @cmd ) == 0 || _die( "Problem running annotation script", __LINE__ );
+    my $lf = "$log_dir/get_go_annotations.pl.log";
+    my $lh = IO::File->new( $lf, "w+" ) || _die( "Can't open $lf for logging: $!", __LINE__ );
+    capture_merged{
+
+        system( @cmd ) == 0 || _die( "Problem running annotation script", __LINE__ );
+
+    } stdout => $lh;
 
 }
 
@@ -587,13 +679,18 @@ sub call_annotation_script {
 sub call_tree_making_script {
 
     my @cmd = ( $TREE_SCRIPT_EXEC, $working_dir, $BIN_DIR );
-    my $output_file_base = fileparse($TREE_SCRIPT_EXEC, qr/\.[^.]*/);
-    my $output_file = "$log_dir/$output_file_base.log";
-    push( @cmd, '$>', $output_file );
 
     _log( "Running tree building:\n" . join( ' ', @cmd ), 0 );
 
-    system( @cmd ) == 0 || _die( "Failure running tree-making script", __LINE__ );
+    my $output_file_base = fileparse($TREE_SCRIPT_EXEC, qr/\.[^.]*/);
+    my $lf = "$log_dir/$output_file_base.log";
+    my $lh = IO::File->new( $lf, "w+" ) || _die( "Can't open $lf for logging: $!", __LINE__ );
+
+    capture_merged{
+
+        system( @cmd ) == 0 || _die( "Failure running tree-making script", __LINE__ );
+
+    } stdout => $lh;
 
 }
 
@@ -640,7 +737,14 @@ sub create_att_dat_file {
 
     _log( "Creating att.dat file:\n" . join( ' ', @cmd ), 1 );
 
-    system( @cmd ) == 0 || _die( "Failure creating att.dat file", __LINE__ );
+    my $lf = "$log_dir/convert_att_file_to_hsh.log";
+    my $lh = IO::File->new( $lf, "w+" ) || _die( "Couldn't open $lf for logging: $!", __LINE__ );
+
+    capture_merged{
+
+        system( @cmd ) == 0 || _die( "Failure creating att.dat file", __LINE__ );
+
+    } stdout => $lh;
 
     return $att_dat_file;
 
@@ -684,7 +788,14 @@ sub call_stat_generation_script {
 
             _log( "Running stat generation:\n$cmd", 0 );
 
-            system( $cmd ) == 0 || _die ( "Error running stats: $? $!", __LINE__ );
+            my $lf = "$log_dir/pangenome_statistics.log";
+            my $lh = IO::File->new( $lf, "w+" ) || _die( "Couldn't open $lf for logging: $!", __LINE__ );
+
+            capture_merged{
+
+                system( $cmd ) == 0 || _die ( "Error running stats: $? $!", __LINE__ );
+
+            } stdout => $lh;
 
         } else {
             _die( "No $gene_att_file data file found in $working_dir", __LINE__ );
@@ -703,8 +814,10 @@ sub make_input_fasta_string {
 # into a single-space-seperated list
     
     my $working_dir = shift;
+
+    my $ext = ( $opts{ use_nuc } ) ? '.nuc' : '.pep';
     
-    my $fasta_files = join( " ", glob( "$fasta_dir/*.pep" ) );
+    my $fasta_files = join( " ", glob( "$fasta_dir/*$ext" ) );
     return $fasta_files;
     
 }
@@ -742,11 +855,19 @@ sub call_paralog_matchtable{
     my $out_file        = "$results_dir/matchtable_paralog.txt";
 
     my $cmd = $MATCHTABLE_EXEC;
-    $cmd .= " -M $matchtable_file -P $paralogs_file > $out_file";
+    $cmd .= " -M $matchtable_file -P $paralogs_file";
 
     _log( "Calling paralog_matchtable.pl:\n$cmd", 0 );
 
-    system( $cmd ) == 0 || _die( "Couldn't run script: $? $!", __LINE__ );
+    my $oh = IO::File->new( $out_file, "w+" ) || _die( "Couldn't open $out_file for output: $!", __LINE__ );
+    my $lf = "$log_dir/paralaog_matchtable.log";
+    my $lh = IO::File->new( $lf, "w+" ) || _die( "Couldn't open $lf for logging: $!", __LINE__ );
+
+    capture{
+
+        system( $cmd ) == 0 || _die( "Couldn't run script: $? $!", __LINE__ );
+
+    } stdout => $oh, stderr => $lh;
 
 }
 
@@ -771,7 +892,14 @@ sub call_compute_pangenome {
 
     _log( "Running compute pangenome:\n$cmd", 0 );
 
-    system( $cmd ) == 0 || _die( "Couldn't run script: $? $!", __LINE__ );
+    my $lf = "$log_dir/compute_pangenome.log";
+    my $lh = IO::File->new( $lf, "w+" ) || _die( "Couldn't open $lf for logging: $!", __LINE__ );
+
+    capture_merged{
+
+        system( $cmd ) == 0 || _die( "Couldn't run script: $? $!", __LINE__ );
+
+    } stdout => $lh;
 
 }
 
@@ -789,7 +917,14 @@ sub call_new_plot_pangenome {
 
     _log( "Running new plot pangenome script:\n$cmd", 0 );
 
-    system( $cmd ) == 0 || _die( "Couldn't run new plot pangenome script: $cmd\n$? $!", __LINE__ );
+    my $lf = "$log_dir/new_plot_pangenome.log";
+    my $lh = IO::File->new( $lf, "w+" ) || _die( "Couldn't open $lf for logging: $!", __LINE__ );
+
+    capture_merged{
+
+        system( $cmd ) == 0 || _die( "Couldn't run new plot pangenome script: $cmd\n$? $!", __LINE__ );
+
+    } stdout => $lh;
 
 }
 
@@ -799,28 +934,33 @@ sub call_panoct {
     my $fasta_string = make_input_fasta_string( $working_dir );
     my @params;
 
-    # If the combined.fasta is not in the working directory, it must be
+    # If the combined.fasta is not in the 'results' directory, it must be
     # Copied (NOT symlinked? :/ ) to this directory.
     my $target = "$results_dir/combined.fasta";
-    unless ( abs_path( $combined_fasta ) eq abs_path( $target ) ){
+    unless ( abs_path( $combined_fasta ) eq abs_path( $target ) || -e $target ){
+        _log( "Copying combined.fasta from $combined_fasta to $target", 0 );
         copy( $combined_fasta, $target ) || die "Couldn't copy $combined_fasta to $results_dir! $!\n";
     }
 
+
     # Likewise with the genome list file
     $target = "$results_dir/genomes.list";
-    unless ( abs_path( $genome_list_file ) eq abs_path( $target ) ) {
+    unless ( abs_path( $genome_list_file ) eq abs_path( $target ) || -e $target ) {
+        _log( "Copying genomes.list from $genome_list_file to $target", 0 );
         copy( $genome_list_file, $target ) || die "Couldn't copy $genome_list_file to $results_dir!\n";
     }
 
     # Likewise with the combined.att file
     $target = "$results_dir/combined.att";
-    unless ( abs_path( $gene_att_file ) eq abs_path( $target ) ) {
+    unless ( abs_path( $gene_att_file ) eq abs_path( $target ) || -e $target ) {
+        _log( "Copying combined.att from $gene_att_file to $target", 0 );
         copy( $gene_att_file, $target ) || die "Couldn't copy $gene_att_file to $results_dir!\n";
     }
 
     # Likewise with the combined.blast file
     $target = "$results_dir/combined.blast";
-    unless ( abs_path( $blast_file_path ) eq abs_path( $target ) ) {
+    unless ( abs_path( $blast_file_path ) eq abs_path( $target ) || -e $target ) {
+        _log( "Copying combined.blast from $blast_file_path to $target", 0 );
         copy( $blast_file_path, $target ) || die "Couldn't copy $blast_file_path to $results_dir!\n";
     }
 
@@ -828,7 +968,7 @@ sub call_panoct {
             '-g', 'combined.att', '-P', 'combined.fasta' ); 
     push( @params, '-i', $opts{ percent_id } ) if $opts{ percent_id };
     push( @params, '-S', $strict ) if $strict;
-    push( @params, '-L', '1', '-M', 'Y', '-H', 'Y', '-V', 'Y', '-N', 'Y', '-F', '1.33', '-G', 'y', '-c', '"0,25,50,75,100"', '-T' );
+    push( @params, '-L', '1', '-M', 'Y', '-H', 'Y', '-V', 'Y', '-N', 'Y', '-F', '1.33', '-G', 'y', '-c', '0,50,95,100', '-T' );
 
     my @grid_jobs;
 
@@ -840,12 +980,19 @@ sub call_panoct {
 
     } else {
 
-        my @cmd = ( $PANOCT_EXEC, @params, '>', "$working_dir/panoct.result" );
-        
-        _log( "Running  panoct:\n" . join( ' ', @cmd ), 0 );
-        system( @cmd ) == 0 || _die("ERROR: Problem running panoct. Check logs/panoct.log", __LINE__);
+        # Set up capture of panoct's stdout and stderr.  Using Tiny::Capture because simple redirecting wasn't working.
+        # Probably more portable, not that it matters with all the other non-portable perl we have going on. #LINUXorBUST
+        my $panoct_log = "$log_dir/panoct.log";
+        my $mfh = IO::File->new( $panoct_log, "w+" ) || _die( "Can't open $panoct_log: $!", __LINE__);;
 
-        unless ( -s "$working_dir/panoct.result" ) {
+        my @cmd = ( $PANOCT_EXEC, @params);
+ 
+        _log( "Running  panoct:\n" . join( ' ', @cmd ), 0 );
+        capture_merged {
+            system( @cmd ) == 0 || _die("ERROR: Problem running panoct. Check $panoct_log", __LINE__);
+        } stdout => $mfh;
+
+        unless ( -s "$log_dir/panoct.log" ) {
             _die("ERROR: Problem running panoct. Check logs/panoct.log", __LINE__);
         }
 
@@ -974,7 +1121,14 @@ sub blast_genomes {
     my $formatdb_cmd = "$MAKEBLASTDB_EXEC -in $combined_fasta";
     $formatdb_cmd .= ( $opts{ use_nuc } ) ? ' -dbtype nucl ' : ' -dbtype prot ';
 
-    system( $formatdb_cmd ) == 0 || _die ( "Couldn't format blastdb: $? $!", __LINE__ );
+    my $lf = "$log_dir/formatdb.log";
+    my $lh = IO::File->new( $lf, "w+" ) || _die( "Couldn't open $lf for logging: $!", __LINE__ );
+
+    capture_merged{
+
+        system( $formatdb_cmd ) == 0 || _die ( "Couldn't format blastdb: $? $!", __LINE__ );
+
+    } stdout => $lh;
 
     $blast_file_name = "combined.blast";
     $blast_file_dir  = "$working_dir";
@@ -992,7 +1146,15 @@ sub blast_genomes {
         $blast_cmd .= " -query $combined_fasta -out $blast_file_path";
         
         _log( "Running blast locally:\n$blast_cmd", 0 );
-        system( $blast_cmd ) == 0 || _die ( "Error running blast: $? $!", __LINE__ );
+
+        $lf = "$log_dir/blast.log";
+        $lh = IO::File->new( $lf, "w+" ) || _die( "Coudln't open $lf for logging: $!", __LINE__ );
+
+        capture_merged{
+
+            system( $blast_cmd ) == 0 || _die ( "Error running blast: $? $!", __LINE__ );
+
+        } stdout => $lh;
 
     } else {
 
@@ -1117,7 +1279,7 @@ sub make_combined_fasta {
     }
 
     if ( scalar( @missing ) ) {
-        _die( "Missing .$extension files for the following genomes:\n" . join( "\n", @missing ) . "\n", __LINE__ );
+        _die( "Missing (or empty) .$extension files for the following genomes:\n" . join( "\n", @missing ) . "\n", __LINE__ );
     } else {
 
         open( my $ofh, '>', $combined_fasta ) || _die( "Can't open $combined_fasta: $!\n", __LINE__ );
@@ -1190,7 +1352,7 @@ sub check_params {
     $debug          = $opts{ debug }        // $DEFAULT_DEBUG_LVL;
     $working_dir    = $opts{ working_dir }  // $DEFAULT_WORKING_DIR;
     $results_dir    = "$working_dir/results";
-    $log_dir        = "$working_dir/logs";
+    $log_dir        = $opts{ log_dir }      // "$working_dir/logs";
     $project_code   = $opts{ project_code };
 
     if ( ! ( $opts{ blast_file } || $opts{ blast_local } ) ) {
@@ -1215,7 +1377,7 @@ sub check_params {
     mkpath( "$results_dir" ) unless ( -d "$results_dir" );
     mkpath( "$log_dir" )    unless ( -d "$log_dir" );
 
-    $log_file = "$log_dir/runPangenome.log";
+    $log_file = "$log_dir/run_panoct.log";
     open( $lfh, '>', $log_file ) || die "Can't open log file $log_file: $!";
 
     # Options setting up blast or the blast file
@@ -1246,6 +1408,14 @@ sub check_params {
     }
     $combined_fasta = abs_path( $combined_fasta ) if $combined_fasta;
 
+    # Check to make sure the combined.fasta and combined.att
+    my @cmd = ( $CHECK_COMBINED_EXEC, '-a', $gene_att_file, '-f', $combined_fasta,
+                '-l', "$log_dir/check_combined_files.log" );
+    if ( system(@cmd) ) { # non-zero here means an issue was found.
+        $errors .= "Found an error with the gene_att_file or combined.fasta.  Please " .
+                    "look at logs/check_combined_files.log to see what the issue is.\n";
+    }
+
     # other called-script params
     if ( $opts{ strict } ) {
 
@@ -1275,8 +1445,10 @@ sub _log {
 
     my ( $msg, $lvl ) = ( @_ );
 
+    $lvl = $lvl // $debug;
+
     chomp( $msg );
-    print $lfh "$msg\n" if ( $lvl <= $debug );
+    print $lfh "\n$msg\n" if ( $lvl <= $debug );
 
 }
 

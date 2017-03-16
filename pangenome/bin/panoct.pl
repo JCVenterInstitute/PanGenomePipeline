@@ -207,7 +207,7 @@ if ($opt_c) {
 	if ($DEBUG) {
 	    print STDERR "calc_adjacency level $level\n";
 	}
-	if (!(looks_like_number($level))) {
+	if ( !(looks_like_number($level))) {
 	    die ("ERROR: $level is not a number in list of adjacency matrix cluster representation values (-c)!\n");
 	}
 	if (($level > 100) || ($level < 0)) {

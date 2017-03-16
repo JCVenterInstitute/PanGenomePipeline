@@ -27,6 +27,8 @@ get_go_annotations.pl - assign GO ids to fasta sequences
 
 =item B<--no_aro>       :   Don't look for ARO terms
 
+=item B<--no_cleanup>   :   Don't remove hmmer hits files.  [Default behavior is to delete them]
+
 =item B<--roles2go, -r> :   Document linking labels (roles) to GO IDs.
 
 =item B<--working_dir, -w>  :   Working directory [Default: cwd]
@@ -53,6 +55,8 @@ Pfam/TIGRFAM and assign GO ids to each sequence, where possible.
 
 use Getopt::Long qw( :config no_ignore_case no_auto_abbrev );
 use Pod::Usage;
+use Capture::Tiny qw{ capture capture_merged };
+use IO::File;
 use Cwd;
 use Cwd 'abs_path';
 use FindBin;
@@ -61,7 +65,7 @@ use File::Basename;
 use File::Copy;
 use File::Path qw(mkpath remove_tree);
 use File::Glob qw(glob);
-
+use grid_tasks;
 
 my $BIN_DIR = $FindBin::Bin;
 my $FIX_HEADERS_EXEC = "$BIN_DIR/clean_multifasta.pl";
@@ -77,10 +81,12 @@ my $RGI_EXEC            = "$RGI_DIR/rgi.py";
 my $RGI_CONVERT_EXEC    = "$RGI_DIR/convertJsonToTSV.py";
 my $RGI_CLEAN_EXEC      = "$RGI_DIR/clean.py";
 
-my $DEFAULT_HMMDB   = 'both';
+my $DEFAULT_HMMDB       = 'both';
+my $DEFAULT_ROLES2GO    = "$HMMER2GO_DATA/Main_roles2GO";
 
 my $working_dir;
 my $project_code;
+my $log_dir;
 
 my %opts;
 GetOptions( \%opts,
@@ -91,9 +97,12 @@ GetOptions( \%opts,
             'project_code|P=s',
             'roles2go|r=s',
             'working_dir|w=s',
+            'log_dir|l=s',
             'hmm_local',
             'no_go',
             'no_aro',
+            'no_cleanup',
+            'skip_searches|X',
             'help|h',
             ) || die "Can't read options! $!\n";
 pod2usage( { -exitval => 0, -verbose => 2 } ) if $opts{help};
@@ -105,13 +114,13 @@ my $input_fasta = fix_headers( $opts{ input_fasta }, $opts{ nuc } );
 
 # translate orfs if --nuc
 if ( $opts{ nuc } ) {
-    translate_orfs( $input_fasta );
+    translate_orfs( $input_fasta ) unless ( $opts{ skip_searches } );;
 }
 
 unless ( $opts{ no_go } ) {
 
     # run the searches
-    run_hmmer_searches( $input_fasta );
+    run_hmmer_searches( $input_fasta ) unless ( $opts{ skip_searches } );
 
     # map GO terms
     my $final_go_map = map_go_terms();
@@ -136,7 +145,15 @@ sub fix_headers {
 
         my @cmd = ($FIX_HEADERS_EXEC, '-i', $input_fasta, '-o', $output_file);
 
-        system( @cmd ) == 0 || die ( "Failed running header fixer: ", join( ' ', @cmd ), "\n" );
+        my $base = (fileparse($FIX_HEADERS_EXEC, qr/\.[^.]*/ ))[0];
+        my $lf = "$log_dir/$base.log"; 
+        my $lh = IO::File->new( $lf, "w+" ) || die "Can't open $lf: $!\n";
+
+        capture_merged {
+
+            system( @cmd ) == 0 || die ( "Failed running header fixer: ", join( ' ', @cmd ), "\nCheck $lf\n" );
+
+        } stdout => $lh;
 
     } else {
 
@@ -147,7 +164,7 @@ sub fix_headers {
         while( <$ifh> ) {
 
             if ( /^(>\S+)\s/ ) {
-                $_ = "$1\n";;
+                $_ = "$1\n";
             }
 
             print $ofh $_;
@@ -171,7 +188,17 @@ sub translate_orfs {
 
     my @cmd = ( $TRANSLATE_ORFS_EXEC, '-sequence', $input_fasta, '-outseq', $output_file, '-table', $translation_table );
 
-    system( @cmd ) == 0 || die( "Failed running orf translater: ", join( ' ', @cmd ), "\n" );
+    my $base = (fileparse($TRANSLATE_ORFS_EXEC, qr/\.[^.]*/ ))[0];
+    my $log_file = "$log_dir/$base.log";
+    my $err_file = "$log_dir/$base.err";
+    my $lh = IO::File->new( $log_file, "w+" ) || die "Can't open log $log_file: $!\n";
+    my $eh = IO::File->new( $err_file, "w+" ) || die "Can't open error file $err_file: $!\n";
+
+    capture{
+
+        system( @cmd ) == 0 || die( "Failed running orf translater: ", join( ' ', @cmd ), "\n" );
+
+    } stdout => $lh, stderr => $eh;
 
     post_process_orf_headers( $output_file );
 
@@ -212,28 +239,44 @@ sub run_aro_searches {
 
     my ( $input_fasta ) = @_;
 
-    my $aro_input_fasta = (fileparse($input_fasta))[0];  # Necessary because of rgi.py pretending to know better than us where our stuff is.
+    my $aro_dir = "$working_dir/aro_searches";
+    mkdir $aro_dir || die "Can't make $aro_dir: $!\n";
+    my $old_dir = getcwd();
+    chdir $aro_dir || die "Can't chdir into $aro_dir: $!\n";
 
-    my $output_json = $aro_input_fasta . '.aro'; # Will actually be $input_fasta.aro.json
+    my $output_json = $input_fasta . '.aro'; # Will actually be $input_fasta.aro.json
     my $output_file = 'dataSummary'; # Will actually be $input_fasta.aro.txt
-    my $new_card_json  = "$working_dir/card.json";
+    my $new_card_json  = "$aro_dir/card.json";
 
     # copy card.json. Every time.  sigh.
-    copy( $ORIGINAL_CARD_JSON, $new_card_json );
-
-    # Go to the working_dir because rgi.py doesn't accept a working_dir as a parameter.
-    my $old_dir = getcwd;
-    chdir $working_dir;
+    copy( $ORIGINAL_CARD_JSON, $new_card_json ) || die "Didn't copy card.json: $!\n";;
 
     # Run rgi.
     my @cmd = ( '/usr/bin/env', 'python', $RGI_EXEC, '-t', 'protein', '-i', $input_fasta, '-o', $output_json );
-    system( @cmd ) == 0 || die "Error running rgi: ", join( ' ', @cmd ), "\n";
+    my $base = (fileparse($RGI_EXEC, qr/\.[^.]*/ ))[0];
+    my $lf = "$log_dir/$base.log";
+    my $ef = "$log_dir/$base.err";
+    my $lh = IO::File->new( $lf, "w+" ) || die "Can't open log_file $lf: $!\n";
+    my $eh = IO::File->new( $ef, "w+" ) || die "Can't open error_file $ef: $!\n";
+    capture{
+
+        system( @cmd ) == 0 || die "Error running rgi: ", join( ' ', @cmd ), "\n";
+
+    } stdout => $lh, stderr => $eh;
 
     # Run conversion from json to tab-delimitted:
     @cmd = ( '/usr/bin/env', 'python', $RGI_CONVERT_EXEC, '-i', "$output_json.json", '-o', $output_file );
-    system( @cmd ) == 0 || die "Error converting rgi json into tabbed-text: ", join( ' ', @cmd ), "\n";
+    $base = (fileparse($RGI_CONVERT_EXEC, qr/\.[^.]*/ ))[0];
+    $lf = "$log_dir/$base.log";
+    $ef = "$log_dir/$base.err";
+    $lh = IO::File->new( $lf, "w+" ) || die "Can't open log_file $lf: $!\n";
+    $eh = IO::File->new( $ef, "w+" ) || die "Can't oprn err file $ef: $!\n";
+    capture{
 
-    # Back to the old dir.
+        system( @cmd ) == 0 || die "Error converting rgi json into tabbed-text: ", join( ' ', @cmd ), "\n";
+
+    } stdout => $lh, stderr => $eh;
+
     chdir $old_dir;
 
 }
@@ -253,7 +296,12 @@ sub run_hmmer_searches {
         $split_dir = "$working_dir/split_fastas";
         mkpath( $split_dir ) unless ( -d $split_dir );
         my @split_cmd = ( $SPLIT_FASTA_EXEC, '-f', $input_fasta, '-n', '1000', '-o', $split_dir );
-        system( @split_cmd ) == 0 || die( "Error running splitfasta: ", join( ' ', @split_cmd ), "\n" );
+        my $base = (fileparse($SPLIT_FASTA_EXEC, qr/\.[^.]*/ ))[0];
+        my $lf = "$log_dir/$base.log";
+        my $lh = IO::File->new( $lf, "w+" ) || die "Can't open logfile: $lf: $!\n";
+        capture_merged {
+            system( @split_cmd ) == 0 || die( "Error running splitfasta: ", join( ' ', @split_cmd ), "\n" );
+        } stdout => $lh;
         rename_split_files( $split_dir );
         @file_list = <$split_dir/split_fasta.*>;
 
@@ -269,8 +317,12 @@ sub run_hmmer_searches {
         if ( $opts{ hmm_local } ) {
             # Run locally.
             @cmd = ( @cmd, '-i', $input_fasta );
-
-            system( @cmd ) == 0 || die( "Problem running hmmer2go 'run': ", join( ' ', @cmd ), "\n" );
+            my $base = (fileparse($HMMER2GO_EXEC, qr/\.[^.]*/ ))[0];
+            my $lf = "$log_dir/$base.run.pfam.log";
+            my $lh = IO::File->new( $lf, "w+" ) || die "Can't open log file: $lf: $!\n";
+            capture_merged{
+                system( @cmd ) == 0 || die( "Problem running hmmer2go 'run': ", join( ' ', @cmd ), "\n" );
+            } stdout => $lh;
 
         } else {
             # Farming to grid
@@ -280,7 +332,7 @@ sub run_hmmer_searches {
             # write shell script
             my $sh_file = &write_hmm_shell_script( $input_fasta, $split_dir, $hmm_dir, \@cmd, 'pfam' );
 
-            push( @grid_jobs, launch_grid_job( $sh_file, 'pfam.hmmer2go.stdout', 'pfam.hmmer2go.stderr', "", scalar @file_list, $hmm_dir ) );
+            push( @grid_jobs, launch_grid_job( $project_code, $hmm_dir, $sh_file, 'pfam.hmmer2go.stdout', 'pfam.hmmer2go.stderr', "", scalar @file_list ) );
 
         }
 
@@ -295,8 +347,12 @@ sub run_hmmer_searches {
         if ( $opts{ hmm_local } ) {
             # Run Locally.
             @cmd = ( @cmd, '-i', $input_fasta );
-
-            system( @cmd ) == 0 || die( "Problem running hmmer2go 'run': ", join( ' ', @cmd ), "\n" );
+            my $base = (fileparse($HMMER2GO_EXEC, qr/\.[^.]*/ ))[0];
+            my $lf =  "$log_dir/$base.run.base.log";
+            my $lh = IO::File->new( $lf, "w+" ) || die "Can't open log file: $lf: $!\n";
+            capture_merged{
+                system( @cmd ) == 0 || die( "Problem running hmmer2go 'run': ", join( ' ', @cmd ), "\n" );
+            } stdout => $lh;
 
         } else {
             # Farming to grid.
@@ -306,7 +362,7 @@ sub run_hmmer_searches {
             # write shell script
             my $sh_file = &write_hmm_shell_script( $input_fasta, $split_dir, $hmm_dir, \@cmd, 'tigrfams' );
 
-            push( @grid_jobs, launch_grid_job( $sh_file, 'tigrfams.hmmer2go.stdout', 'tigrfams.hmmer2go.stderr', "", scalar @file_list, $hmm_dir ) );
+            push( @grid_jobs, launch_grid_job( $project_code, $hmm_dir, $sh_file, 'tigrfams.hmmer2go.stdout', 'tigrfams.hmmer2go.stderr', "", scalar @file_list ) );
 
         }
 
@@ -325,7 +381,7 @@ sub run_hmmer_searches {
 
             # can delete interim files
             if ( -s $tblout_file ) {
-               remove_tree( "$working_dir/pfam_hmms", 0, 1 );
+               remove_tree( "$working_dir/pfam_hmms", 0, 1 ) unless $opts{ no_cleanup };
             } else {
                 die "Problem with collecting the pfam tblout files.\n";
             }
@@ -338,7 +394,7 @@ sub run_hmmer_searches {
 
             # can delete interim files
             if ( -s $tblout_file ) {
-               remove_tree( "$working_dir/tigrfams_hmms", 0, 1 );
+               remove_tree( "$working_dir/tigrfams_hmms", 0, 1 ) unless $opts{ no_cleanup };
             } else {
                 die "Problem with collecting the tigrfams tblout files.\n";
             }
@@ -362,134 +418,6 @@ sub rename_split_files {
         my $extension = ( fileparse( $orig_file, qr/\.[^.]*/) )[2];
         my $new_name = $orig_file.$extension;
         move( $orig_file, $new_name );
-
-    }
-
-}
-
-
-sub launch_grid_job {
-# Given a shell script, launch it via qsub.
-
-    my ( $shell_script, $outfile, $errfile, $queue, $job_array_max, $grid_work_dir ) = @_;
-
-    my $std_error  = "$working_dir/$errfile";
-    my $std_out    = "$working_dir/$outfile";
-
-    my $qsub_command = "qsub -P $project_code -e $std_error -o $std_out";
-    $qsub_command .= " -l $queue" if $queue;
-    $qsub_command .= " -t 1-$job_array_max" if $job_array_max;
-    $qsub_command .= " -wd $grid_work_dir";
-
-    $qsub_command .= " $shell_script";
-
-    my $response = `$qsub_command`;
-    my $job_id;
-
-    if ($response =~ (/Your job (\d+) \(.*\) has been submitted/) || $response =~ (/Your job-array (\d+)\./)) {
-
-        $job_id = $1;
-
-    } else {
-        die "Problem submitting the job!: $response";
-    }
-
-    return $job_id;
-
-}
- 
-
-sub wait_for_grid_jobs_arrays {
-# given an array of job_ids, wait until they are all done.
-
-    my ($job_ids,$min,$max) = @_;
-
-    my $lch = build_task_hash_arrays( $job_ids,$min, $max );
-    my $stats_hash = build_task_hash_arrays($job_ids, $min, $max);
-
-    while ( keys %{$lch} ) {
-
-        for my $job_id ( keys %{$lch} ) {
-
-            my $response = `qacct -j $job_id 2>&1`;
-            parse_response_arrays( $response, $lch,$stats_hash );
-            sleep 1;
-
-        }
-    }
-}
-
-
-sub build_task_hash_arrays {
-
-    my ($job_ids, $min_id, $max_id) = @_;
-
-    my $lch;
-    for my $job_id ( @{$job_ids} ) {
-
-        for my $task_id ( $min_id .. $max_id ) {
-
-            $lch->{ $job_id }->{ $task_id } = 0;
-
-        }
-
-    }
-
-    return $lch;
-
-}
-
-
-sub parse_response_arrays {
-# given a qacct response, delete a job id from the loop-control-hash when
-# a statisfactory state is seen.
-
-    my ( $response, $lch,$stats_hash ) = @_;
-    return if ( $response =~ /error: job id \d+ not found/ );  # hasn't hit the grid yet.
-
-    my @qacct_array = split ( /=+\n/, $response );
-    @qacct_array = grep { /\S/ } @qacct_array; # get rid of empty record at beginning.
-
-    for my $record ( @qacct_array ) {
-
-        next if $record =~ /error: ignoring invalid entry in line/;
-
-        chomp $record;
-
-        my @rec_array = split ( "\n", $record );
-
-        my %rec_hash;
-        for my $line (@rec_array) {
-
-            $line =~ s/(.*\S)\s+$/$1/;
-            my ( $key, $value ) = split ( /\s+/, $line, 2 );
-            $rec_hash{ $key } = $value;
-
-        }
-
-        if ( defined $rec_hash{taskid} && defined $rec_hash{jobnumber} ) {
-
-            my ($task_id, $job_id) = @rec_hash{'taskid','jobnumber'};
-
-            unless ( $stats_hash->{ $job_id }->{ $task_id } ) {
-
-                $stats_hash->{ $job_id }->{ $task_id } = \%rec_hash;
-
-                # clear the task from the lch
-                delete $lch->{ $job_id }->{ $task_id };
-
-                # clear the job if all tasks are accounted for
-                delete ( $lch->{ $job_id } ) unless ( keys %{ $lch->{ $job_id } } );
-
-                print "Found task $task_id from job $job_id\n" if ($opts{debug});
-
-            }
-
-        } else {
-
-            print "Problem with one of the jobs' qacct info.\n";
-
-        }
 
     }
 
@@ -555,14 +483,16 @@ sub map_go_terms {
         $tblout_file = $input_fasta . "_Pfam-A.tblout";
         $map_file    = $input_fasta . '_pfam_GO.txt';
 
-        my @cmd = ( '/usr/bin/env', 'perl', '-I', $HMMER2GO_LIBDIR, $HMMER2GO_EXEC, 'mapterms', '-i', $tblout_file, '-p', 'pfam2go', '-o', $map_file, '--map' );
+        my @cmd = ( '/usr/bin/env', 'perl', '-I', $HMMER2GO_LIBDIR, $HMMER2GO_EXEC, 'mapterms', '-i', $tblout_file, '-p', "$HMMER2GO_DATA/pfam2go.map", '-o', $map_file, '--map' );
 
-        system( @cmd ) == 0 || die ( "Problem running hmmer2go 'mapterms': ", join( ' ', @cmd ), "\n");
-
-        until ( -s $term_mapping_tsv ) { print "Waiting for $term_mapping_tsv to magically finish getting written.\n"; sleep 10; }
+        my $base = (fileparse($HMMER2GO_EXEC, qr/\.[^.]*/ ))[0];
+        my $lf = "$log_dir/$base.mapterms.pfam.log";
+        my $lh = IO::File->new( $lf, "w+" ) || die "Can't open log file: $lf: $!\n";
+        capture_merged{
+            system( @cmd ) == 0 || die ( "Problem running hmmer2go 'mapterms': ", join( ' ', @cmd ), "\n");
+        } stdout => $lh;
 
         if ( -s $term_mapping_tsv ) {
-
             open( my $ifh, '<', $term_mapping_tsv ) || die "Can't open $term_mapping_tsv: $!";
             open( my $ofh, '>>', $final_go_map )     || die "Can't open $final_go_map: $!";
 
@@ -588,9 +518,13 @@ sub map_go_terms {
         $tblout_file = $input_fasta . "_TIGRFAMs_15.0_HMM.tblout";
         $map_file    = $input_fasta . '_TIGRFAMs_15.0_HMM.GO.txt';
 
-        my @cmd = ( '/usr/bin/env', 'perl', '-I', $HMMER2GO_LIBDIR, $HMMER2GO_EXEC, 'mapterms', '-i', $tblout_file, '-p', "$HMMER2GO_DATA/tigrfams2go", '-o', $map_file, '--map' );
-
-        system( @cmd ) == 0 || die ( "Problem running hmmer2go 'mapterms': ", join( ' ', @cmd ), "\n");
+        my @cmd = ( '/usr/bin/env', 'perl', '-I', $HMMER2GO_LIBDIR, $HMMER2GO_EXEC, 'mapterms', '-i', $tblout_file, '-p', "$HMMER2GO_DATA/tigrfams2go.map", '-o', $map_file, '--map' );
+        my $base = (fileparse($HMMER2GO_EXEC, qr/\.[^.]*/ ))[0];
+        my $lf = "$log_dir/$base.mapterms.tigrfam.log";
+        my $lh = IO::File->new( $lf, "w+" ) || die "Can't open log file: $lf: $!\n";
+        capture_merged{
+            system( @cmd ) == 0 || die ( "Problem running hmmer2go 'mapterms': ", join( ' ', @cmd ), "\n");
+        } stdout => $lh;
 
         if ( -s $term_mapping_tsv ) {
             open( my $ifh, '<', $term_mapping_tsv ) || die "Can't open $term_mapping_tsv: $!";
@@ -654,20 +588,22 @@ sub create_slimmed_mapping {
 
     }
 
-#    # This way is for working directly off the _GO.txt files
-#    while (<$fgfh>) {
+=cut
 
-#        chomp;
-#        my ( $id, $go_id ) = ( split( "\t", $_ ) )[ 0, 4 ];
+    # This way is for working directly off the _GO.txt files
+    while (<$fgfh>) {
 
-#        push @{$input_ids{ $id }}, $go_id;
+        chomp;
+        my ( $id, $go_id ) = ( split( "\t", $_ ) )[ 0, 4 ];
+
+        push @{$input_ids{ $id }}, $go_id;
     
-#    }
+    }
+
+=cut
 
     ( my $input_base  = $opts{ input_fasta } ) =~ s/([^\.+])\..*/$1/;
-    $input_base = (fileparse($input_base))[0];
-    
-    my $output_file = "$working_dir/$input_base.cluster_roles.txt";
+    my $output_file = "$input_base.cluster_roles.txt";
     open( my $ofh, '>', $output_file ) || die "Can't open $output_file: $!\n";
 
     # convert go_terms to the category
@@ -713,9 +649,13 @@ sub check_params {
 
     unless ( $opts{ no_go } ) {
 
+        # Need to know which hmms to run.
         $opts{ hmm_db } = $opts{ hmm_db } // 'both';
         $opts{ hmm_db } = lc $opts{ hmm_db };
         $opts{ hmm_db } = 'tigrfams' if ( $opts{ hmm_db } eq 'tigrfam' ); # Cuz people gonna do it.
+
+        # Need a default roles2go mappign
+        $opts{ roles2go } = $opts{ roles2go } // $DEFAULT_ROLES2GO;
 
         if ( $opts{ project_code } ) {
 
@@ -736,6 +676,11 @@ sub check_params {
     }
 
     $working_dir = $opts{ working_dir } // getcwd();
+    $log_dir     = $opts{ log_dir } // "$working_dir/logs";
+    unless ( -d $log_dir ) {
+        mkdir($log_dir);
+        $errors .= "Can't make log_dir $log_dir: $!\n" unless ( -d $log_dir );
+    }
 
     die $errors if $errors;
 

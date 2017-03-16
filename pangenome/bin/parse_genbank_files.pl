@@ -24,6 +24,10 @@ B<--length>         :   Features this long and shorter will be excluded from out
 
 B<--no_check>       :   Disable the post-processing checks for duplicate loci, etc.
 
+B<--no_dos2unix>    :   Do not run dos2unix on the input set.
+
+B<--verbose, -v>    :   Print much, much more detailed output regarding skipped features, etc.
+
 B<--help, -h>       :   Displays Help
 
 =head1 DESCRIPTION
@@ -34,14 +38,18 @@ nucleotide fasta file is created instead, and the gene attribute file and fasta 
 just genes; it will also contain various rna features and pseudogenes, etc., longer than --length (default: 30)
 
 Once the set of files has been downloaded, runs B<'check_att_files.pl'> to identify and resolve any cases of:
-1. duplicate locus tag prefixes used between .gb files
-2. duplicate locus tags used within a give .gb file.
+
+ 1. duplicate locus tag prefixes used between .gb files
+ 2. duplicate locus tags used within a give .gb file.
+
 See the --help info for B<'check_att_files.pl'> for more information on the particulars of the resolution process.
 
 =head1 OUTPUTS
 
 .nuc - A nucleotide fasta file with a sequence for each nuc feature.
+
 -- OR --
+
 .pep - A protein fasta file with a sequence for each gene
 .att - A gene attribute file
 .pseudo - A list of all found pseudo genes (not created with --nuc)
@@ -69,17 +77,22 @@ use Cwd;
 use Pod::Usage;
 
 my $DEFAULT_LENGTH = 30;
+my $DEFAULT_VERBOSE = 0;
 my $BIN_DIR = $FindBin::Bin;
-my $CHECK_ATT_FILES_EXEC = "$BIN_DIR/check_att_files.pl";
+my $CHECK_ATT_FILES_EXEC    = "$BIN_DIR/check_att_files.pl";
+my $DOS2UNIX_EXEC           = "/usr/bin/dos2unix";
 my $cutoff_len;
 #Grab passed in arguments/options
 my %opts;
+my $verbose;
 GetOptions (\%opts, 
             'file_list|l=s',
             'output|o=s',
             'nuc|n',
             'length=i',
             'no_check',
+            'no_dos2unix',
+            'verbose|v',
             'help|h',
             ) || die "Can't get options!\n$!\n";
 
@@ -101,6 +114,11 @@ unless ( $opts{ no_check } ) {
 while( my $file = <$lfh> ) {
     
     chomp( $file );
+
+    unless ( $opts{ no_dos2unix } ) {
+        my @cmd = ( $DOS2UNIX_EXEC, $file );
+        system( @cmd ) && die "Problem running dos2unix on $file!\n";
+    }
 
     if ( $opts{nuc} ) { 
         parse_nuc_features( $file ) if ( $opts{nuc} ); 
@@ -250,7 +268,7 @@ sub parse_nuc_features {
             # Skip these features in the feature table:
             if ( $feat_object->primary_tag =~ /(?:source|assembly_gap|STS|repeat_region|misc_binding|misc_feature)/ ) {
                 warn "Skipping " . $feat_object->primary_tag . " feature at " . $feat_object->start .
-                         '..' . $feat_object->end . "\n";
+                         '..' . $feat_object->end . "\n" if $verbose;
                 $feature_counts->{ $filename }->{ skipped_type }++;
                 next;
 
@@ -260,7 +278,7 @@ sub parse_nuc_features {
             ( $end5, $end3 ) = ( $feat_object->start, $feat_object->end );
             # length check
             if ( $end3 - $end5 + 1 < $cutoff_len ) {
-                warn "Skipping feature at $end5..$end3 because it is smaller than the cutoff of $cutoff_len.\n";
+                warn "Skipping feature at $end5..$end3 because it is smaller than the cutoff of $cutoff_len.\n" if $verbose;
                 $feature_counts->{ $filename }->{ skipped_length }++;
                 next;
             }
@@ -285,7 +303,7 @@ sub parse_nuc_features {
 
             } else {
 
-                warn "Found a " . $feat_object->primary_tag . " feature with no locus_tag!\n";
+                warn "Found a " . $feat_object->primary_tag . " feature with no locus_tag!\n" if $verbose;
                 next;
 
             }
@@ -304,12 +322,12 @@ sub parse_nuc_features {
                         $product = $1;
                     }
                 } else {
-                    warn 'Feature ' . $feat_object->primary_tag . " is /pseudo but has no /note field to parse\n";
+                    warn 'Feature ' . $feat_object->primary_tag . " is /pseudo but has no /note field to parse\n" if $verbose;
                 }
 
             } else {
 
-                warn 'Skipping ' . $feat_object->primary_tag . " feature $locus_tag with no product!\n";
+                warn 'Skipping ' . $feat_object->primary_tag . " feature $locus_tag with no product!\n" if $verbose;
                 next;
 
             }
@@ -319,7 +337,7 @@ sub parse_nuc_features {
 
             if ( $sequence =~ /^\s+$/ ) {
 
-                warn "Skipping $locus_tag, can't get sequence from $end5..$end3\n";
+                warn "Skipping $locus_tag, can't get sequence from $end5..$end3\n" if $verbose;
                 next;
 
             }
@@ -403,7 +421,7 @@ sub print_nuc_files {
         }
 
         unless ( $product ) {
-            warn( "WARNING: Missing product name for $key from $acc\n");
+            warn( "WARNING: Missing product name for $key from $acc\n") if $verbose;
             $product = "[NO PRODUCT NAME]";
         }
         unless ( $acc ) { die "NO ACC\n" }
@@ -670,6 +688,15 @@ sub check_params{
     }
 
     $cutoff_len = $opts{length} // $DEFAULT_LENGTH;
+    $verbose    = $opts{verbose} // $DEFAULT_VERBOSE;
+
+    unless ( $opts{ no_check } ) {
+
+        unless ( -s "$BIN_DIR/check_att_files.pl" ) {
+            $errors .= "Can't find ./check_att_file.pl, which is needed without --no_check\n";
+        }
+
+    }
 
     $errors .= "\nUsage: ./parse_genbank_files.pl -l genbank_file_list.txt [-o output/dir]\n" if $errors;
 

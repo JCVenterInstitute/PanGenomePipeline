@@ -9,21 +9,24 @@ run_pangenome.pl - run the pangenome pipeline
 
 =head1 SYNOPSIS
 
-    USAGE: run_pangenome.pl -c <clustering file> -w <working directory> -d db.list
+    USAGE: run_pangenome.pl -P <project code> | --blast_local | --no_blast
+                            [-g <genomes.list> ] [-c <clusters.list>] [-w <working directorya>]
+                            [--rerun_groups <group_list>] [--expand_only]
+                            [--less_strict_panoct]
 
 =head1 OPTIONS
 
-B<--genome_list_file, -g>   :   List of genome names, the order determines the ordering in later files.
+B<--genome_list_file, -g>   :   List of genome names. The order here determines the ordering in later files. [DEFAULT: <working_dir>/genomes.list]
 
-B<--working_dir, -w>        :   Path in which multiple directories are to be created
+B<--working_dir, -w>        :   Path in which multiple directories are to be created [DEFAULT: current dir]
 
-B<--use_nuc>                :   use nucleotide versions of blast and input files
+B<--use_nuc, -n>                :   Use nucleotide versions of blast programs and input files
 
-B<--att_suffix>             :   Provide an alternate extension for recognizing .att files [Defaule is ".att"]
+B<--att_suffix>             :   Provide an alternate extension for recognizing .att files [DEFAULT: ".att"]
 
 B<--project_code>           :   Project code for UGE accounting purposes used when blast jobs/panoct are executed on the grid.
 
-B<--blast_local>            :   Run blast jobs on current host
+B<--blast_local>            :   Run blast jobs on current host instead of farming them to a grid.
 
 B<--no_blast>               :   Don't rerun blast.
 
@@ -42,29 +45,61 @@ B<--less_strict_panoct> :   Use panoct's "-S N" flag to reduce strictness of clu
 
 =head1 DESCRIPTION
 
-Run the JCVI Prokaryotic Group's pangenome software, panoct, along with a host of other scripts that perform ancillary functions.
+Run the JCVI Prokaryotic Group's pangenome software, panoct, along with other scripts that perform ancillary functions.
 
-In the absence of a cluster_file, will run panoct on all input genomes found within genome_list_file.
+In the absence of a --cluster_file, will run panoct (via run_panoct.pl) on all input genomes found within --genome_list_file.
 
-When a clustering file, will run the JCVI panoct/pangenome pipeline on the genomes contained within:
-1. Reads in a cluster file, builds an 'itinerary' of steps.
+When used with a --cluster_file, will run the iterative JCVI panoct/pangenome pipeline on the genomes contained within:
+
+1. Read in the cluster file and build an 'itinerary' of steps.
+
 2. For each step: (unless --expand_only is used)
+
     a. Create a work area for this step.
     b. Create the combined.fasta needed for blast & panoct.
     c. Run NCBI BLAST on the genomes in this step.
     d. Run PanOCT
     e. Create 'pseudo-genome' files.
 
-Once all of the steps have been run, replace any instances of 'pseudo-genome' names in certain output files
-of the final step in the itinerary.  Currently, the following files are modified:
-1. matchtable.txt
-2. centroids.fasta
+3. Once all of the steps have been run, replace any instances of 'pseudo-genome' names in certain output files of the final step in the itinerary.  Currently, the following files are modified:
 
-Modified files are recreated as <filename>.expanded, leaving the originals in place.
+    1. matchtable.txt
+    2. centroids.fasta
 
-The following files are planned to have expansion in later versions of this script:
-2. frameshifts.txt
-3. fragment_fusions.txt
+Modified files are recreated as <filename>.expanded, leaving the originals in place.  The following files are planned to have expansion in later versions of this script:
+
+    1. frameshifts.txt
+    2. fragment_fusions.txt
+
+4. A final panoct run is executed after the last step in the itenerary.
+
+=head1 INPUT
+
+The pipeline will run given a variety of setup options.  To run with as few command-line parameters as possible, the pipeline needs to have the following files in the described locations:
+
+B<genomes.list> - Expected in the current working directory.  Can be specified with --genome_list_file.  This file is a single-column file of genome IDs that have been used as filenames.
+
+B<fasta_dir>    - directory within the current working directory containing a multifasta of feature sequences per genome, named according to the IDs in genomes.list
+
+B<att_dir>      - directory within the current working directory containing a 'gene attribute' file per genome, named according to the IDs in genomes.list
+
+B<clusters.list> - Optional.  When present, directs the pipeline to enter 'iterative' mode.  A small sample file might look like:
+
+    L1B1(GenomeA,GenomeB,GenomeC)
+    L1B2(GenomeD,GenomeE,GenomeF,GenomeG)
+    L1B3(GenomeH,GenomeI,GenomeJ,GenomeK,GenomeL)
+    L1B4(GenomeM,GenomeN,GenomeO)
+    L2B1(L1B1,L1B2,L1B3l,L1B4)
+
+Using this sample clusters.list file will generate four typical pangenome runs along with one run that uses 'pseudo-genomes' to represent clusters identified in the previous runs.  For this L2 run, the cluster represntatives found in the prior L1 level runs' centroids.fasta files are used as the potential members in newly generated clusters.
+
+Certain useful files from the L2 level run will be 'expanded' such that the cluster reprentatives found in those files are replaced with the entire subset of members from the original cluster, giving the appearance that those expanded files were generated from a single pangenome run including all of the input genomes.
+
+Note that the script 'parse_genbank_files.pl' can be used to generate fasta files and att files from GenBank Flatfiles, which in turn can be retrieved using the script 'ftp_download_ncbi_annotation.pl'
+
+=head1 OUTPUT
+
+The output of panoct is varied and voluminous.  The user is encouraged to seek the file descriptions found in the ./docs directory of the pipeline distribution package.
 
 =head1 CONTACT
 
@@ -111,9 +146,10 @@ GetOptions( \%opts,
             'cluster_file|c=s',
             'rerun_groups=s',
             'working_dir|w=s',
-            'use_nuc',
+            'use_nuc|n',
             'no_blast',
             'blast_local',
+            'panoct_local',
             'project_code|P=s',
             'less_strict_panoct',
             'expand_only',
@@ -130,7 +166,7 @@ open( $lfh, '>', $log_file ) || _die( "Can't open log file $log_file: $!", __LIN
 # Run panoct directly on our inputs if there is no cluster file:
 unless ( $cluster_file ) {
 
-    _log( "No cluster_file found, proceeding with non-iterative pangenome.", 0 );
+    _log( "No cluster_file found.  This is ok.\nProceeding with non-iterative pangenome.", 0 );
 
     # Run single pangenome.  Then exit.
     run_run_panoct( $working_dir );
@@ -296,21 +332,38 @@ sub final_panoct_run {
     my $expanded_matchtable = 'matchtable.txt.expanded';
     my $tagfile = basename( $genome_list_file );
 
-    # Create symlinks of these files, even though we're going to be lazy and use the originals in the command.  This is really
-    # for the benefit of people examining the results once the process has finished.
-    symlink "../$expanded_matchtable", "./matchtable.txt.expanded"  || die "Can't create symlink for $expanded_matchtable: $!\n";
-    symlink "$combined_att_file", "./combined.att_file"             || die "Can't create symlink for $combined_att_file: $!\n";
-    symlink "$combined_fasta", "./combined.fasta"                   || die "Can't create symlink for $combined_fasta: $!\n";
-    symlink "../$tagfile", "./$tagfile"                             || die "Can't create symlink for $tagfile: $!\n";
+    # Create symlinks of these files, even though we're going to be lazy and use the originals in the command.
+    # This is really for the benefit of people examining the results once the process has finished.
+    symlink "../$expanded_matchtable", "./matchtable.txt.expanded"
+        || die "Can't create symlink for $expanded_matchtable: $!\n";
+    symlink "$combined_att_file", "./combined.att_file"
+        || die "Can't create symlink for $combined_att_file: $!\n";
+    symlink "$combined_fasta", "./combined.fasta"
+        || die "Can't create symlink for $combined_fasta: $!\n";
+    symlink "../$tagfile", "./$tagfile"
+        || die "Can't create symlink for $tagfile: $!\n";
+    symlink '../centroids.fasta.expanded', './centroids.fasta.expanded'
+        || die "Can't create symlink for centroids.fasta.expanded: $!\n";
+    symlink '../cluster_sizes.txt', './cluster_sizes.txt'
+        || die "Can't create symlink for cluster_sizes.txt: $!\n";
 
     my @cmd = ( $PANOCT_EXEC, '-R', 'matchtable.txt.expanded', '-f', $tagfile, '-g',  'combined.att_file', 
-                '-P', 'combined.fasta', '-b', $final_dir );
+                '-P', 'combined.fasta', '-b', $final_dir, '-c', '0,95' );
     #push( @cmd, '-S', 'N' ) if $opts{less_strict_panoct};
     push( @cmd, '>&', 'final_panoct.log');
 
     _log( "Running final panoct command in $final_dir:\n" . join( ' ', @cmd ) . "\n", 0 );
 
     system( @cmd ) == 0 || _die( "Error running final panoct command!", __LINE__ );
+
+    # Now run gene_order.pl one last time
+    @cmd = ( $GENE_ORDER_EXEC, '-P', '-W', './cluster_sizes.txt', '-M', './95_core_adjacency_vector.txt',
+             '-m', './0_core_adjacency_vector.txt', '-C', './centroids.fasta.expanded', '-t', $tagfile,
+             '-A', 'core.att', '-a', 'fGI.att', '-I', 'fGI_report.txt', '>', 'gene_order.txt' );
+
+    _log( "Running gene_order to produce final fGI data:\n" . join ( ' ', @cmd ) . "\n", 0 );
+
+    system( @cmd ) == 0 || _die( "Error running final gene_order command!". __LINE__ ); 
 
     chdir $curr_dir || die "Can't get to $curr_dir: $!\n";
 
@@ -603,9 +656,11 @@ sub expand_matchtable {
     my ( $step_name ) = @_;
 
     my $orig_matchtable = "$working_dir/$step_name/results/matchtable.txt";
-    my $new_matchtable = "$orig_matchtable.expanded";
+    my $new_matchtable  = "$orig_matchtable.expanded";
+    my $cluster_sizes   = "$working_dir/cluster_sizes.txt";
 
-    open( my $nmfh, '>', $new_matchtable )  || die "Can't write to $new_matchtable: $!\n";
+    open( my $nmfh, '>', $new_matchtable ) || die "Can't write to expanded matchtable $new_matchtable: $!\n";
+    open( my $csfh, '>', $cluster_sizes  ) || die "Can't write to cluster size file $cluster_sizes: $!\n";
 
     my %lookup;
     populate_lookup( \%lookup, $step_name );
@@ -619,6 +674,7 @@ sub expand_matchtable {
         my $orig_name = $step_name . "_$line_num";
 
         my $row = expand_element( $orig_name, \%lookup );
+        print_cluster_size_row( $csfh, $line_num, $row );
         reorder_row( \$row );
         print $nmfh "$line_num$row\n"; # Note: by how the reorder row function works there is a leading tab in $row.
 
@@ -655,6 +711,19 @@ sub reorder_row {
     }
 
     $$row_ref = join('',@new_row);
+
+}
+
+
+sub print_cluster_size_row {
+# Given a row for the matchtable, count the number of entries and print the 
+# line for this cluster in cluster_sizes.txt 
+
+    my ( $csfh, $cluster_num, $row ) = @_;
+
+    my $size = scalar(split( "\t", $row));
+
+    print $csfh "$cluster_num\t$size\n";
 
 }
 
@@ -802,6 +871,7 @@ sub run_run_panoct {
     push( @cmd, '-f', $combined_fasta ) if $combined_fasta;
     push( @cmd, '--use_nuc' ) if ( $opts{ use_nuc } );
     push( @cmd, '--strict', 'low' ) if ( $opts{ less_strict_panoct } );
+    push( @cmd, '--panoct_local' ) if ( $opts{ panoct_local } );
     if ( $opts{ no_blast } ) {
         my $blast_file = "$step_dir/combined.blast";
         if ( -f $blast_file ) {
@@ -816,7 +886,7 @@ push( @cmd, '--no_new_plot' );
 
     _log( "Running run_panoct.pl:\n" . join( ' ', @cmd ), 0 );
 
-    system( @cmd ) == 0 || _die( "Couldn't run run_panoct.pl: $? $!", __LINE__ );
+    system( @cmd ) == 0 || _die( "Problem with running run_panoct.pl", __LINE__ );
 
 }
 
@@ -1021,7 +1091,7 @@ sub _log {
     my ( $msg, $lvl ) = ( @_ );
 
     chomp( $msg );
-    print $lfh "$msg\n" if ( $lvl <= $debug );
+    print $lfh "\n$msg\n" if ( $lvl <= $debug );
 
 }
 
