@@ -80,6 +80,7 @@ my $DEFAULT_LENGTH = 30;
 my $DEFAULT_VERBOSE = 0;
 my $BIN_DIR = $FindBin::Bin;
 my $CHECK_ATT_FILES_EXEC    = "$BIN_DIR/check_att_files.pl";
+my $CHECKER_INPUT_FILE      = "check_att_files.input";
 my $DOS2UNIX_EXEC           = "/usr/bin/dos2unix";
 my $cutoff_len;
 #Grab passed in arguments/options
@@ -104,11 +105,8 @@ my ($assembly,$features);
 #Open List of GenBank file locations
 open( my $lfh, "<", $opts{file_list}) || die "Can't open $opts{file_list}: $!\n";
 
-# create db.list file if we will be running the locus checks:
-my $dbfh;
-unless ( $opts{ no_check } ) {
-    open( $dbfh, '>', $OUTPUT . '/db.list' ) || die "Can't open $OUTPUT/db.list for writing: $!\n";
-}
+# create genomes.list file if we will be running the locus checks:
+my %seen_genomes;
 
 # Go through each GenBank file that was passed in
 while( my $file = <$lfh> ) {
@@ -121,7 +119,7 @@ while( my $file = <$lfh> ) {
     }
 
     if ( $opts{nuc} ) { 
-        parse_nuc_features( $file ) if ( $opts{nuc} ); 
+        parse_nuc_features( $file, \%seen_genomes ) if ( $opts{nuc} ); 
     } else {
 
         my $feature_counts; #keeps track of genes/pseudo genes for a set of files
@@ -174,7 +172,7 @@ while( my $file = <$lfh> ) {
 
                 #We parse the features here. This is the hard part.
                 $assembly->{'features'} =  &parse_features( $fh, $assembly );
-                print $dbfh "$filename\n";
+                $seen_genomes{ $filename }++; # Add to the hash of seen genomes if we're doing checks.
                 $feature_counts = &print_files($assembly->{'accession'},$assembly->{'features'},$filename,$feature_counts);
 
             }
@@ -204,9 +202,16 @@ while( my $file = <$lfh> ) {
 
 }
 
+
+unless ( $opts{ no_check } ) {
+    open( my $gfh, '>', "$OUTPUT/$CHECKER_INPUT_FILE" ) || die "Can't open $OUTPUT/$CHECKER_INPUT_FILE for writing: $!\n";
+    print $gfh map{ "$_\n" } sort keys %seen_genomes;
+}
+
+
 unless ( $opts{ no_check } ) {
 
-    my $cmd = "$CHECK_ATT_FILES_EXEC -d $OUTPUT/db.list -a $OUTPUT -f $OUTPUT --resolve";
+    my $cmd = "$CHECK_ATT_FILES_EXEC -d $OUTPUT/$CHECKER_INPUT_FILE -a $OUTPUT -f $OUTPUT --resolve";
     if ( $opts{ nuc } ) {
         $cmd .= " --nuc";
     }
@@ -222,7 +227,7 @@ exit(0);
 
 sub parse_nuc_features {
 
-    my ( $gb_file ) = @_;
+    my ( $gb_file, $seen_genomes_ref ) = @_;
 
     #Open file and parse file name, used as output name
     open(my $fh, "<", $gb_file) || die "Can't open $gb_file: $!\n";
@@ -364,7 +369,6 @@ sub parse_nuc_features {
     }
 
     # Now we have all the features.  Print them:
-    print $dbfh "$filename\n" unless ( $opts{ no_check } );
     print_nuc_files( $features, $filename );
 
     open( my $o_fh, '>>', $OUTPUT . '/genbank_printing_overview.txt' );
@@ -378,6 +382,9 @@ sub parse_nuc_features {
 
         }
         print $o_fh "\n";
+
+        # Add it to the list to check
+        $seen_genomes_ref->{ $filename }++;
 
     } else {
 
