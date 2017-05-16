@@ -75,7 +75,7 @@ use grid_tasks;
 my $BIN_DIR     = $FindBin::Bin;
 my $BLASTN_EXEC = '/usr/local/packages/ncbi-blast+/bin/blastn';
 my $BLASTP_EXEC = '/usr/local/packages/ncbi-blast+/bin/blastp';
-my $BLASTDB_DIR = '/usr/local/scratch/PROK/jinman/PG-170';
+my $BLASTDB_DIR = "$BIN_DIR/BLAST2GO";
 my $BLASTN_DB   = "$BLASTDB_DIR/plasmid_finder_rep.seq";
 my $BLASTP_DB   = "$BLASTDB_DIR/plasmid_finder_rep.pep";
 my $BLAST_MAP   = "$BLASTDB_DIR/plasmidDB2GO_lookup.txt";
