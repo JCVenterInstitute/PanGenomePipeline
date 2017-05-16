@@ -22,7 +22,7 @@ B<--working_dir, -w>        :   Path in which multiple directories are to be cre
 
 B<--use_nuc, -n>                :   Use nucleotide versions of blast programs and input files
 
-B<--att_suffix>             :   Provide an alternate extension for recognizing .att files [DEFAULT: ".patt"]
+B<--att_suffix>             :   Provide an alternate extension for recognizing .att files [DEFAULT: ".patt"/".natt"]
 
 B<--project_code>           :   Project code for UGE accounting purposes used when blast jobs/panoct are executed on the grid.
 
@@ -34,7 +34,7 @@ B<--panoct_local>           :   Run panoct on current host instead of farming th
 
 ITERATIVE OPTIONS:
 
-B<--cluster_file, -c>       :   The clustering file determining the order of the steps to run.
+B<--cluster_file, -c>       :   The clustering file determining the order of the steps to run. [DEFAULT: <working_dir>/clusters.list ]
 
 B<--rerun_groups>           :   Provide a comma-seperated list of groups to rerun.
 
@@ -287,8 +287,8 @@ sub run_statistics {
     # Let's store this all in a tidy little directory
     my $curr_dir = cwd();
     my $stat_dir = "$working_dir/stats";
-    mkdir $stat_dir || die "Can't create stats dir: $!\n";
-    chdir $stat_dir || die "Can't chdir into stats dir: $!\n";
+    mkdir $stat_dir || _die( "Can't create stats dir: $!", __LINE__ );
+    chdir $stat_dir || _die( "Can't chdir into stats dir: $!", __LINE__ );
 
     # Create the .att file
     my $combined_att = create_final_combined_att( $stat_dir, $genome_list_file );
@@ -339,8 +339,8 @@ sub final_panoct_run {
     # setup for this run.
     my $curr_dir = cwd();
     my $final_dir = "$working_dir/final_panoct_run";
-    mkdir $final_dir || die "Couldn't create final panoct directory $final_dir: $!\n";
-    chdir $final_dir || die "Couldn't get to final panoct directory $final_dir! $!\n";
+    mkdir $final_dir || _die( "Couldn't create final panoct directory $final_dir: $!", __LINE__ );
+    chdir $final_dir || _die( "Couldn't get to final panoct directory $final_dir! $!", __LINE__ );
 
     my $expanded_matchtable = 'matchtable.txt.expanded';
     my $tagfile = basename( $genome_list_file );
@@ -348,17 +348,17 @@ sub final_panoct_run {
     # Create symlinks of these files, even though we're going to be lazy and use the originals in the command.
     # This is really for the benefit of people examining the results once the process has finished.
     symlink "../$expanded_matchtable", "./matchtable.txt.expanded"
-        || die "Can't create symlink for $expanded_matchtable: $!\n";
+        || _die( "Can't create symlink for $expanded_matchtable: $!", __LINE__ );
     symlink "$combined_att_file", "./combined.att_file"
-        || die "Can't create symlink for $combined_att_file: $!\n";
+        || _die( "Can't create symlink for $combined_att_file: $!", __LINE__ );
     symlink "$combined_fasta", "./combined.fasta"
-        || die "Can't create symlink for $combined_fasta: $!\n";
+        || _die( "Can't create symlink for $combined_fasta: $!", __LINE__ );
     symlink "../$tagfile", "./$tagfile"
-        || die "Can't create symlink for $tagfile: $!\n";
+        || _die( "Can't create symlink for $tagfile: $!", __LINE__ );
     symlink '../centroids.fasta.expanded', './centroids.fasta.expanded'
-        || die "Can't create symlink for centroids.fasta.expanded: $!\n";
+        || _die( "Can't create symlink for centroids.fasta.expanded: $!", __LINE__ );
     symlink '../cluster_sizes.txt', './cluster_sizes.txt'
-        || die "Can't create symlink for cluster_sizes.txt: $!\n";
+        || _die( "Can't create symlink for cluster_sizes.txt: $!", __LINE__ );
 
     my @cmd = ( $PANOCT_EXEC, '-R', 'matchtable.txt.expanded', '-f', $tagfile, '-g',  'combined.att_file', 
                 '-P', 'combined.fasta', '-b', $final_dir, '-c', '0,95' );
@@ -393,8 +393,7 @@ sub final_panoct_run {
 
     } stdout => $gh, stderr => $glh;
 
-    chdir $curr_dir || die "Can't get to $curr_dir: $!\n";
-
+    chdir $curr_dir || _die( "Can't get to $curr_dir: $!", __LINE__ );
 
 }
 
@@ -406,9 +405,9 @@ sub create_final_combined_fasta {
 
     my $combined_fasta = "$stat_dir/combined.fasta";
 
-    open( my $dfh, '<', $genome_list_file ) || die "2. Can't open $genome_list_file: $!\n";
+    open( my $dfh, '<', $genome_list_file ) || _die( "Can't open $genome_list_file: $!", __LINE__ );
 
-    open( my $cfh, '>', $combined_fasta ) || die "Can't open $combined_fasta for writing: $!\n";
+    open( my $cfh, '>', $combined_fasta ) || _die( "Can't open $combined_fasta for writing: $!", __LINE__ );
 
     while ( <$dfh> ) {
 
@@ -416,7 +415,7 @@ sub create_final_combined_fasta {
         my $fasta_file = "$fasta_dir/$_.";
         $fasta_file .= ( $opts{ use_nuc } ) ? 'nuc' : 'pep';
 
-        open ( my $afh, '<', $fasta_file ) || die "Can't open fasta_file $fasta_file for reading: $!\n";
+        open ( my $afh, '<', $fasta_file ) || _die( "Can't open fasta_file $fasta_file for reading: $!", __LINE__ );
         while ( <$afh> ) {
             print $cfh $_;
         }
@@ -463,7 +462,7 @@ sub create_final_combined_att {
         chomp;
         my $att_file = "$att_dir/$_" . $att_suffix;
 
-        open ( my $afh, '<', $att_file ) || die "Can't open att_file $att_file for reading: $!\n";
+        open ( my $afh, '<', $att_file ) || _die( "Can't open att_file $att_file for reading: $!", __LINE__ );
         while ( <$afh> ) {
             print $cah $_;
         }
@@ -483,15 +482,15 @@ sub fill_locus2genome {
 
     my ( $genome_list, $l2g ) = @_;
 
-    chdir $working_dir || die "Can't get back to working_dir: $! \n";
+    chdir $working_dir || _die( "Can't get back to working_dir: $!", __LINE__ );
 
-    open ( my $glh, '<', $genome_list ) || die "Can't open genome_list: $!\n";
+    open ( my $glh, '<', $genome_list ) || _die( "Can't open genome_list: $!", __LINE__ );
 
     while ( <$glh> ) {
 
         chomp;
         my $current_att_file = "$att_dir/$_" . $att_suffix;
-        open ( my $cah, '<', $current_att_file ) || die "Can't open att_file: $current_att_file: $!\n";
+        open ( my $cah, '<', $current_att_file ) || _die "Can't open att_file: $current_att_file: $!", __LINE__ );
 
         while ( <$cah> ) {
 
@@ -517,7 +516,7 @@ sub get_genome_order {
 
     _log( "Getting genome order from $genome_list.", 1 );
 
-    open ( my $dlh, '<', $genome_list ) || die "Couldn't open genome_list file: $!\n";
+    open ( my $dlh, '<', $genome_list ) || _die( "Couldn't open genome_list file: $!", __LINE__ );
 
     while ( <$dlh> ) {
 
@@ -538,14 +537,14 @@ sub resolve_frameshift_loci {
     my ( $itinerary ) = @_;
 
     my $output_file = abs_path( $cluster_file ) . ".frameshifts";
-    open ( my $ofh, '>', $output_file ) || die "Can't open $output_file for writing: $!\n";
+    open ( my $ofh, '>', $output_file ) || _die( "Can't open $output_file for writing: $!", __LINE__ );
 
     for my $step ( @$itinerary ) {
 
         my $step_name = ( keys %$step )[0];
 
         my $frameshift_file = "$working_dir/$step_name/results/frameshifts.txt";
-        open( my $ffh, '<', $frameshift_file ) || die "Can't open $frameshift_file for reading: $!\n";
+        open( my $ffh, '<', $frameshift_file ) || _die( "Can't open $frameshift_file for reading: $!", __LINE__ );
         while ( <$ffh> ) {
 
             chomp;
@@ -622,7 +621,7 @@ sub get_locus_from_centroids {
     if ( $header =~ />centroid_$cluster_id (\S+) / ) {
         $locus = $1;
     } else {
-        die "Coudln't get locus for centroid_$cluster_id from $centroids_file\n";
+        _die( "Coudln't get locus for centroid_$cluster_id from $centroids_file", __LINE__ );
     }
 
     return $locus;
@@ -657,7 +656,7 @@ sub populate_lookup {
     my ( $lookup, $step_name ) = @_;
 
     my $matchtable = "$working_dir/$step_name/results/matchtable.txt";
-    open ( my $fh, '<', $matchtable ) || die "Can't open $matchtable: $!\n";
+    open ( my $fh, '<', $matchtable ) || _die( "Can't open $matchtable: $!", __LINE__ );
 
     while ( <$fh> ) {
 
@@ -687,14 +686,14 @@ sub expand_matchtable {
     my $new_matchtable  = "$orig_matchtable.expanded";
     my $cluster_sizes   = "$working_dir/cluster_sizes.txt";
 
-    open( my $nmfh, '>', $new_matchtable ) || die "Can't write to expanded matchtable $new_matchtable: $!\n";
-    open( my $csfh, '>', $cluster_sizes  ) || die "Can't write to cluster size file $cluster_sizes: $!\n";
+    open( my $nmfh, '>', $new_matchtable ) || _die( "Can't write to expanded matchtable $new_matchtable: $!", __LINE__ );
+    open( my $csfh, '>', $cluster_sizes  ) || _die( "Can't write to cluster size file $cluster_sizes: $!", __LINE__ );
 
     my %lookup;
     populate_lookup( \%lookup, $step_name );
 
     # Assume 1 cluster per line aned no skipped numbers between 1 and the last line.
-    my $num_lines = `wc -l $orig_matchtable | cut -f 1 -d ' '` || die "Can't get number of lines from $orig_matchtable!\n";
+    my $num_lines = `wc -l $orig_matchtable | cut -f 1 -d ' '` || _die "Can't get number of lines from $orig_matchtable!", __LINE__ );
 
     for ( 1 .. $num_lines ) {
 
@@ -709,7 +708,7 @@ sub expand_matchtable {
     }
 
     # copy to working dir
-    system("cp $new_matchtable $working_dir") && die "Error copying $new_matchtable to $working_dir: $!\n";
+    system("cp $new_matchtable $working_dir") && _die( "Error copying $new_matchtable to $working_dir: $!", __LINE__ );
     # This fails to work on occasion.  Sad, it really shouldn't:
     # copy $new_matchtable, $opts{working_dir} || die "Error copying $new_matchtable to $opts{working_dir}: $!\n";
 
@@ -726,12 +725,8 @@ sub reorder_row {
     # set up the new row, make it as long as @genome_order, and pre-fill it with \t
     my @new_row = ("\t") x scalar( @genome_order );  
 
-open( my $DFH, '>>', "/usr/local/scratch/PROK/jinman/$$.pangenome.log" ) || die "BLAHHHHH\n";
     # put each locus from the original row in the correct location in the new row
     for my $locus ( @row ) {
-
-unless ( defined $locus ) { print $DFH "undefined locus: @row\n"; next }
-unless ( defined $locus2genome{ $locus } ) { print $DFH "$locus not in \%locus2genome\n"; next };
 
         # This crazy line... let me explain:
         # 1. $locus2genome{ $locus} returns the name of the genome given the locus.
@@ -770,7 +765,7 @@ sub expand_centroids_name {
     my $orig_centroids_fasta = "$working_dir/$step_name/results/centroids.fasta";
     my $new_centroids_fasta  = "$orig_centroids_fasta.expanded";
 
-    open( my $ncfh, '>', $new_centroids_fasta ) || die "Can't write to $new_centroids_fasta: $!\n";
+    open( my $ncfh, '>', $new_centroids_fasta ) || _die( "Can't write to $new_centroids_fasta: $!", __LINE__ );
     # Disable buffering for this filehandle...
     select $ncfh;
     $|++;
@@ -778,7 +773,7 @@ sub expand_centroids_name {
 
     populate_centroid_lookup( \%c_lookup, $step_name );
 
-    open( my $ocfh, '<', $orig_centroids_fasta ) || die "Can't open $orig_centroids_fasta: $!\n";
+    open( my $ocfh, '<', $orig_centroids_fasta ) || _die( "Can't open $orig_centroids_fasta: $!", __LINE__ );
     while ( <$ocfh> ) {
 
         chomp;
@@ -824,7 +819,7 @@ sub populate_centroid_lookup {
     my ( $lookup, $step_name ) = @_;
 
     my $centroid_file = "$working_dir/$step_name/results/centroids.fasta";
-    open( my $fh, '<', $centroid_file ) || die "Can't open $centroid_file: $!";
+    open( my $fh, '<', $centroid_file ) || _die( "Can't open $centroid_file: $!", __LINE__ );
 
     while ( <$fh> ) {
         if ( /^>centroid_(\d+) ([^_ ]+_?[^ ]+) / ) {
@@ -886,8 +881,18 @@ sub create_pseudo_genome_files {
     push( @cmd, '-P' ) unless ( $opts{ use_nuc } );
 
     _log( "Creating pseudo-genome file for $step_name:\n" . join( ' ', @cmd ) . "\n", 0 );
-              
-    system( @cmd ) == 0 ||  _die( "Error running gene_order.pl command!", __LINE__ );
+
+    my $go = "$step_dir/results/gene_order.txt";
+    my $gh = IO::File->new( $go, "w+" ) || _die( "Can't open $go for output: $!", __LINE__ );
+    my $gl = "$step_dir/logs/gene_order.log";
+    my $glh = IO::File->new( $glh, "w+" ) || _die( "Can't open $glh for logging: $!", __LINE__ );
+
+    capture{
+
+        system( @cmd ) == 0 ||  _die( "Error running gene_order.pl command!", __LINE__ );
+
+    } stdout => $gh, stderr => $glhl
+
     _die( "Didn't create att_file $att_dir/$step_name" . "$att_suffix from gene_order.pl command!", __LINE__ )  unless ( -f "$att_dir/$step_name" . $att_suffix );
 
 }
@@ -931,7 +936,7 @@ sub create_genome_list_file {
 
     _log( "Creating genome_list_file: $genome_list_file", 0 );
 
-    open( my $dlfh, '>', $genome_list_file ) || die "Can't open $genome_list_file: $!";
+    open( my $dlfh, '>', $genome_list_file ) || _die( "Can't open $genome_list_file: $!", __LINE__ );
 
     for my $part ( @$parts ) {
 
@@ -953,13 +958,13 @@ sub make_combined_fasta {
 
     _log( "Creating $combined_fasta.", 0 );
 
-    open( my $cfh, '>', $combined_fasta ) || die "Can't write to $combined_fasta: $!\n";
+    open( my $cfh, '>', $combined_fasta ) || _die( "Can't write to $combined_fasta: $!", __LINE__ );
 
     for my $part ( @$parts ) {
 
         my $fasta_file = "$fasta_dir/$part.";
         $fasta_file .= ( $opts{ use_nuc } ) ? 'nuc' : 'pep';
-        open( my $ffh, '<', $fasta_file ) || die "Can't open $fasta_file: $!";
+        open( my $ffh, '<', $fasta_file ) || _die( "Can't open $fasta_file: $!", __LINE__ );
         while (<$ffh>) {
             print $cfh $_;
         }
@@ -980,12 +985,12 @@ sub make_combined_att {
 
     _log( "Making $combined_att", 0 );
 
-    open( my $cah, '>', $combined_att ) || die "Can't write to $combined_att: $!\n";
+    open( my $cah, '>', $combined_att ) || _die( "Can't write to $combined_att: $!", __LINE__ );
 
     for my $part ( @$parts ) {
 
         my $att_file = "$att_dir/$part" . $att_suffix;
-        open( my $afh, '<', $att_file ) || die "Can't open $att_file: $!";
+        open( my $afh, '<', $att_file ) || _die( "Can't open $att_file: $!", __LINE__ );
         while (<$afh>) {
 
             # print line to combined.att
@@ -1008,7 +1013,7 @@ sub build_itinerary {
 
     _log( "Building itinerary from cluster file: $cluster_file.", 1 );
 
-    open( my $ifh, '<', $cluster_file ) || die "Can't open cluster_file $cluster_file: $!\n";
+    open( my $ifh, '<', $cluster_file ) || _die( "Can't open cluster_file $cluster_file: $!", __LINE__ );
 
     while ( <$ifh> ) {
 
@@ -1078,7 +1083,7 @@ sub get_step {
 
     } else {
 
-        die "Don't know what to do with this line: $line\n";
+        _die( "Don't know what to do with this line: $line", __LINE__ );
 
     }
 

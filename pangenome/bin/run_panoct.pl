@@ -312,6 +312,7 @@ my $CORE_CLUSTER_HISTO_EXEC = "$BIN_DIR/core_cluster_histogram.R";
 my $GENE_ORDER_EXEC         = "$BIN_DIR/gene_order.pl";
 my $PAN_CHROMO_EXEC         = "$BIN_DIR/pan_chromosome/make_pan_chromosome_fig.sh";
 my $ANNOT_EXEC              = "$BIN_DIR/get_go_annotations.pl";
+my $MAPGOVIABLAST_EXEC      = "$BIN_DIR/map_go_via_blast.pl";
 my $GENOME_PROP_DIR         = "$BIN_DIR/genome_properties";
 my $ALIGN_CLUSTER_EXEC      = "$BIN_DIR/align_clusters.pl";
 my $CHECK_COMBINED_EXEC     = "$BIN_DIR/check_combined_files.pl";
@@ -455,7 +456,7 @@ unless ( $opts{ no_trees } ) {
 unless ( $opts{ no_annotation } ) {
 
     #call_genome_properties();
-    call_annotation_script();
+    call_annotation_scripts();
 
 }
 
@@ -659,7 +660,7 @@ sub call_genome_properties {
 }
 
 
-sub call_annotation_script {
+sub call_annotation_scripts {
 
     my @cmd = ( $ANNOT_EXEC, '-i', "$results_dir/centroids.fasta", '-P', $project_code, '-w', $results_dir, '-l', $log_dir );
     push( @cmd, '--nuc' ) if ( $opts{ use_nuc } );
@@ -673,6 +674,24 @@ sub call_annotation_script {
         system( @cmd ) == 0 || _die( "Problem running annotation script", __LINE__ );
 
     } stdout => $lh;
+
+    @cmd = ( $MAPGOVIABLAST_EXEC, '-i', "$results_dir/centroids.fasta", '-o', "$results_dir/plasmid_blast.out" );
+    push( @cmd, '-n' ) if ( $opts{ use_nuc } );
+    if ( $project_code ) {
+        push( @cmd, '-P', $project_code );
+    } else {
+        push( @cmd, '--blast_local' );
+    }
+
+    _log( "Running blast annotation script:\n" . join( ' ', @cmd ), 0 );
+
+    my $blf = "$log_dir/map_go_via_blast.pl.log";
+    my $blh = IO::File->new( $blf, "w+" ) || _die( "Can't open $blf for logging: $!", __LINE__ );
+    capture_merged{
+
+        system( @cmd ) == 0 || _die( "Problem runningblast annotation script", __LINE__ );
+
+    } stdout => $blh;
 
 }
 

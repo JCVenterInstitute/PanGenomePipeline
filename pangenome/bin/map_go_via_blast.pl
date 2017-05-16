@@ -12,7 +12,7 @@ map_go_via_blast.pl - map GO terms not covered by HMMs to centroids.
     USAGE: map_go_via_blast.pl -P <project code> | --blast_local | --blast_file <blast file name>
                                 --input_seqs <input fasta file>
                                 --output_file <output file path>
-                                [ --search_db <path to db> ] [ --evalue <evalue> ] 
+                                [ --blast_db <path to db> ] [ --evalue <evalue> ] 
                                 [ --percent_id <percent identity> ] 
                                 [ --percent_coverage <percent coverage> ]
 
@@ -30,7 +30,7 @@ B<--blast_file, -b>     :   Skip BLAST, run using this results file instead.
 
 =back
 
-B<--search_db, -s>      :   Path to BLAST db for searching.
+B<--blast_db, -s>      :   Path to BLAST db for searching.
 
 B<--mapping_file, -m>   :   Path to file mapping blast headers to go, roles, etc.
 
@@ -91,7 +91,7 @@ GetOptions( \%opts,
             'blast_local',
             'blast_file|b=s',
             'input_seqs|i=s',
-            'search_db|s=s',
+            'blast_db|s=s',
             'mapping_file|m=s',
             'evalue|E=s',
             'output_file|o=s',
