@@ -11,6 +11,7 @@ map_go_via_blast.pl - map GO terms not covered by HMMs to centroids.
 
     USAGE: map_go_via_blast.pl -P <project code> | --blast_local | --blast_file <blast file name>
                                 --input_seqs <input fasta file>
+                                --output_file <output file path>
                                 [ --search_db <path to db> ] [ --evalue <evalue> ] 
                                 [ --percent_id <percent identity> ] 
                                 [ --percent_coverage <percent coverage> ]
@@ -21,25 +22,29 @@ Choose ONE of the following THREE options:
 
 =over 
 
-B<--project, -P>      :   SGE/UGE grid accounting project code
+B<--project, -P>        :   SGE/UGE grid accounting project code
 
-B<--blast_local>      :   Do NOT run BLAST in parallel on a computing grid, but run it locally.
+B<--blast_local>        :   Do NOT run BLAST in parallel on a computing grid, but run it locally.
 
-B<--blast_file, -b>   :   Skip BLAST, run using this results file instead.
+B<--blast_file, -b>     :   Skip BLAST, run using this results file instead.
 
 =back
 
-B<--search_db, -s>    :   Path to BLAST db for searching.
+B<--search_db, -s>      :   Path to BLAST db for searching.
 
-B<--evalue, -E>       :   e-value required to pass and be reported as a hit. [DEFAULT: 10e-5 ]
+B<--mapping_file, -m>   :   Path to file mapping blast headers to go, roles, etc.
 
-B<--percent_id, -I>   :   percent identity required to be reported as a hit. [DEFAULT: 35 ]
+B<--output_file, -o>    :   Path to output file   
 
-B<--percent_cov, -C>  :   min percent coverage required to be reported as a hit. [DEFAULT: 80 ]
+B<--evalue, -E>         :   e-value required to pass and be reported as a hit. [DEFAULT: 10e-5 ]
 
-B<--input_seqs, -i>   :   Input fasta file.
+B<--percent_id, -I>     :   percent identity required to be reported as a hit. [DEFAULT: 35 ]
 
-B<--use_nuc, -n>      :   Input is in nucleotide space, also use blastn.
+B<--percent_cov, -C>    :   min percent coverage required to be reported as a hit. [DEFAULT: 80 ]
+
+B<--input_seqs, -i>     :   Input fasta file.
+
+B<--use_nuc, -n>        :   Input is in nucleotide space, also use blastn.
 
 =head1 DESCRIPTION
 
@@ -53,6 +58,8 @@ B<--use_nuc, -n>      :   Input is in nucleotide space, also use blastn.
     jinman@jcvi.org
 
 =cut
+
+use Data::Dumper;
 
 use Capture::Tiny qw{ capture_merged };
 use Cwd;
@@ -71,6 +78,7 @@ my $BLASTP_EXEC = '/usr/local/packages/ncbi-blast+/bin/blastp';
 my $BLASTDB_DIR = '/usr/local/scratch/PROK/jinman/PG-170';
 my $BLASTN_DB   = "$BLASTDB_DIR/plasmid_finder_rep.seq";
 my $BLASTP_DB   = "$BLASTDB_DIR/plasmid_finder_rep.pep";
+my $BLAST_MAP   = "$BLASTDB_DIR/plasmidDB2GO_lookup.txt";
 my $SPLIT_FASTA = "$BIN_DIR/split_fasta.pl";
 
 my $DEFAULT_EVALUE      = '10e-5';
@@ -84,7 +92,9 @@ GetOptions( \%opts,
             'blast_file|b=s',
             'input_seqs|i=s',
             'search_db|s=s',
+            'mapping_file|m=s',
             'evalue|E=s',
+            'output_file|o=s',
             'percent_id|I=i',
             'percent_cov|C=i',
             'use_nuc|n',
@@ -100,7 +110,7 @@ check_options();
 my $blast_file;
 if ( $opts{ blast_file } ) {
 
-    $blast_file = $opts{ blast_local };
+    $blast_file = $opts{ blast_file };
 
 } else {
 
@@ -111,7 +121,7 @@ if ( $opts{ blast_file } ) {
     my $blast_cmd = "$blast_prog -db $blast_db -evalue $opts{ evalue }"; 
     $blast_cmd .=   " -qcov_hsp_perc $opts{ percent_cov }";
     $blast_cmd .=   " -perc_identity $opts{ percent_id }" if ( $opts{ use_nuc } );
-    $blast_cmd .=   " -outfmt \"6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore\"";
+    $blast_cmd .=   " -outfmt \"6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qcovs\"";
 
     if ( $opts{ blast_local } ) {
 
@@ -204,20 +214,45 @@ if ( $opts{ blast_file } ) {
 }
 
 # Parse blast output ( $blast_file, now ).
-
 print "BLAST results at: $blast_file\n";
 
 open( my $bfh, '<', $blast_file ) || die "Can't open $blast_file for reading: $!\n";
+open( my $mfh, '<', $opts{ mapping_file } ) || die "Can't open mapping file $opts{ mapping_file }: $!\n";
 
-while( <$bfh> ) {
+my %plasmid2go;
 
-    # Parsing here should take a look at headers...
-    # The idea is that we'll have a mapping of the accessions to GO terms stored somewhere,
-    # Perhaps in the headers themselves?
+while (<$mfh>) {
+
+    chomp;
+    my ( $id, $line );
+    if ( /^([^\t]+)\t(.*)$/ ) {
+        ( $id, $line ) = ( $1, $2 );
+        $id =~ tr/ //; # 
+        $plasmid2go{ $id } = $line;
+    } else {
+        warn "There was a problem parsing this line in mapping_file $opts{ mapping_file }:\n$_\n";
+    }
 
 }
 
+my @output_lines;
 
+while (<$bfh>) {
+
+    chomp;
+    my ( $input_seq, $hit_description, $perc_id, $evalue, $coverage ) = (split(/\t/,$_))[0,1,2,10,12];
+
+    # For debugging this will show how the blast is getting parsed.
+#    print "$input_seq, $hit_description, $perc_id, $evalue, $coverage\n";
+
+    $hit_description =~ tr/ //;
+    next unless ( $evalue <= $opts{ evalue } );
+    push @output_lines, "$input_seq\t$hit_description\t$plasmid2go{ $hit_description }\n";    
+
+}
+
+open( my $ofh, '>', $opts{ output_file } ) || die "Can't open $opts{ output_file } for writing: $!\n";
+print $ofh map { $_ } @output_lines;
 
 exit(0);
 
@@ -237,6 +272,7 @@ sub write_blast_shell_script {
     chmod 0755, $script_name;
 
     return $script_name;
+
 }
 
 
@@ -285,6 +321,17 @@ sub check_options {
     } else {
         $errors .= "--input_seqs is necessary.\n";
     }
+
+    # Also need a file mapping blast headers to the data:
+    $opts{ mapping_file } = $opts{ mapping_file } // $BLAST_MAP;
+    unless ( -s $opts{ mapping_file } ) {
+        $errors .= "mapping file $opts{ mapping_file } is empty -r non-existant.\n";
+    }
+
+    unless ( $opts{ output_file } ) {
+        $errors .= "--output_file is required.\n";
+    }
+
 
     # These params have defaults:
     $opts{ evalue }      = $opts{ evalue }      // $DEFAULT_EVALUE;

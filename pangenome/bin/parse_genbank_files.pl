@@ -20,6 +20,8 @@ B<--output, o>      :   Output directory [Default: Current working dir]
 
 B<--nuc, n>         :   Work in nucleotide space instead of peptide space.
 
+B<--both>           :   Produce both nucleotide AND peptide files.
+
 B<--length>         :   Features this long and shorter will be excluded from output files.
 
 B<--no_check>       :   Disable the post-processing checks for duplicate loci, etc.
@@ -46,13 +48,11 @@ See the --help info for B<'check_att_files.pl'> for more information on the part
 
 =head1 OUTPUTS
 
-.nuc - A nucleotide fasta file with a sequence for each nuc feature.
-
--- OR --
-
-.pep - A protein fasta file with a sequence for each gene
-.att - A gene attribute file
-.pseudo - A list of all found pseudo genes (not created with --nuc)
+ .nuc - A nucleotide fasta file with a sequence for each nuc feature.
+ .pep - A protein fasta file with a sequence for each gene
+ .natt - A nucleotide gene attribute file
+ .patt - A protein gene attribute file
+ .pseudo - A list of all found pseudo genes (only applies to protein-space)
 
 genbank_printing_overview.txt - A file that lists the number of genes found for each genome and prints "NO ANNOTATION" if no annotation was found on that genome
 
@@ -82,6 +82,8 @@ my $BIN_DIR = $FindBin::Bin;
 my $CHECK_ATT_FILES_EXEC    = "$BIN_DIR/check_att_files.pl";
 my $CHECKER_INPUT_FILE      = "check_att_files.input";
 my $DOS2UNIX_EXEC           = "/usr/bin/dos2unix";
+my $NUC_ATT_SUFFIX          = 'natt';
+my $PROT_ATT_SUFFIX         = 'patt';
 my $cutoff_len;
 #Grab passed in arguments/options
 my %opts;
@@ -90,6 +92,7 @@ GetOptions (\%opts,
             'file_list|l=s',
             'output|o=s',
             'nuc|n',
+            'both',
             'length=i',
             'no_check',
             'no_dos2unix',
@@ -113,25 +116,25 @@ while( my $file = <$lfh> ) {
     
     chomp( $file );
 
+    #Remove existing files for this accssion
+    my ( $filename, $path, $suffix ) = fileparse( $file );
+    $filename =~ s/\..*//;
+    remove_existing_files( $filename );
+
     unless ( $opts{ no_dos2unix } ) {
         my @cmd = ( $DOS2UNIX_EXEC, $file );
         system( @cmd ) && die "Problem running dos2unix on $file!\n";
     }
 
-    if ( $opts{nuc} ) { 
-        parse_nuc_features( $file, \%seen_genomes ) if ( $opts{nuc} ); 
-    } else {
+    if ( $opts{nuc} || $opts{both} ) { 
+        parse_nuc_features( $file, \%seen_genomes ); 
+    }
+    if ( $opts{ both } || ! $opts{ nuc } ) {
 
         my $feature_counts; #keeps track of genes/pseudo genes for a set of files
 
         #Open file and parse file name, used as output name
         open( my $fh, "<", $file ) || die "Can't open $file: $!\n";
-        my ( $filename, $path, $suffix ) = fileparse( $file );
-        $filename =~ s/\..*//;
-       
-        #Remove existing files for this accssion
-        remove_existing_files( $filename );
-
         #Go through each line of the current GenBank file and parse 
         #annotation and sequences
         while( my $line = <$fh>){
@@ -212,12 +215,18 @@ unless ( $opts{ no_check } ) {
 unless ( $opts{ no_check } ) {
 
     my $cmd = "$CHECK_ATT_FILES_EXEC -d $OUTPUT/$CHECKER_INPUT_FILE -a $OUTPUT -f $OUTPUT --resolve";
-    if ( $opts{ nuc } ) {
-        $cmd .= " --nuc";
+
+    if ( $opts{ both } || ! $opts{ nuc } ) {
+        my $check_att_files_log = "$OUTPUT/check_att_files.prot.log";
+        my $prot_cmd = "$cmd > $check_att_files_log";
+        system( $prot_cmd ) && die "There was a problem running check_att_files with the invocation:\n$cmd\n";
     }
-    my $check_att_files_log = "$OUTPUT/check_att_files.log";
-    $cmd .= " > $check_att_files_log";
-    system( $cmd ) && die "There was a problem running check_att_files with the invocation:\n$cmd\n";
+    
+    if ( $opts{ nuc } || $opts{ both } ) {
+        my $check_att_files_log = "$OUTPUT/check_att_files.nuc.log";
+        $cmd .= " --nuc > $check_att_files_log";
+        system( $cmd ) && die "There was a problem running check_att_files with the invocation:\n$cmd\n";
+    }
 
 }
 
@@ -234,9 +243,6 @@ sub parse_nuc_features {
     my ($filename,$path,$suffix) = fileparse($gb_file);
     $filename =~ s/\..*//;
  
-    #Remove existing files for this accssion
-    remove_existing_files($filename);
-
     # create a SeqIO object for the genbank file to make use of the parsing available.
     my $seqio_object = Bio::SeqIO->new( -file => $gb_file, -format => 'genbank' );
     my $is_first = 1;
@@ -399,7 +405,7 @@ sub print_nuc_files {
 
    my ( $features, $filename ) = @_;
 
-    open( my $att_fh, '>>', $OUTPUT . "/$filename" . ".att" ) || die "Can't open att_file: $!\n";
+    open( my $att_fh, '>>', $OUTPUT . "/$filename.$NUC_ATT_SUFFIX" ) || die "Can't open att_file: $!\n";
     my $nuc_obj = Bio::SeqIO->new(-file => '>>' . $OUTPUT . "/$filename" . '.nuc', -format => 'fasta' );
 
     foreach my $key ( sort { $features->{ $a }->{acc}.$a cmp $features->{ $b }->{acc}.$b } keys %$features ) {
@@ -448,7 +454,7 @@ sub print_files{
 
     my ($acc,$features,$filename,$feature_counts) = @_;
 
-    open(my $att_fh, ">>", $OUTPUT . "/$filename" . ".att");
+    open(my $att_fh, ">>", $OUTPUT . "/$filename.$PROT_ATT_SUFFIX");
     open(my $pseudo_fh, ">>", $OUTPUT . "/$filename" . ".pseudo");
 
     my $pep_obj = Bio::SeqIO->new(-file => '>>' . $OUTPUT . "/$filename" . '.pep', -format => 'fasta' );
@@ -719,8 +725,9 @@ sub remove_existing_files {
     my $filename = shift;
 
     unlink("$OUTPUT/$filename.nuc");
-    unlink("$OUTPUT/$filename.att");
+    unlink("$OUTPUT/$filename.natt");
     unlink("$OUTPUT/$filename.pep");
+    unlink("$OUTPUT/$filename.patt");
     unlink("$OUTPUT/$filename.pseudo");
 
 }

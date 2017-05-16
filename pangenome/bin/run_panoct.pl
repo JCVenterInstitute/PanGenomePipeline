@@ -348,6 +348,7 @@ my $fasta_dir           = '';
 my $role_lookup_file    = '';
 my $asmbl_ids           = '';
 my $strict              = '';
+my $att_suffix          = 'patt';
 my $use_nuc             = '';
 
 my %opts;
@@ -1312,7 +1313,7 @@ sub make_combined_att {
 
     for my $genome ( @genomes ) {
 
-        my $att_file = "$att_dir/$genome.att";
+        my $att_file = "$att_dir/$genome.$att_suffix";
 
         if ( -s $att_file ) {
             push @att_files, $att_file;
@@ -1323,7 +1324,7 @@ sub make_combined_att {
     }
 
     if ( scalar( @missing ) ) {
-        _die( "Missing .att files for the following genomes:\n" . join( "\n", @missing ) . "\n", __LINE__ );
+        _die( "Missing att files for the following genomes:\n" . join( "\n", @missing ) . "\n", __LINE__ );
     } else {
 
         open( my $ofh, '>', $gene_att_file ) || _die( "Can't oprn $gene_att_file: $!\n", __LINE__ );
@@ -1354,6 +1355,7 @@ sub check_params {
     $results_dir    = "$working_dir/results";
     $log_dir        = $opts{ log_dir }      // "$working_dir/logs";
     $project_code   = $opts{ project_code };
+    if ( $opts{ use_nuc } ) { $att_suffix = 'natt' }
 
     if ( ! ( $opts{ blast_file } || $opts{ blast_local } ) ) {
 
@@ -1411,6 +1413,7 @@ sub check_params {
     # Check to make sure the combined.fasta and combined.att
     my @cmd = ( $CHECK_COMBINED_EXEC, '-a', $gene_att_file, '-f', $combined_fasta,
                 '-l', "$log_dir/check_combined_files.log" );
+
     if ( system(@cmd) ) { # non-zero here means an issue was found.
         $errors .= "Found an error with the gene_att_file or combined.fasta.  Please " .
                     "look at logs/check_combined_files.log to see what the issue is.\n";

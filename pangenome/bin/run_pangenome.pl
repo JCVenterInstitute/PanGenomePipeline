@@ -22,13 +22,15 @@ B<--working_dir, -w>        :   Path in which multiple directories are to be cre
 
 B<--use_nuc, -n>                :   Use nucleotide versions of blast programs and input files
 
-B<--att_suffix>             :   Provide an alternate extension for recognizing .att files [DEFAULT: ".att"]
+B<--att_suffix>             :   Provide an alternate extension for recognizing .att files [DEFAULT: ".patt"]
 
 B<--project_code>           :   Project code for UGE accounting purposes used when blast jobs/panoct are executed on the grid.
 
 B<--blast_local>            :   Run blast jobs on current host instead of farming them to a grid.
 
 B<--no_blast>               :   Don't rerun blast.
+
+B<--panoct_local>           :   Run panoct on current host instead of farming them to a grid.
 
 ITERATIVE OPTIONS:
 
@@ -71,7 +73,7 @@ Modified files are recreated as <filename>.expanded, leaving the originals in pl
     1. frameshifts.txt
     2. fragment_fusions.txt
 
-4. A final panoct run is executed after the last step in the itenerary.
+4. A final panoct run is executed after the last step in the itinerary.
 
 =head1 INPUT
 
@@ -111,6 +113,8 @@ The output of panoct is varied and voluminous.  The user is encouraged to seek t
 use FindBin;
 use lib File::Spec->catdir( $FindBin::Bin, '..', 'lib' );
 
+use Capture::Tiny qw{ capture capture_merged };
+use IO::File;
 use Cwd qw(cwd abs_path);
 use FindBin;
 use File::Copy qw(move copy);
@@ -133,7 +137,7 @@ my $DEFAULT_ATT_SUFFIX = 'att';
 my $DEFAULT_WORKING_DIR = Cwd::getcwd;
 
 my $genome_list_file    = '';
-my $att_suffix          = '.att';
+my $att_suffix          = '.patt';
 my $working_dir         = '';
 my $cluster_file        = '';
 my $lfh                 = undef;
@@ -251,7 +255,7 @@ print "Time to expand clusters!\n";
 fill_locus2genome( $genome_list_file, \%locus2genome );
 expand_clusters( $itinerary );
 resolve_frameshift_loci( $itinerary );
-my $combined_stuff = run_statistics( );
+my $combined_stuff = run_statistics( abs_path( $genome_list_file ) );
 final_panoct_run( $combined_stuff );
 
 exit(0);
@@ -278,6 +282,8 @@ sub run_statistics {
 # run statistics on the final results.
 # Return final files for post-panoct run.
 
+    my ( $genome_list_file ) = @_;
+
     # Let's store this all in a tidy little directory
     my $curr_dir = cwd();
     my $stat_dir = "$working_dir/stats";
@@ -300,7 +306,14 @@ sub run_statistics {
 
     _log( "Running statistics:\n" . join( ' ', @cmd ) . "\n", 0 );
 
-    system( @cmd ) == 0 || _die( "Failed running statistics!", __LINE__ );
+    my $lf = "$working_dir/pangenome_statistics.log";
+    my $lh = IO::File->new( $lf, "w+" ) || _die ("Couldn't open $lf for logging: $!", __LINE__ );
+
+    capture_merged{
+
+        system( @cmd ) == 0 || _die( "Failed running statistics!", __LINE__ );
+
+    } stdout => $lh;
 
     # check that it worked. TODO Maybe look for a specific file or something.
 
@@ -350,20 +363,35 @@ sub final_panoct_run {
     my @cmd = ( $PANOCT_EXEC, '-R', 'matchtable.txt.expanded', '-f', $tagfile, '-g',  'combined.att_file', 
                 '-P', 'combined.fasta', '-b', $final_dir, '-c', '0,95' );
     #push( @cmd, '-S', 'N' ) if $opts{less_strict_panoct};
-    push( @cmd, '>&', 'final_panoct.log');
 
     _log( "Running final panoct command in $final_dir:\n" . join( ' ', @cmd ) . "\n", 0 );
 
-    system( @cmd ) == 0 || _die( "Error running final panoct command!", __LINE__ );
+    my $lf = "$final_dir/final_panoct.log";
+    my $lh = IO::File->new( $lf, "w+" ) || _die ( "Can't open $lf for logging: $!", __LINE__ );
+
+    capture_merged{
+
+        system( @cmd ) == 0 || _die( "Error running final panoct command!", __LINE__ );
+
+    } stdout => $lh;
 
     # Now run gene_order.pl one last time
     @cmd = ( $GENE_ORDER_EXEC, '-P', '-W', './cluster_sizes.txt', '-M', './95_core_adjacency_vector.txt',
              '-m', './0_core_adjacency_vector.txt', '-C', './centroids.fasta.expanded', '-t', $tagfile,
-             '-A', 'core.att', '-a', 'fGI.att', '-I', 'fGI_report.txt', '>', 'gene_order.txt' );
+             '-A', 'core.att', '-a', 'fGI.att', '-I', 'fGI_report.txt' );
 
     _log( "Running gene_order to produce final fGI data:\n" . join ( ' ', @cmd ) . "\n", 0 );
 
-    system( @cmd ) == 0 || _die( "Error running final gene_order command!". __LINE__ ); 
+    my $go = "$final_dir/gene_order.txt";
+    my $gh = IO::File->new( $go, "w+" ) || _die( "Can't open $go for output: $!", __LINE__ );
+    my $gl = "$final_dir/gene_order.log";
+    my $glh = IO::File->new( $gl, "w+" ) || _die( "Can't open $gl for logging: $!", __LINE__ );
+
+    capture{
+
+        system( @cmd ) == 0 || _die( "Error running final gene_order command!". __LINE__ ); 
+
+    } stdout => $gh, stderr => $glh;
 
     chdir $curr_dir || die "Can't get to $curr_dir: $!\n";
 
@@ -425,12 +453,12 @@ sub create_final_combined_att {
 
     _log( "Creating final combined.att" , 0 );
 
-    my $combined_att = "$stat_dir/combined" . $att_suffix;
+    my $combined_att = "$stat_dir/combined.att";
 
-    open( my $dfh, '<', $genome_list_file ) || die "Can't open $genome_list_file: $!\n";
+    open( my $gfh, '<', $genome_list_file ) || _die( "Can't open $genome_list_file: $!", __LINE__ );
 
-    open( my $cah, '>', $combined_att ) || die "Can't open $combined_att for writing: $!\n";
-    while ( <$dfh> ) {
+    open( my $cah, '>', $combined_att ) || _die( "Can't open $combined_att for writing: $!", __LINE__ );
+    while ( <$gfh> ) {
 
         chomp;
         my $att_file = "$att_dir/$_" . $att_suffix;
@@ -457,9 +485,9 @@ sub fill_locus2genome {
 
     chdir $working_dir || die "Can't get back to working_dir: $! \n";
 
-    open ( my $dlh, '<', $genome_list ) || die "Can't open genome_list: $!\n";
+    open ( my $glh, '<', $genome_list ) || die "Can't open genome_list: $!\n";
 
-    while ( <$dlh> ) {
+    while ( <$glh> ) {
 
         chomp;
         my $current_att_file = "$att_dir/$_" . $att_suffix;
@@ -698,8 +726,12 @@ sub reorder_row {
     # set up the new row, make it as long as @genome_order, and pre-fill it with \t
     my @new_row = ("\t") x scalar( @genome_order );  
 
+open( my $DFH, '>>', "/usr/local/scratch/PROK/jinman/$$.pangenome.log" ) || die "BLAHHHHH\n";
     # put each locus from the original row in the correct location in the new row
     for my $locus ( @row ) {
+
+unless ( defined $locus ) { print $DFH "undefined locus: @row\n"; next }
+unless ( defined $locus2genome{ $locus } ) { print $DFH "$locus not in \%locus2genome\n"; next };
 
         # This crazy line... let me explain:
         # 1. $locus2genome{ $locus} returns the name of the genome given the locus.
@@ -883,7 +915,6 @@ sub run_run_panoct {
 
 # hack: REMOVE ONCE NEW_PLOT_PANGENOME is FIXED
 push( @cmd, '--no_new_plot' );
-
     _log( "Running run_panoct.pl:\n" . join( ' ', @cmd ), 0 );
 
     system( @cmd ) == 0 || _die( "Problem with running run_panoct.pl", __LINE__ );
@@ -945,7 +976,7 @@ sub make_combined_att {
 
     my ( $step_dir, $parts ) = @_;
 
-    my $combined_att = "$step_dir/combined" . $att_suffix;
+    my $combined_att = "$step_dir/combined.att";
 
     _log( "Making $combined_att", 0 );
 
@@ -1064,7 +1095,14 @@ sub check_options {
 
     $working_dir = $opts{ working_dir } // $DEFAULT_WORKING_DIR;
     $errors .= "Can't find working directory $working_dir\n" unless ( -d $working_dir );
+    $att_suffix = $opts{ use_nuc } ? '.natt' : 'patt';
     $att_suffix = $opts{ att_suffix } // $att_suffix;
+
+    unless ( $opts{ panoct_local } && $opts{ blast_local } ) {
+
+        $errors .= "Need to supply a --project_code\n" unless $opts{ project_code };
+
+    }
 
     # check genome list
     $genome_list_file = $opts{ genome_list_file } // "$working_dir/genomes.list";

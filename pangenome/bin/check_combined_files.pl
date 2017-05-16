@@ -109,6 +109,7 @@ while( <$afh> ) {
 
     my $locus_tag = (split(/\t/))[1];
     if ( $locus_tag ) {
+        next if ( $locus_tag =~ /^CONTEXT\d/ );
         $att_ids{ $locus_tag }++
     } else {
         _log( "Can't get id from line:\n$_" );

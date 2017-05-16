@@ -42,44 +42,52 @@ on the thresholds the clusters are given a label.
 
 =head1 INPUTS
 
---metadata_file : This file is a tab delimited file to assing a genome a group in the format of <genome><tab><group><label>. The genome name must match what's used in the db.list file in the pangenome run.
-%cat groupings.txt
-M0001	plaque_size	small
-CM0002	plaque_size	small
-CM0007	plaque_size	small
-CM0008	plaque_size	small
-CM0001var	plaque_size	large
-F	plaque_size	large
-McKrae	plaque_size	large
-KOS	plaque_size	large
-17	plaque_size	large
+--metadata_file : This file is a tab delimited file to assing a genome a group in the format of <genome><tab><group><tab><label>. The genome name must match what's used in the db.list file in the pangenome run.
+
+ %cat groupings.txt
+ M0001	plaque_size	small
+ CM0002	plaque_size	small
+ CM0007	plaque_size	small
+ CM0008	plaque_size	small
+ CM0001var	plaque_size	large
+ F	plaque_size	large
+ McKrae	plaque_size	large
+ KOS	plaque_size	large
+ 17	plaque_size	large
 
 --threshold_file: A tab delimited file to specify what thresholds should be generated in the format of <true threshold><tab><false threshold>
 For a cluster to be given a label it must contain at least the high threshold of genomes and no more than the false threhold of genomes. 
-%cat threshold.txt
-100  0
-75   25
-50   0
+
+ %cat threshold.txt
+ 100  0
+ 75   25
+ 50   0
 
 --fGIs index file: File produced by the pangenome pipeline. Tab delimited file containing the cluster number and it's associated fGIs. 
-1       87
-2       87
-3       87
-4       87
-5       87
-6       87
-7       87
-8       87
-9       87
-10      87
+
+ 1       87
+ 2       87
+ 3       87
+ 4       87
+ 5       87
+ 6       87
+ 7       87
+ 8       87
+ 9       87
+ 10      87
 
 =head1 OUTPUTS
 
+=over 1
+
 <name>.clusters_<high threshold>_<low threshold>.txt - A tab delimited file for each threshold combination listing the clusters, their labels and the associated annotation
+
 <name>.counts_<high threshold>_<low threshold>.txt - An overview file that gives an overview of the genomes and their associated label. As well as what number of genomes
 must be present for a given label for that cluster to be said to have that label based on the thresholds.
 
 role_id_counts_<high threshold>_<low threshold>.txt - Tab delimited file that displays how many clusters in a specifed label where assigned the specific role_ids. This only gets generated if role_ids were given as a paramter.
+
+=back
 
 =head1 CONTACT
 

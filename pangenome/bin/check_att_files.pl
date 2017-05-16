@@ -51,6 +51,9 @@ use File::Copy qw( mv );
 use Getopt::Long qw( :config no_auto_abbrev no_ignore_case );
 use Pod::Usage;
 
+my $NUC_ATT_SUFFIX = 'natt';
+my $PROT_ATT_SUFFIX = 'patt';
+
 my %opts;
 GetOptions( \%opts,
             'db_list|d=s',
@@ -63,7 +66,7 @@ GetOptions( \%opts,
            ) || die "Can't get options! $!\n";
 pod2usage( { verbose => 2, exitval => 0 } )  if ( $opts{ help } );
 
-my $att_suffix = '.att';
+my $att_suffix = $opts{ nuc } ? ".$NUC_ATT_SUFFIX" : ".$PROT_ATT_SUFFIX";
 
 check_params( \%opts );
 
