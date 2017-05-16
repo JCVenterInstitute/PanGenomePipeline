@@ -490,7 +490,7 @@ sub fill_locus2genome {
 
         chomp;
         my $current_att_file = "$att_dir/$_" . $att_suffix;
-        open ( my $cah, '<', $current_att_file ) || _die "Can't open att_file: $current_att_file: $!", __LINE__ );
+        open ( my $cah, '<', $current_att_file ) || _die( "Can't open att_file: $current_att_file: $!", __LINE__ );
 
         while ( <$cah> ) {
 
@@ -693,7 +693,7 @@ sub expand_matchtable {
     populate_lookup( \%lookup, $step_name );
 
     # Assume 1 cluster per line aned no skipped numbers between 1 and the last line.
-    my $num_lines = `wc -l $orig_matchtable | cut -f 1 -d ' '` || _die "Can't get number of lines from $orig_matchtable!", __LINE__ );
+    my $num_lines = `wc -l $orig_matchtable | cut -f 1 -d ' '` || _die( "Can't get number of lines from $orig_matchtable!", __LINE__ );
 
     for ( 1 .. $num_lines ) {
 
@@ -885,13 +885,13 @@ sub create_pseudo_genome_files {
     my $go = "$step_dir/results/gene_order.txt";
     my $gh = IO::File->new( $go, "w+" ) || _die( "Can't open $go for output: $!", __LINE__ );
     my $gl = "$step_dir/logs/gene_order.log";
-    my $glh = IO::File->new( $glh, "w+" ) || _die( "Can't open $glh for logging: $!", __LINE__ );
+    my $glh = IO::File->new( $gl, "w+" ) || _die( "Can't open $gl for logging: $!", __LINE__ );
 
     capture{
 
         system( @cmd ) == 0 ||  _die( "Error running gene_order.pl command!", __LINE__ );
 
-    } stdout => $gh, stderr => $glhl
+    } stdout => $gh, stderr => $glh;
 
     _die( "Didn't create att_file $att_dir/$step_name" . "$att_suffix from gene_order.pl command!", __LINE__ )  unless ( -f "$att_dir/$step_name" . $att_suffix );
 
