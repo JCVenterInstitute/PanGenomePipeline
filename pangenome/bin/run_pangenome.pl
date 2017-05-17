@@ -77,6 +77,8 @@ Modified files are recreated as <filename>.expanded, leaving the originals in pl
 
 =head1 INPUT
 
+(Note that the script 'parse_genbank_files.pl' can be used to generate fasta files and att files (see below) from GenBank Flatfiles, which in turn can be retrieved using the script 'ftp_download_ncbi_annotation.pl')
+
 The pipeline will run given a variety of setup options.  To run with as few command-line parameters as possible, the pipeline needs to have the following files in the described locations:
 
 B<genomes.list> - Expected in the current working directory.  Can be specified with --genome_list_file.  This file is a single-column file of genome IDs that have been used as filenames.
@@ -96,8 +98,6 @@ B<clusters.list> - Optional.  When present, directs the pipeline to enter 'itera
 Using this sample clusters.list file will generate four typical pangenome runs along with one run that uses 'pseudo-genomes' to represent clusters identified in the previous runs.  For this L2 run, the cluster represntatives found in the prior L1 level runs' centroids.fasta files are used as the potential members in newly generated clusters.
 
 Certain useful files from the L2 level run will be 'expanded' such that the cluster reprentatives found in those files are replaced with the entire subset of members from the original cluster, giving the appearance that those expanded files were generated from a single pangenome run including all of the input genomes.
-
-Note that the script 'parse_genbank_files.pl' can be used to generate fasta files and att files from GenBank Flatfiles, which in turn can be retrieved using the script 'ftp_download_ncbi_annotation.pl'
 
 =head1 OUTPUT
 
@@ -919,7 +919,7 @@ sub run_run_panoct {
     }
 
 # hack: REMOVE ONCE NEW_PLOT_PANGENOME is FIXED
-push( @cmd, '--no_new_plot' );
+#push( @cmd, '--no_new_plot' );
     _log( "Running run_panoct.pl:\n" . join( ' ', @cmd ), 0 );
 
     system( @cmd ) == 0 || _die( "Problem with running run_panoct.pl", __LINE__ );
