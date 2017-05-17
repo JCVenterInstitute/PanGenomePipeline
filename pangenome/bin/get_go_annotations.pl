@@ -588,19 +588,15 @@ sub create_slimmed_mapping {
 
     }
 
-=cut
-
-    # This way is for working directly off the _GO.txt files
-    while (<$fgfh>) {
-
-        chomp;
-        my ( $id, $go_id ) = ( split( "\t", $_ ) )[ 0, 4 ];
-
-        push @{$input_ids{ $id }}, $go_id;
-    
-    }
-
-=cut
+#    # This way is for working directly off the _GO.txt files
+#    while (<$fgfh>) {
+#
+#        chomp;
+#        my ( $id, $go_id ) = ( split( "\t", $_ ) )[ 0, 4 ];
+#
+#        push @{$input_ids{ $id }}, $go_id;
+#    
+#    }
 
     ( my $input_base  = $opts{ input_fasta } ) =~ s/([^\.+])\..*/$1/;
     my $output_file = "$input_base.cluster_roles.txt";
