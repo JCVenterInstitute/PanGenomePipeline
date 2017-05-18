@@ -250,7 +250,7 @@ unless ( $opts{ expand_only } ) {
 
 }
 
-print "Time to expand clusters!\n";
+_log( "Time to expand clusters!", 0 );
 
 fill_locus2genome( $genome_list_file, \%locus2genome );
 expand_clusters( $itinerary );
