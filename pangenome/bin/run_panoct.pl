@@ -992,8 +992,8 @@ sub call_panoct {
 
     unless ( $opts{ panoct_local } ) {
 
-        _log( "Running panoct on grid", 0 );
         my $panoct_script = write_grid_script( 'panoct', join( ' ', @params ) );
+        _log( "Running panoct on grid.  See $panoct_script for invocation.", 0 );
         push ( @grid_jobs, launch_grid_job( $project_code, $working_dir, $panoct_script, 'panoct.stdout', 'panoct.stderr', 'himem' ) );
 
     } else {
