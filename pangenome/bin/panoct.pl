@@ -56,7 +56,7 @@ $writeclusterweights = 1;
 $vennfile = 1;
 $compute_adjacency = 0;
 $compute_centroids = 1;
-$ANCHOR_window_size = 2;
+$ANCHOR_window_size = 1;
 $ANCHOR_cutoff = (2 * $ANCHOR_window_size) + 1;
 $cluster_input_file = "";
 $process_clusters = 0;
@@ -66,7 +66,7 @@ my @BSR_cluster_levels = ();
 
 ## use boolean logic:  TRUE = 1, FALSE = 0
 
-my $version = "3.25";
+my $version = "3.26";
 if ($opt_d) {
     $compute_centroids = 1;
 } else {
@@ -93,7 +93,7 @@ if ($opt_W) {
 	&option_help;
     }
 } else {
-    $CGN_window_size = 5; #default CGN window size
+    $CGN_window_size = 3; #default CGN window size
 }
 #GGS process frameshift option
 if ($opt_F) {
@@ -130,9 +130,9 @@ if ($opt_h) { &option_help; } # quit with help menu
 if ($opt_b) {$basedir = $opt_b;} else { $basedir = $ENV{'PWD'}; } # if no value for option b (base or working directory) set it to current directory
 if ($opt_p) {$btabpath = $opt_p;} else { $btabpath = $basedir; } # if no value given for path to btab file, make default = base directory
 if ($opt_Q) {$pep_path = $opt_Q;} else { $pep_path = $basedir; } # if no value given for path to peptide file, make default = base directory
-if (($opt_g) && (-s "$opt_g")) {$att_file = $opt_g;} else { print STDERR "Error with -g\n"; &option_help; } # if no value for option g (name of gene_att file), quit with help menu
+if (($opt_g) && (-s "$basedir/$opt_g")) {$att_file = $opt_g;} else { print STDERR "Error with -g $basedir/$opt_g\n"; &option_help; } # if no value for option g (name of gene_att file), quit with help menu
 if (($opt_P) && (-s "$pep_path/$opt_P")) {$pep_file = $opt_P;} else { print STDERR "Error with -P $pep_path/$opt_P\n"; &option_help; } # if no value for option P (pepfile), quit with help menu
-if (($opt_f) && (-s "$opt_f")) {$tagfile = $opt_f;} else { print STDERR "Error with -f $opt_f\n"; &option_help; }  # must supply the file containing the list of unique genome names to analyze
+if (($opt_f) && (-s "$basedir/$opt_f")) {$tagfile = $opt_f;} else { print STDERR "Error with -f $basedir/$opt_f\n"; &option_help; }  # must supply the file containing the list of unique genome names to analyze
 if ($opt_R) {
     if ($opt_t) {
 	print STDERR "Blast tabular output file: $opt_t is being ignored since previously computed clusters are being used (-R option)\n";
@@ -207,7 +207,7 @@ if ($opt_c) {
 	if ($DEBUG) {
 	    print STDERR "calc_adjacency level $level\n";
 	}
-	if ( !(looks_like_number($level))) {
+	if (!(looks_like_number($level))) {
 	    die ("ERROR: $level is not a number in list of adjacency matrix cluster representation values (-c)!\n");
 	}
 	if (($level > 100) || ($level < 0)) {
@@ -1634,7 +1634,7 @@ sub calc_synbibest  { # subroutine to find bidrectional best synteny scores and 
 #			$relationship_hash{$qid}{$second_sid}->{'synbest'} = 1;# allow more than one synbest for realtively good second scores
 #		    }
 #		}
-		if ($found_best && ((0.5 * $best_score) >= $second_score)) {
+		if ($found_best && ((0.95 * $best_score) >= $second_score)) {
 		    $relationship_hash{$qid}{$best_sid}->{'synbest'} = 1;
 		}
 	    }
@@ -1788,7 +1788,7 @@ sub calc_synteny  { # subroutine to calculate synteny scores and populate Qbytag
 		next; #skip matches to same genome
 	    }
 	    print STDERR "$qid $sid $relationship_hash{$qid}{$sid}->{'id'} $relationship_hash{$qid}{$sid}->{'eval'} $relationship_hash{$qid}{$sid}->{'score'} $relationship_hash{$qid}{$sid}->{'best'} $relationship_hash{$qid}{$sid}->{'bibest'} $relationship_hash{$qid}{$sid}->{'clique_top'} $relationship_hash{$qid}{$sid}->{'clique_all'}\n" if($DEBUG);
-	    ($relationship_hash{$qid}{$sid}->{'synteny'}, $relationship_hash{$qid}{$sid}->{'CGN_bibest'}) = &synteny($qtag, $qid, $stag, $sid, $window);
+	    ($relationship_hash{$qid}{$sid}->{'synteny'}, $relationship_hash{$qid}{$sid}->{'CGN_bibest'}, $relationship_hash{$qid}{$sid}->{'window_size'}) = &synteny($qtag, $qid, $stag, $sid, $window);
 	}
     }
 			
@@ -1851,15 +1851,15 @@ sub calc_clusters { # greedily compute clusters by starting with largest relatio
 	    if ($qtag eq $stag) {
 		next; #skip matches to same genome
 	    }
-	    if (!$relationship_hash{$qid}{$sid}->{'synbibest'}) {
-		next; # ignore matches which are not bidirectionally best synteny matches
+	    if ((!$relationship_hash{$qid}{$sid}->{'bibest'}) && (!$relationship_hash{$qid}{$sid}->{'synbibest'})) {
+		next; # ignore matches which are not bidirectionally best matches or bidirectionally best synteny matches
 	    }
-	    if (($strict_orthos == 1) && !($relationship_hash{$qid}{$sid}->{'anchor'} || $relationship_hash{$qid}{$sid}->{'extend'} || ($relationship_hash{$qid}{$sid}->{'CGN_bibest'} > $CGN_window_size) || ((($relationship_hash{$qid}{$sid}->{'norm_score'} >= $paralog_cutoff[$qTagIndex][$sTagIndex]) || (defined $relationship_hash{$sid}{$qid} && ($relationship_hash{$sid}{$qid}->{'norm_score'} >= $paralog_cutoff[$sTagIndex][$qTagIndex]))) && ($relationship_hash{$qid}{$sid}->{'bibest'} || ($relationship_hash{$qid}{$sid}->{'CGN_bibest'} > 1))))) {
+	    if (($strict_orthos == 1) && !($relationship_hash{$qid}{$sid}->{'anchor'} || $relationship_hash{$qid}{$sid}->{'extend'} || ($relationship_hash{$qid}{$sid}->{'CGN_bibest'} > $relationship_hash{$qid}{$sid}->{'window_size'}) || ((($relationship_hash{$qid}{$sid}->{'norm_score'} >= $paralog_cutoff[$qTagIndex][$sTagIndex]) || (defined $relationship_hash{$sid}{$qid} && ($relationship_hash{$sid}{$qid}->{'norm_score'} >= $paralog_cutoff[$sTagIndex][$qTagIndex]))) && ($relationship_hash{$qid}{$sid}->{'bibest'} || ($relationship_hash{$qid}{$sid}->{'CGN_bibest'} > 1))))) {
 		next; # ignore matches which do not meet the strict ortholog criteria if that option was requested
 		# strict criteria are having at least 1/2 of the maximal number of possible bibest CGN matches or
 		# having a BSR above the paralog cutoff and either being a bibest match or having 1 or more CGN bibest matches
 	    }
-	    if (($strict_orthos == 2) && !($relationship_hash{$qid}{$sid}->{'anchor'} || $relationship_hash{$qid}{$sid}->{'extend'} || ($relationship_hash{$qid}{$sid}->{'CGN_bibest'} > $CGN_window_size))) {
+	    if (($strict_orthos == 2) && !($relationship_hash{$qid}{$sid}->{'anchor'} || $relationship_hash{$qid}{$sid}->{'extend'} || ($relationship_hash{$qid}{$sid}->{'CGN_bibest'} > $relationship_hash{$qid}{$sid}->{'window_size'}))) {
 		next; # ignore matches which do not meet the strict ortholog criteria if that option was requested
 		# strict criteria are having at least 1/2 of the maximal number of possible bibest CGN matches or
 	    }
@@ -2233,7 +2233,17 @@ sub extend_anchors { #extend anchors by marching out from anchors
 		    if ($skip_tries < 2) {
 			$skip_tries++;
 			print STDERR "         skipping $query $i\n" if ($DEBUG);
-			$j -= $inc_dec; #relationship_hash is symmetric so skipping should occur on the other genome as well but only once - cannot mix
+			$j -= $inc_dec; #skip up to two genes on query genome
+			next;
+		    } elsif ($skip_tries < 3) {
+			$skip_tries++;
+			print STDERR "         skipping $subject $j\n" if ($DEBUG);
+			$i -= 3; #skip one gene on subject genome
+			next;
+		    } elsif ($skip_tries < 4) {
+			$skip_tries++;
+			print STDERR "         skipping $subject $j\n" if ($DEBUG);
+			$j -= $inc_dec; #skip one gene on subject and query genome
 			next;
 		    } else {
 			last; #exceeded skipping over protein tries - no match so cannot extend
@@ -2273,7 +2283,17 @@ sub extend_anchors { #extend anchors by marching out from anchors
 		    if ($skip_tries < 2) {
 			$skip_tries++;
 			print STDERR "         skipping $query $i\n" if ($DEBUG);
-			$j -= $inc_dec; #relationship_hash is symmetric so skipping should occur on the other genome as well but only once - cannot mix
+			$j -= $inc_dec; #skip up to two genes on query genome
+			next;
+		    } elsif ($skip_tries < 3) {
+			$skip_tries++;
+			print STDERR "         skipping $subject $j\n" if ($DEBUG);
+			$i += 3; #skip one gene on subject genome
+			next;
+		    } elsif ($skip_tries < 4) {
+			$skip_tries++;
+			print STDERR "         skipping $subject $j\n" if ($DEBUG);
+			$j -= $inc_dec; #skip one gene on subject and query genome
 			next;
 		    } else {
 			last; #exceeded skipping over protein tries - no match so cannot extend
@@ -2661,7 +2681,7 @@ sub print_pairwise_cluster_matches { # print the match characteristics for match
     
     open (OUTPAIRWISEIN, ">$outprefix" . "pairwise_in_cluster.txt");
 
-    print OUTPAIRWISEIN "#clust\tqtag\tqid\tstag\tsid\t%id\tevalue\tbitscor\tnorm\tBSR\tbest\tbibest\tsynbest\tsynbibe\tCGNbibe\tfull\tanchor\textend\tcliquet\tcliquea\n";
+    print OUTPAIRWISEIN "#clust\tqtag\tqid\tstag\tsid\t%id\tevalue\tbitscor\tnorm\tBSR\tbest\tbibest\tsynbest\tsynbibe\tCGNbibe\tfull\tanchor\textend\tcliquea\tcliquet\n";
     foreach my $cluster_id (1 .. $#cluster_size)  {
 	my @shift_cluster_array = @{ $cluster_for_number[$cluster_id] };
 	foreach my $cluster_member_1 ( @{ $cluster_for_number[$cluster_id] } ) {
@@ -3046,6 +3066,8 @@ sub synteny {#&synteny($genome_tag, $query_featname, $subject_tag, $subject_feat
     my $query_array_last = $#{ $genome_hash{$query_tag}{$Qasmbl_id} };
     my $subject_array_last = $#{ $genome_hash{$subject_tag}{$Sasmbl_id} };
     my $synteny_range = $window; #this is the number of proteins on either side of the query and subject to compute synteny
+    my $actual_extent;
+    my $inner_extent;
     my $num_synteny = 0;
     my $num_bibest_window = 0;
     my $individual_score;
@@ -3073,6 +3095,20 @@ sub synteny {#&synteny($genome_tag, $query_featname, $subject_tag, $subject_feat
     if ($OuterLoopBeg < 0)  { # don't let this run off the beginning of the array
 	$OuterLoopBeg = 0; # adjust to the first position of the array
     }
+    $actual_extent = $OuterLoopEnd - $OuterLoopBeg;
+    $InnerLoopEnd = $SubjectArrayIndex + $synteny_range;
+    if ($InnerLoopEnd > $subject_array_last) {# check to make sure we don't extend past the last array element 
+	$InnerLoopEnd = $subject_array_last; # if so, make InnerLoopEnd equal to the size of the array
+    }
+    $InnerLoopBeg = $SubjectArrayIndex - $synteny_range;
+    if ($InnerLoopBeg < 0)  { # don't let this run off the beginning of the array
+	$InnerLoopBeg = 0; # adjust to the first position of the array
+    }
+    $inner_extent = $InnerLoopEnd - $InnerLoopBeg;
+    if ($inner_extent < $actual_extent) {
+	$actual_extent = $inner_extent;
+    }
+    $actual_extent /= 2;
     for ($i = $OuterLoopBeg; $i <= $OuterLoopEnd; $i++) { # iterate over synteny range of query genome
 	print STDERR "       qpos = $i (${ $genome_hash{$query_tag}{$Qasmbl_id} }[$i])\n" if ($DEBUG);
 	$abs_rel_pos_query = abs ($i - $QueryArrayIndex);
@@ -3081,14 +3117,6 @@ sub synteny {#&synteny($genome_tag, $query_featname, $subject_tag, $subject_feat
 	    $query_5pend = 1;
 	} else {
 	    $query_5pend = -1;
-	}
-	$InnerLoopEnd = $SubjectArrayIndex + $synteny_range;
-	if ($InnerLoopEnd > $subject_array_last) {# check to make sure we don't extend past the last array element 
-	    $InnerLoopEnd = $subject_array_last; # if so, make InnerLoopEnd equal to the size of the array
-	}
-	$InnerLoopBeg = $SubjectArrayIndex - $synteny_range;
-	if ($InnerLoopBeg < 0)  { # don't let this run off the beginning of the array
-	    $InnerLoopBeg = 0; # adjust to the first position of the array
 	}
 	$max_individual_score = 0;
 	$max_bibest = 0;
@@ -3168,7 +3196,7 @@ sub synteny {#&synteny($genome_tag, $query_featname, $subject_tag, $subject_feat
     }
     print STDERR "     num_synteny $num_synteny num_bibest_window $num_bibest_window\n" if ($DEBUG);
     print STDERR "     total_score $total_score\n" if ($DEBUG);
-    return($total_score, $num_bibest_window);
+    return($total_score, $num_bibest_window, $actual_extent);
 
 }
 
