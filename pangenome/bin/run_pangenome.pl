@@ -93,7 +93,7 @@ B<clusters.list> - Optional.  When present, directs the pipeline to enter 'itera
     L1B2(GenomeD,GenomeE,GenomeF,GenomeG)
     L1B3(GenomeH,GenomeI,GenomeJ,GenomeK,GenomeL)
     L1B4(GenomeM,GenomeN,GenomeO)
-    L2B1(L1B1,L1B2,L1B3l,L1B4)
+    L2B1(L1B1,L1B2,L1B3,L1B4)
 
 Using this sample clusters.list file will generate four typical pangenome runs along with one run that uses 'pseudo-genomes' to represent clusters identified in the previous runs.  For this L2 run, the cluster represntatives found in the prior L1 level runs' centroids.fasta files are used as the potential members in newly generated clusters.
 
