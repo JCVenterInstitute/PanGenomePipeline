@@ -188,7 +188,7 @@ unless ( $cluster_file ) {
 my $fasta_dir = "$working_dir/fasta_dir";
 my $att_dir = "$working_dir/att_dir";
 
-# Read in the db.list file, get the order of the genomes for later.
+# Read in the genome_list file, get the order of the genomes for later.
 my @genome_order = get_genome_order( $genome_list_file );
 my %locus2genome;
 

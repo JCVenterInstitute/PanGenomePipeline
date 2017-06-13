@@ -10,24 +10,24 @@ create_meta_groupings.pl
 
 =head1 SYNOPSIS
 
-    USAGE: ./create_meta_groupings.pl -a gene_attribute.dat -c centroids.fasta -m panoct.result -f metadata_groupings.txt -d db.list [-r role_lookup.txt -t threshold_file -o output/dir --print_amb --help  'data_file|a=s']
+    USAGE: ./create_meta_groupings.pl -a gene_attribute.dat -c centroids.fasta -m panoct.result -f metadata_groupings.txt -g genomes.list [-r role_lookup.txt -t threshold_file -o output/dir --print_amb --help  'data_file|a=s']
 	  
 
 =head1 OPTIONS
 
-B<--data_file, a>        :   The gene_attribute .dat file found in the pangenome project directory
+B<--data_file, -a>        :   The gene_attribute .dat file found in the pangenome project directory
 
-B<--centroids, c>        :   centroids.fasta file found in pangenome results directory
+B<--centroids, -c>        :   centroids.fasta file found in pangenome results directory
 
 B<--method_result, -m>   :   The panoct.result file found in the pangenome results directory
 
-B<--metadata_file, f>    :   File specifiying the genome name and the associated label
+B<--metadata_file, -f>    :   File specifiying the genome name and the associated label
 
-B<--db_list, d>          :   db.list file used in the pangenome run
+B<--genomes_list, -g>          :   db.list file used in the pangenome run
 
 B<--threshold_file>      :   [Optional] File giving the thresholds to use for label cutoffs
 
-B<--role_lookup, r>      :   [Optional] role_id_lookup.txt if it exists it should be in the pangenome results directory. It only generates if there are SGD genomes.
+B<--role_lookup, -r>      :   [Optional] role_id_lookup.txt if it exists it should be in the pangenome results directory. It only generates if there are SGD genomes.
 
 B<--print_amb>           :   [Optional] Prints the clusters that did not meet the true and false thresholds
 
@@ -112,7 +112,7 @@ my %opts;
 GetOptions(
     \%opts,              'data_file|a=s',    'centroids|c=s', 'method_result|m=s',
     'metadata_file|f=s', 'threshold_file=s', 'output|o=s',    'role_lookup|r=s',
-    'db_list|d=s',       'print_amb',        'index=s',       'help|h'
+    'genomes_list|g=s',  'print_amb',        'index=s',       'help|h'
 ) || die("Error getting options! $!");
 
 pod2usage( { -exitval => 1, -verbose => 2 } ) if $opts{help};
@@ -123,7 +123,7 @@ my ( $THRESHOLDS, $OUTPUT, $threshold_cutoffs ) = check_params($default_cutoffs)
 #opens att file tied hash
 tie my %ANNOT_HSH, 'MLDBM', $opts{data_file} or die "Can't open MLDBM file: $!\n";
 
-my ( $DATABASES, $db_array ) = process_db_file( $opts{db_list} );
+my ( $DATABASES, $db_array ) = process_db_file( $opts{genomes_list} );
 my @dbs = @$db_array;
 
 my ( $C_FGIS, $F_FGIS ) = parse_index_file( $opts{index} ) if $opts{index};
@@ -259,8 +259,8 @@ sub print_meta_groups {
         print $mfh "fGI ID\t" if $opts{index};
         print $mfh "Cluster ID\tRole ID\tProtein Name\tCentroid genome\tCentroid Locus\t";
 
-        my $db_list_print = join( "\t", @dbs );
-        print $mfh $db_list_print . "\n";
+        my $genomes_list_print = join( "\t", @dbs );
+        print $mfh $genomes_list_print . "\n";
 
         # Prints out the clusters that match the threshold
         # Keeps track of the counts for each label
