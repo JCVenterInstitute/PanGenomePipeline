@@ -28,7 +28,7 @@ B<--project_code>           :   Project code for UGE accounting purposes used wh
 
 B<--blast_local>            :   Run blast jobs on current host instead of farming them to a grid.
 
-B<--no_blast>               :   Don't rerun blast.
+B<--no_blast>               :   Don't rerun blast.  Assumes combined.blast exists wherever needed.
 
 B<--panoct_local>           :   Run panoct on current host instead of farming them to a grid.
 
@@ -77,8 +77,6 @@ Modified files are recreated as <filename>.expanded, leaving the originals in pl
 
 =head1 INPUT
 
-(Note that the script 'parse_genbank_files.pl' can be used to generate fasta files and att files (see below) from GenBank Flatfiles, which in turn can be retrieved using the script 'ftp_download_ncbi_annotation.pl')
-
 The pipeline will run given a variety of setup options.  To run with as few command-line parameters as possible, the pipeline needs to have the following files in the described locations:
 
 B<genomes.list> - Expected in the current working directory.  Can be specified with --genome_list_file.  This file is a single-column file of genome IDs that have been used as filenames.
@@ -98,6 +96,8 @@ B<clusters.list> - Optional.  When present, directs the pipeline to enter 'itera
 Using this sample clusters.list file will generate four typical pangenome runs along with one run that uses 'pseudo-genomes' to represent clusters identified in the previous runs.  For this L2 run, the cluster represntatives found in the prior L1 level runs' centroids.fasta files are used as the potential members in newly generated clusters.
 
 Certain useful files from the L2 level run will be 'expanded' such that the cluster reprentatives found in those files are replaced with the entire subset of members from the original cluster, giving the appearance that those expanded files were generated from a single pangenome run including all of the input genomes.
+
+Note that the script 'parse_genbank_files.pl' can be used to generate fasta files and att files from GenBank Flatfiles, which in turn can be retrieved using the script 'ftp_download_ncbi_annotation.pl'
 
 =head1 OUTPUT
 
@@ -188,7 +188,7 @@ unless ( $cluster_file ) {
 my $fasta_dir = "$working_dir/fasta_dir";
 my $att_dir = "$working_dir/att_dir";
 
-# Read in the genome_list file, get the order of the genomes for later.
+# Read in the genomes.list file, get the order of the genomes for later.
 my @genome_order = get_genome_order( $genome_list_file );
 my %locus2genome;
 
@@ -1103,7 +1103,7 @@ sub check_options {
     $att_suffix = $opts{ use_nuc } ? '.natt' : 'patt';
     $att_suffix = $opts{ att_suffix } // $att_suffix;
 
-    unless ( $opts{ panoct_local } && $opts{ blast_local } ) {
+    unless ( $opts{ panoct_local } && ( $opts{ blast_local } || $opts{ no_blast } ) ) {
 
         $errors .= "Need to supply a --project_code\n" unless $opts{ project_code };
 
