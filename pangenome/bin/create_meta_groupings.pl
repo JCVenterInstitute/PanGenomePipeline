@@ -29,6 +29,10 @@ B<--threshold_file>     :   [Optional] File giving the thresholds to use for lab
 
 B<--role_lookup, -r>    :   [Optional] role_id_lookup.txt if it exists it should be in the pangenome results directory. It only generates if there are SGD genomes.
 
+ -- OR --
+
+B<--role_file, -R>      :   [Optional] Usually will be "centroids.cluster_roles.txt" from get_go_annotations.pl.  Cannot be used with B<--role_lookup> as the script recreates that file and implies B<--role_lookup> when given this parameter.
+
 B<--print_amb>          :   [Optional] Prints the clusters that did not meet the true and false thresholds
 
 B<--index>              :   [Optional] Include fGIs index file to produce grouping results as related to fGIs
@@ -100,6 +104,9 @@ role_id_counts_<high threshold>_<low threshold>.txt - Tab delimited file that di
     Erin Beck
     ebeck@jcvi.org
 
+    Jason Inman
+    jinman@jcvi.org
+
 =cut
 
 use Getopt::Long qw(:config no_ignore_case no_auto_abbrev);
@@ -117,7 +124,7 @@ my %opts;
 
 GetOptions(
     \%opts,              'data_file|a=s',    'centroids|c=s', 'method_result|m=s',
-    'metadata_file|f=s', 'threshold_file=s', 'output|o=s',    'role_lookup|r=s',
+    'metadata_file|f=s', 'threshold_file=s', 'output|o=s',    'role_lookup|r=s', 'role_file|R=s',
     'genomes_list|g=s',  'print_amb',        'index=s',       'help|h'
 ) || die("Error getting options! $!");
 
@@ -128,6 +135,8 @@ my ( $THRESHOLDS, $OUTPUT, $threshold_cutoffs ) = check_params($default_cutoffs)
 
 #opens att file tied hash
 tie my %ANNOT_HSH, 'MLDBM', $opts{data_file} or die "Can't open MLDBM file: $!\n";
+
+setup_roles( $opts{ role_file } ) if $opts{ role_file };
 
 my ( $DATABASES, $db_array ) = process_db_file( $opts{genomes_list} );
 my @dbs = @$db_array;
@@ -141,6 +150,89 @@ my ( $ROLE_ID_LOOKUP, $SUBROLE_LOOKUP ) = parse_role_id_lookup( $opts{role_looku
 print_meta_groups( $meta, $all_clusters, $threshold_cutoffs, $cluster_role_id, $C_FGIS, $F_FGIS );
 
 exit(0);
+
+
+sub setup_roles {
+# Need to:
+# 1. create arbitrary 'role ids' for the roles in the roles_file.
+# 2. associate them with each member of the given clusters within %ANNOT_HSH
+# 3. create 'role_lookup' as expected by role_lookup.
+
+    my ( $role_file ) = @_;
+
+    ## 0. Pre-cache the results file.
+    my %results;
+    open( my $mfh, '<', $opts{ method_result } ) || die "Can't open the results file\n";
+    while (<$mfh>) {
+        chomp;
+        my ( $cluster, @members ) = split( /\t/, $_ );
+        $results{ $cluster } = \@members;
+    }
+
+    ## 1. Spoof role ids.
+    my %seen_pairs;
+    my $role_id = 1;
+
+    my %role_lookup;
+
+    open( my $rfh, '<', $role_file ) || die "Can't open $role_file: $!\n";
+    while (<$rfh>) {
+
+        chomp;
+        my ( $centroid, $main_role, $go_id ) = split(/\t/,$_);
+
+        next if $main_role eq 'Other';
+ 
+        my $combined = $main_role . $go_id;
+        unless ( exists $seen_pairs{ $combined } ) {
+
+            $seen_pairs{ $combined } = $role_id;
+            $role_lookup{ $role_id }->{ main_role } = $main_role;
+            $role_lookup{ $role_id }->{ go_id } = $go_id;
+            $role_id++;
+
+        }
+
+        ## 2. associate them with the ANNOT_HSH
+        ## Need to to the following for each centroid :
+        ## Find the centroid from the result table, and for each member in each centroid, assign the role_id
+        ## Note the fun way of altering the substructures within a tied hash.  Yaaaaaay.
+        my $current_role_id = $seen_pairs{ $combined }; # Can't just use $role_id because this might have been an earlier role_id.
+        ( my $cluster = $centroid ) =~ s/centroid_//;
+        for my $member ( @{ $results{ $cluster }} ) {
+
+            if ( defined $ANNOT_HSH{ $member }->{ role_id } ) {
+
+                # Need to check for redundance.  I think.
+                my $member_hsh = $ANNOT_HSH{ $member };
+                my $roles_str = $member_hsh->{ role_id };
+                my $role_seen = 0;
+                for my $old_role ( split(',', $roles_str) ) {
+                    if ( $old_role == $current_role_id ) {
+                        $role_seen++;
+                    }
+                }
+                $member_hsh->{ role_id } .= ",$current_role_id" unless $role_seen;
+                $ANNOT_HSH{ $member } = $member_hsh
+
+            } else {
+                
+                my $member_hsh = $ANNOT_HSH{ $member };
+                $member_hsh->{ role_id } = $current_role_id;
+                $ANNOT_HSH{ $member } = $member_hsh;
+    
+            }
+
+        }
+
+    }
+
+    ## 3. create role_lookup.txt
+    open( my $rlfh, '>', './role_lookup.txt' ) || die "Can't write to role_lookup.txt: $!\n";
+    print $rlfh map {"$_\t$role_lookup{$_}->{main_role}\t$role_lookup{$_}->{go_id}\n"} sort { $a <=> $b } keys %role_lookup;
+    $opts{role_lookup} = './role_lookup.txt';
+
+}
 
 
 sub parse_index_file {
@@ -848,6 +940,14 @@ sub check_params {
     #Make output directory if it doesn't exist
     $output = $opts{output} // cwd();
     make_path($output) unless ( -d $output );
+
+    if ( $opts{ role_file } ) {
+
+        $errors .= "Role file $opts{ role_file } is empty or missing.\n" unless ( -s $opts{ role_file } );
+
+        $errors .= "Use only one of --role_file and --role_lookup.\n" if ( $opts{ role_lookup });
+
+    }
 
     #Check thresholds and store cutoffs
     if ( $opts{metadata_file} ) {
