@@ -76,10 +76,9 @@ my $HMMER2GO_EXEC       = "$HMMER2GO_DIR/bin/hmmer2go";
 my $HMMER2GO_LIBDIR     = "$HMMER2GO_DIR/lib";
 my $HMMER2GO_DATA       = "$HMMER2GO_DIR/data";
 my $RGI_DIR             = "$BIN_DIR/rgi";
-my $ORIGINAL_CARD_JSON  = "$RGI_DIR/card.json.orig";
-my $RGI_EXEC            = "$RGI_DIR/rgi.py";
+my $ORIGINAL_CARD_JSON  = "$RGI_DIR/_data/card.json";
+my $RGI_EXEC            = "$RGI_DIR/jcvi.rgi.py";
 my $RGI_CONVERT_EXEC    = "$RGI_DIR/convertJsonToTSV.py";
-my $RGI_CLEAN_EXEC      = "$RGI_DIR/clean.py";
 
 my $DEFAULT_HMMDB       = 'both';
 my $DEFAULT_ROLES2GO    = "$HMMER2GO_DATA/Main_roles2GO";
@@ -235,6 +234,29 @@ sub post_process_orf_headers {
 }
 
 
+sub copy_aro_files {
+
+    my ( $orig_dir, $new_dir ) = @_;
+
+    my $orig_card_json = $ORIGINAL_CARD_JSON;
+    my $new_card_json  = "$new_dir/card.json";
+
+    copy( $ORIGINAL_CARD_JSON, $new_card_json ) || die "Didn't copy card.json: $!\n";
+
+    my @to_copy = ('proteindb.fsa','protein.db.pin','protein.db.phr','protein.db.psq','protein.db.dmnd');
+    
+    for my $file ( @to_copy ) {
+
+        my $old_file = "$orig_dir/$file";
+        my $new_file = "$new_dir/$file";
+
+        copy( $old_file, $new_file ) || die "Couldn't copy $old_file to $new_file: $!\n";
+
+    }
+
+}
+
+
 sub run_aro_searches {
 
     my ( $input_fasta ) = @_;
@@ -246,13 +268,13 @@ sub run_aro_searches {
 
     my $output_json = $input_fasta . '.aro'; # Will actually be $input_fasta.aro.json
     my $output_file = 'dataSummary'; # Will actually be $input_fasta.aro.txt
-    my $new_card_json  = "$aro_dir/card.json";
 
-    # copy card.json. Every time.  sigh.
-    copy( $ORIGINAL_CARD_JSON, $new_card_json ) || die "Didn't copy card.json: $!\n";;
+    # copy card.json & other files needed for the run. Every time.  sigh.
+    copy_aro_files( "$RGI_DIR/_db", $aro_dir );
+    symlink "../$input_fasta", "$aro_dir/$input_fasta";
 
     # Run rgi.
-    my @cmd = ( '/usr/bin/env', 'python', $RGI_EXEC, '-t', 'protein', '-i', $input_fasta, '-o', $output_json );
+    my @cmd = ( '/usr/bin/env', 'python', $RGI_EXEC, '-t', 'protein', '-i', $input_fasta, '-o', $output_json, '-cd', 'NO' );
     my $base = (fileparse($RGI_EXEC, qr/\.[^.]*/ ))[0];
     my $lf = "$log_dir/$base.log";
     my $ef = "$log_dir/$base.err";
@@ -265,18 +287,19 @@ sub run_aro_searches {
     } stdout => $lh, stderr => $eh;
 
     # Run conversion from json to tab-delimitted:
-    @cmd = ( '/usr/bin/env', 'python', $RGI_CONVERT_EXEC, '-i', "$output_json.json", '-o', $output_file );
-    $base = (fileparse($RGI_CONVERT_EXEC, qr/\.[^.]*/ ))[0];
-    $lf = "$log_dir/$base.log";
-    $ef = "$log_dir/$base.err";
-    $lh = IO::File->new( $lf, "w+" ) || die "Can't open log_file $lf: $!\n";
-    $eh = IO::File->new( $ef, "w+" ) || die "Can't oprn err file $ef: $!\n";
-    capture{
-
-        system( @cmd ) == 0 || die "Error converting rgi json into tabbed-text: ", join( ' ', @cmd ), "\n";
-
-    } stdout => $lh, stderr => $eh;
-
+# It looks like the latest version of rgi.py does this automaatically.
+#    @cmd = ( '/usr/bin/env', 'python', $RGI_CONVERT_EXEC, '-i', "$output_json.json", '-o', $output_file );
+#    $base = (fileparse($RGI_CONVERT_EXEC, qr/\.[^.]*/ ))[0];
+#    $lf = "$log_dir/$base.log";
+#    $ef = "$log_dir/$base.err";
+#    $lh = IO::File->new( $lf, "w+" ) || die "Can't open log_file $lf: $!\n";
+#    $eh = IO::File->new( $ef, "w+" ) || die "Can't oprn err file $ef: $!\n";
+#    capture{
+#
+#        system( @cmd ) == 0 || die "Error converting rgi json into tabbed-text: ", join( ' ', @cmd ), "\n";
+#
+#    } stdout => $lh, stderr => $eh;
+#
     chdir $old_dir;
 
 }
@@ -595,7 +618,7 @@ sub create_slimmed_mapping {
 #        my ( $id, $go_id ) = ( split( "\t", $_ ) )[ 0, 4 ];
 #
 #        push @{$input_ids{ $id }}, $go_id;
-#    
+#
 #    }
 
     ( my $input_base  = $opts{ input_fasta } ) =~ s/([^\.+])\..*/$1/;
