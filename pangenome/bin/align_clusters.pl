@@ -17,7 +17,7 @@ B<--matchtable, -m>     :   Path to the matchtable file that associates cluster 
 
 B<--combined_fasta, -c> :   Path to the multifasta of containing all member sequences
 
-B<--singleton_cluster_list, -s> :   Path to list of singleton clusters to avoid
+B<--singleton_clusters, -s> :   Path to list of singleton clusters to avoid
 
 B<--project_code, -P>   :   SGE project code to use with qsub for running muscle on grid
 
@@ -35,7 +35,7 @@ B<--help, -h>           :   Show this help.
 
 For each cluster in matchtable, create a multifasta of the members and align them using muscle.
 
-The multifasta are created using the script 'panoct_multifasta.pl'.  If B<--singleton_cluster_list> is used to provide a file with the cluster numbers of singletons in the first column (tab separated), those numbers will be excluded from the list of cluster that have multifasta created.  Multifasta are created in the directory ./cluster_multifasta and named <cluster_number> with no extension.
+The multifasta are created using the script 'panoct_multifasta.pl'.  If B<--singleton_clusters> is used to provide a file with the cluster numbers of singletons in the first column (tab separated), those numbers will be excluded from the list of cluster that have multifasta created.  Multifasta are created in the directory ./cluster_multifasta and named <cluster_number> with no extension.
 
 After multifasta are created, muscle is invoked to create alignment files.  The invocation used is:
 
@@ -55,10 +55,12 @@ use Cwd;
 use FindBin;
 use lib "$FindBin::Bin/../lib";
 use File::Basename;
+use File::Slurp;
 use Getopt::Long qw( :config no_auto_abbrev no_ignore_case );
 use grid_tasks;
 use IO::File;
 use Pod::Usage;
+use POSIX qw(ceil);
 
 my $MULTIFASTA_EXEC = "$FindBin::Bin/panoct_multifasta.pl";
 my $MUSCLE_EXEC     = "$FindBin::Bin/muscle";
@@ -112,22 +114,31 @@ sub create_alignments {
 
     my $alignment_dir = "$working_dir/cluster_alignments";
     mkdir $alignment_dir unless ( -d $alignment_dir );
+    my $config_dir = "$working_dir/cluster_config";
+    mkdir $config_dir unless ( -d $config_dir );
 
     if ( $project_code ) {
 
         _log( "Running muscle on grid with project_code $project_code", 0 );
 
-        my $sh_file = write_muscle_shell_script( $multifasta_dir, $alignment_dir );
+        my $sh_file = write_muscle_shell_script( $multifasta_dir, $alignment_dir, $config_dir );
 
         # get the highest cluster id to use as our highest task number.
         # (dev null hack to prevent 'broken pipe' pseudo-error from 'sort' here.)
         my $max_id = `sort -nr $cluster_id_file 2>/dev/null | head -n 1`;
         chomp $max_id;
 
-        my @grid_jobs;
-        push( @grid_jobs, launch_grid_job( $project_code, $working_dir, $sh_file, 'muscle.stdout', 'muscle.stderr', '', $max_id ) );
+        # because we likely don't have sequential cluster numbers from 1 to max_id,
+        # need to create sequentially numbered 'config' files that contain a single line
+        # containing the cluster number.
+        my $max_job = create_cluster_configs( $multifasta_dir, $config_dir, $max_id );
 
-        wait_for_grid_jobs_arrays( \@grid_jobs, 1, $max_id ) if ( scalar @grid_jobs );
+        # TODO: If there are more than 75000 jobs, we must divide the batch of grid jobs up.
+        
+        my @grid_jobs;
+        push( @grid_jobs, launch_grid_job( $project_code, $working_dir, $sh_file, 'muscle.stdout', 'muscle.stderr', '', $max_job ) );
+
+        wait_for_grid_jobs_arrays( \@grid_jobs, 1, $max_job ) if ( scalar @grid_jobs );
 
     } elsif ( $opts{ no_grid } ) {
 
@@ -151,9 +162,27 @@ sub create_alignments {
 }
 
 
+sub create_cluster_configs {
+
+    my ( $multifasta_dir, $config_dir, $max_id ) = @_;
+
+    my $job_id = 0;
+    for my $candidate ( 1 .. $max_id ) {
+        if ( -f "$multifasta_dir/$candidate" ) {
+            $job_id++;
+            my @line = $candidate;
+            write_file( "$config_dir/$job_id.config", @line );
+        }
+    }
+
+    return( $job_id );
+
+}
+
+
 sub write_muscle_shell_script {
 
-    my ( $multifasta_dir, $alignment_dir ) = @_;
+    my ( $multifasta_dir, $alignment_dir, $config_dir ) = @_;
 
     my $script_name = "$working_dir/grid_muscle.sh";
     _log( "Writing muscle shell script at: $script_name", 0 );
@@ -163,14 +192,10 @@ sub write_muscle_shell_script {
     print $sfh <<"EOF";
 #!/bin/sh
 
-infile="$multifasta_dir/\$SGE_TASK_ID"
-outfile="$alignment_dir/\${SGE_TASK_ID}.afa"
-if [ -s \$infile ]
-then
-    $MUSCLE_EXEC -in \$infile -out \$outfile -diags -quiet -verbose
-else
-    echo "Skipping cluster \$SGE_TASK_ID"
-fi
+cluster=`cat $config_dir/\${SGE_TASK_ID}.config`
+infile="$multifasta_dir/\$cluster"
+outfile="$alignment_dir/\${cluster}.afa"
+$MUSCLE_EXEC -in \$infile -out \$outfile -diags -quiet -verbose
 EOF
 
     chmod 0755, $script_name;
