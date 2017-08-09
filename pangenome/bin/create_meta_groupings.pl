@@ -15,48 +15,54 @@ create_meta_groupings.pl
 
 =head1 OPTIONS
 
-B<--data_file, -a>        :   The gene_attribute .dat file found in the pangenome project directory
+B<--data_file, -a>      :   The gene_attribute .dat file found in the pangenome project directory
 
-B<--centroids, -c>        :   centroids.fasta file found in pangenome results directory
+B<--centroids, -c>      :   centroids.fasta file found in pangenome results directory
 
-B<--method_result, -m>   :   The panoct.result file found in the pangenome results directory
+B<--method_result, -m>  :   The panoct.result file found in the pangenome results directory
 
-B<--metadata_file, -f>    :   File specifiying the genome name and the associated label
+B<--metadata_file, -f>  :   File specifiying the genome name and the associated label
 
-B<--genomes_list, -g>          :   db.list file used in the pangenome run
+B<--genomes_list, -g>   :   db.list file used in the pangenome run
 
-B<--threshold_file>      :   [Optional] File giving the thresholds to use for label cutoffs
+B<--threshold_file>     :   [Optional] File giving the thresholds to use for label cutoffs
 
-B<--role_lookup, -r>      :   [Optional] role_id_lookup.txt if it exists it should be in the pangenome results directory. It only generates if there are SGD genomes.
+B<--role_lookup, -r>    :   [Optional] role_id_lookup.txt if it exists it should be in the pangenome results directory. It only generates if there are SGD genomes.
 
-B<--print_amb>           :   [Optional] Prints the clusters that did not meet the true and false thresholds
+B<--print_amb>          :   [Optional] Prints the clusters that did not meet the true and false thresholds
 
-B<--index>               :   [Optional] Include fGIs index file to produce grouping results as related to fGIs
+B<--index>              :   [Optional] Include fGIs index file to produce grouping results as related to fGIs
 
 B<--help>                
 	    
 =head1 DESCRIPTION
 
-This scripts takes a metadata grouping file and based on each genome's group determines if a cluster's genome membership meets the true and false thresholds. Based 
-on the thresholds the clusters are given a label. 
+This scripts takes a metadata grouping file and based on each genome's group determines if a cluster's genome membership meets the true and false thresholds. Based on the thresholds the clusters are given a label. 
 
 =head1 INPUTS
 
---metadata_file : This file is a tab delimited file to assing a genome a group in the format of <genome><tab><group><tab><label>. The genome name must match what's used in the db.list file in the pangenome run.
+--metadata_file : This file is a tab delimited file to assing a genome a group in the format:
+
+ <genome><tab><group><tab><label>. 
+
+The genome name must match what's used in the db.list file in the pangenome run.
 
  %cat groupings.txt
- M0001	plaque_size	small
- CM0002	plaque_size	small
- CM0007	plaque_size	small
- CM0008	plaque_size	small
- CM0001var	plaque_size	large
- F	plaque_size	large
- McKrae	plaque_size	large
- KOS	plaque_size	large
- 17	plaque_size	large
+ M0001      plaque_size     small
+ CM0002     plaque_size     small
+ CM0007     plaque_size     small
+ CM0008     plaque_size     small
+ CM0001var  plaque_size     large
+ F          plaque_size     large
+ McKrae     plaque_size     large
+ KOS        plaque_size     large
+ 17         plaque_size     large
 
---threshold_file: A tab delimited file to specify what thresholds should be generated in the format of <true threshold><tab><false threshold>
-For a cluster to be given a label it must contain at least the high threshold of genomes and no more than the false threhold of genomes. 
+--threshold_file: A tab delimited file to specify what thresholds should be generated in the format:
+
+ <true threshold><tab><false threshold>
+
+For a cluster to be given a label it must contain at least the high threshold of genomes and no more than the false threshold of genomes. 
 
  %cat threshold.txt
  100  0
@@ -883,6 +889,8 @@ sub check_params {
         }
 
     }
+
+    die $errors if $errors;
 
     return ( $thresholds, $output, $threshold_cutoffs );
 
