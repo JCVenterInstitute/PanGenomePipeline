@@ -10,13 +10,13 @@ get_patric_files.pl
 
 =head1 SYNOPSIS
 
-    USAGE: get_patric_files.pl  --db_list <list of genome names>
+    USAGE: get_patric_files.pl  --genomes_list <list of genome names>
                                 --file_source <source of files, Patric or RefSeq>
                                 --file_type <type of file to download: cds, faa or all>
          
 =head1 OPTIONS
 
-B<--db_list, d>       :  File of genome directory names to download from Patric FTP site (ie.Acetobacter_aceti/)
+B<--genomes_list, g>       :  File of genome directory names to download from Patric FTP site (ie.Acetobacter_aceti/)
                          http://brcdownloads.patricbrc.org/patric2/genomes/
 
 B<--file_source, s>   :  Specifies to download the Patric or RefSeq annotation (options: Patric or RefSeq, not case sensitive)
@@ -37,7 +37,7 @@ use File::Path;
 my %opts;
 my($patric_file,$file_source,$file_type);
 
-GetOptions(\%opts, 'db_list|d=s',
+GetOptions(\%opts, 'genomes_list|g=s',
 	   'file_source|s=s',
 	   'file_type|t=s',
 	   'help|h');
@@ -64,11 +64,11 @@ exit(0);
 sub check_params{
     my $errors;
 
-    if($opts{db_list}){
-	$errors .= "$opts{db_list} does not exist or is size zero\n" unless (-s $opts{db_list});
-	$patric_file = $opts{db_list};
+    if($opts{genomes_list}){
+	$errors .= "$opts{genomes_list} does not exist or is size zero\n" unless (-s $opts{genomes_list});
+	$patric_file = $opts{genomes_list};
     }else{
-	$errors .= "Must provide list of genomes, --db_list\n";
+	$errors .= "Must provide list of genomes, --genomes_list\n";
     }
 
     if($opts{file_source}){

@@ -9,13 +9,13 @@ check_att_files.pl - pre-processor to ensure reliability of att_files for pangen
 
 =head1 USAGE
 
-    check_att_files.pl --db_list <file path> --att_dir <directory> [ --fasta_dir <directory> --resolve ]
+    check_att_files.pl --genomes_list <file path> --att_dir <directory> [ --fasta_dir <directory> --resolve ]
 
 =head1 OPTIONS
 
 =over
 
-=item B<--db_list, -d>  :   List of genomes whose files will be examined
+=item B<--genomes_list, -g>  :   List of genomes whose files will be examined
 
 =item B<--att_dir, -a>  :   Path to a directory containing .att files for the given genomes
 
@@ -56,7 +56,7 @@ my $PROT_ATT_SUFFIX = 'patt';
 
 my %opts;
 GetOptions( \%opts,
-            'db_list|d=s',
+            'genomes_list|g=s',
             'att_dir|a=s',
             'att_suffix=s',
             'fasta_dir|f=s',
@@ -70,7 +70,7 @@ my $att_suffix = $opts{ nuc } ? ".$NUC_ATT_SUFFIX" : ".$PROT_ATT_SUFFIX";
 
 check_params( \%opts );
 
-open( my $dlh, '<', $opts{ db_list } ) || die "Can't open dblist: $!";
+open( my $dlh, '<', $opts{ genomes_list } ) || die "Can't open dblist: $!";
 
 my $loci = {};  # Store per-genome dupes
 my $locus_prefixes = {}; # look for duplicate locus tag prefixes between genomes
@@ -356,10 +356,10 @@ sub check_params {
 
     my $errors = '';
 
-    if ( ! $opts->{ db_list } ) {
-        $errors .= "Please supply --db_list\n";
+    if ( ! $opts->{ genomes_list } ) {
+        $errors .= "Please supply --genomes_list\n";
     } else {
-        $errors .= "Please supply a non-empty --db_list\n" unless ( -s $opts->{ db_list } );
+        $errors .= "Please supply a non-empty --genomes_list\n" unless ( -s $opts->{ genomes_list } );
     }
 
     $att_suffix = $opts->{ att_suffix } // $att_suffix;

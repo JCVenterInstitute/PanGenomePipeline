@@ -16,7 +16,7 @@ my %opts;
 
 GetOptions( \%opts, 
 	    'matchtable|m=s',
-	    'db_list|d=s',
+	    'genomes_list|g=s',
 	    'att_file|a=s',
 	    'output|o=s',
 	    'help|h') || die "Error getting options! $!";
@@ -25,7 +25,7 @@ my $OUTPUT_DIR;
                     
 &check_params;
 
-my $dbs = parse_dbs($opts{db_list});
+my $dbs = parse_dbs($opts{genomes_list});
 my $matchtable_hsh = parse_matchtable($opts{matchtable});
 my $att_file_hsh = parse_att_file($opts{att_file});
 
@@ -139,7 +139,7 @@ sub parse_dbs{
     my $file = shift;
 
     my $hsh;
-    my @dbs = read_file($opts{db_list});
+    my @dbs = read_file($opts{genomes_list});
     
     my $count = 1;
     foreach my $db (@dbs){
@@ -154,12 +154,12 @@ sub check_params{
     my $error;
 
     if($opts{help}){
-	$error = "\nUsage: ./create_mev_table.pl -d <db_list> -m <PanOCT matchtable> -a <gene_att_file> [-o <output, optional>]\n\n";
-    }elsif(!($opts{matchtable} && $opts{db_list} && $opts{att_file})){
-	$error .= "Must supply --matchtable, --db_list and --att_file\n";
+	$error = "\nUsage: ./create_mev_table.pl -g <genomes_list> -m <PanOCT matchtable> -a <gene_att_file> [-o <output, optional>]\n\n";
+    }elsif(!($opts{matchtable} && $opts{genomes_list} && $opts{att_file})){
+	$error .= "Must supply --matchtable, --genomes_list and --att_file\n";
     }else{
 	$error .= "$opts{matchtable} does not exist or is size zero\n" unless (-s $opts{matchtable});
-	$error .= "$opts{db_list} does not exist or is size zero\n" unless (-s $opts{db_list});
+	$error .= "$opts{genomes_list} does not exist or is size zero\n" unless (-s $opts{genomes_list});
 	$error .= "$opts{att_file} does not exist or is size zero\n" unless (-s $opts{att_file});
     }
     

@@ -31,7 +31,7 @@ B<--data_file,-a>       :   combined.att_file data hash file
 
 B<--method,-m>          :   cluster method result file
 
-B<--db_list,-l>         :   Genome list file
+B<--genomes_list,-l>         :   Genome list file
 
 B<--combined_fasta, s>  :   Path to combined pep fasta file (combined.fasta)
 
@@ -95,7 +95,7 @@ GetOptions( \%opts,
 	    'data_file|a=s',
 	    'centroids|c=s',
 	    'method_result|m=s',
-	    'db_list|l=s',
+	    'genomes_list|l=s',
 	    'reference|r=s',
 	    'role_ids|i=s',
 	    'terms|t=s',
@@ -122,7 +122,7 @@ my ($HISTOGRAM,$FRAME_COUNT);
 my ($INITIAL_COUNTS);
 my ($IGNORED_FRAME_SING);
 
-my ($DATABASES,$db_array) = &process_db_file($opts{db_list});
+my ($DATABASES,$db_array) = &process_db_file($opts{genomes_list});
 my @dbs = @$db_array;
 
 #Parse HMM Info.
@@ -1051,13 +1051,13 @@ sub check_params {
 
     }
 
-    if($opts{db_list}){
+    if($opts{genomes_list}){
 
-	$errors .= "$opts{db_list} does not exist or is size zero\n" unless(-s $opts{db_list});
+	$errors .= "$opts{genomes_list} does not exist or is size zero\n" unless(-s $opts{genomes_list});
 
     }else{
 
-	$errors .= "Must provide --db_list file\n";
+	$errors .= "Must provide --genomes_list file\n";
 
     }
 

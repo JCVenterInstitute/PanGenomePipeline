@@ -89,7 +89,7 @@ previous runs' output files)
 
 As an alternative to --organism_search_term, the user may provide a list of BioSample IDs with --biosample_list, or a
 list of assembly accession IDs with --accession_list.  For any ID in those files, the script will find matches in the 
-'biosample' or 'assembly accession' columns of assembly_sumamry.txt and use matching rows to create the download
+'biosample' or 'assembly accession' columns of assembly_summary.txt and use matching rows to create the download
 file.
 
 If --min_N50 is used to supply a minimum value for N50, the script will compare it with each non-complete genome's

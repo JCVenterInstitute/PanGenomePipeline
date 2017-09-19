@@ -214,7 +214,7 @@ unless ( $opts{ no_check } ) {
 
 unless ( $opts{ no_check } ) {
 
-    my $cmd = "$CHECK_ATT_FILES_EXEC -d $OUTPUT/$CHECKER_INPUT_FILE -a $OUTPUT -f $OUTPUT --resolve";
+    my $cmd = "$CHECK_ATT_FILES_EXEC -g $OUTPUT/$CHECKER_INPUT_FILE -a $OUTPUT -f $OUTPUT --resolve";
 
     if ( $opts{ both } || ! $opts{ nuc } ) {
         my $check_att_files_log = "$OUTPUT/check_att_files.prot.log";

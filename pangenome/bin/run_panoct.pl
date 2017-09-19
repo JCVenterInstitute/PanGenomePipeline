@@ -694,7 +694,7 @@ sub call_annotation_scripts {
     my $blh = IO::File->new( $blf, "w+" ) || _die( "Can't open $blf for logging: $!", __LINE__ );
     capture_merged{
 
-        system( @cmd ) == 0 || _die( "Problem runningblast annotation script", __LINE__ );
+        system( @cmd ) == 0 || _die( "Problem running blast annotation script", __LINE__ );
 
     } stdout => $blh;
 
@@ -879,10 +879,9 @@ sub call_paralog_matchtable{
     my $paralogs_file   = "$results_dir/paralogs.txt";
     my $out_file        = "$results_dir/matchtable_paralog.txt";
 
-    my $cmd = $MATCHTABLE_EXEC;
-    $cmd .= " -M $matchtable_file -P $paralogs_file";
+    my @cmd = ( $MATCHTABLE_EXEC, '-M', $matchtable_file, '-P', $paralogs_file );
 
-    _log( "Calling paralog_matchtable.pl:\n$cmd", 0 );
+    _log( "Calling paralog_matchtable.pl:\n" . join( ' ', @cmd ), 0 );
 
     my $oh = IO::File->new( $out_file, "w+" ) || _die( "Couldn't open $out_file for output: $!", __LINE__ );
     my $lf = "$log_dir/paralaog_matchtable.log";
@@ -890,7 +889,7 @@ sub call_paralog_matchtable{
 
     capture{
 
-        system( $cmd ) == 0 || _die( "Couldn't run script: $? $!", __LINE__ );
+        system( @cmd ) == 0 || _die( "Couldn't run script: $? $!", __LINE__ );
 
     } stdout => $oh, stderr => $lh;
 
@@ -912,17 +911,17 @@ sub call_compute_pangenome {
     my $new_threshold   = 0;
     my $combinations    = 250;
 
-    my $cmd = "$COMPUTE_PANGENOME_EXEC -i $input_file -o $output_file -p $core_threshold";
-    $cmd .= " -q $new_threshold -s $combinations";
+    my @cmd = ( $COMPUTE_PANGENOME_EXEC, '-i', $input_file, '-o', $output_file );
+    push ( @cmd, '-p', $core_threshold, '-q', $new_threshold, '-s', $combinations );
 
-    _log( "Running compute pangenome:\n$cmd", 0 );
+    _log( "Running compute pangenome:\n" . join( ' ', @cmd ), 0 );
 
     my $lf = "$log_dir/compute_pangenome.log";
     my $lh = IO::File->new( $lf, "w+" ) || _die( "Couldn't open $lf for logging: $!", __LINE__ );
 
     capture_merged{
 
-        system( $cmd ) == 0 || _die( "Couldn't run script: $? $!", __LINE__ );
+        system( @cmd ) == 0 || _die( "Couldn't run script: $? $!", __LINE__ );
 
     } stdout => $lh;
 
@@ -938,16 +937,16 @@ sub call_new_plot_pangenome {
     my $input_file = "$results_dir/pangenome_size";
     my $output_file_basename = "$results_dir/R.plots/new_plot";
 
-    my $cmd = "$NEW_PLOT_PANGENOME_EXEC -i $input_file -o $output_file_basename";
+    my @cmd = ( $NEW_PLOT_PANGENOME_EXEC, '-i', $input_file, '-o', $output_file_basename );
 
-    _log( "Running new plot pangenome script:\n$cmd", 0 );
+    _log( "Running new plot pangenome script:\n" . join( ' ', @cmd), 0 );
 
     my $lf = "$log_dir/new_plot_pangenome.log";
     my $lh = IO::File->new( $lf, "w+" ) || _die( "Couldn't open $lf for logging: $!", __LINE__ );
 
     capture_merged{
 
-        system( $cmd ) == 0 || _die( "Couldn't run new plot pangenome script: $cmd\n$? $!", __LINE__ );
+        system( @cmd ) == 0 || _die( "Couldn't run new plot pangenome script: $? $!", __LINE__ );
 
     } stdout => $lh;
 
@@ -964,29 +963,28 @@ sub call_panoct {
     my $target = "$results_dir/combined.fasta";
     unless ( abs_path( $combined_fasta ) eq abs_path( $target ) || -e $target ){
         _log( "Copying combined.fasta from $combined_fasta to $target", 0 );
-        copy( $combined_fasta, $target ) || die "Couldn't copy $combined_fasta to $results_dir! $!\n";
+        copy( $combined_fasta, $target ) || _die( "Couldn't copy $combined_fasta to $results_dir! $!", __LINE__ );
     }
-
 
     # Likewise with the genome list file
     $target = "$results_dir/genomes.list";
     unless ( abs_path( $genome_list_file ) eq abs_path( $target ) || -e $target ) {
         _log( "Copying genomes.list from $genome_list_file to $target", 0 );
-        copy( $genome_list_file, $target ) || die "Couldn't copy $genome_list_file to $results_dir!\n";
+        copy( $genome_list_file, $target ) || _die( "Couldn't copy $genome_list_file to $results_dir!", __LINE__ );
     }
 
     # Likewise with the combined.att file
     $target = "$results_dir/combined.att";
     unless ( abs_path( $gene_att_file ) eq abs_path( $target ) || -e $target ) {
         _log( "Copying combined.att from $gene_att_file to $target", 0 );
-        copy( $gene_att_file, $target ) || die "Couldn't copy $gene_att_file to $results_dir!\n";
+        copy( $gene_att_file, $target ) || _die( "Couldn't copy $gene_att_file to $results_dir!", __LINE__ );
     }
 
     # Likewise with the combined.blast file
     $target = "$results_dir/combined.blast";
     unless ( abs_path( $blast_file_path ) eq abs_path( $target ) || -e $target ) {
         _log( "Copying combined.blast from $blast_file_path to $target", 0 );
-        copy( $blast_file_path, $target ) || die "Couldn't copy $blast_file_path to $results_dir!\n";
+        copy( $blast_file_path, $target ) || _die( "Couldn't copy $blast_file_path to $results_dir!", __LINE__ );
     }
 
     @params = ('-b', $results_dir, '-t', 'combined.blast', '-f', 'genomes.list',
@@ -999,8 +997,8 @@ sub call_panoct {
 
     unless ( $opts{ panoct_local } ) {
 
-        _log( "Running panoct on grid", 0 );
         my $panoct_script = write_grid_script( 'panoct', join( ' ', @params ) );
+        _log( "Running panoct on grid.  See $panoct_script for invocation.", 0 );
         push ( @grid_jobs, launch_grid_job( $project_code, $working_dir, $panoct_script, 'panoct.stdout', 'panoct.stderr', 'himem' ) );
 
     } else {
@@ -1028,8 +1026,8 @@ sub call_panoct {
     wait_for_grid_jobs( \@grid_jobs ) if ( scalar @grid_jobs );
 
     # panoct.result is a filtered copy of matchtable.txt:
-    open( my $mfh, '<', "$results_dir/matchtable.txt" ) || die "Can't read matchtable.txt: $!\n";
-    open( my $rfh, '>', "$results_dir/panoct.result" )  || die "Can't write to panoct.result: $!\n";
+    open( my $mfh, '<', "$results_dir/matchtable.txt" ) || _die( "Can't read matchtable.txt: $!", __LINE__ );
+    open( my $rfh, '>', "$results_dir/panoct.result" )  || _die( "Can't write to panoct.result: $!\n", __LINE__ );
 
     while ( <$mfh> ) {
 
@@ -1064,7 +1062,7 @@ sub write_grid_script {
 
     my $cmd_string = "$PANOCT_EXEC $param_string";
 
-    open ( my $gsh, '>', $script_name ) || die "Can't open $script_name: $!\n";
+    open ( my $gsh, '>', $script_name ) || _die( "Can't open $script_name: $!", __LINE__ );
 
     select $gsh;
 
@@ -1116,7 +1114,7 @@ sub get_max_target_seqs {
 
     my %seen;
 
-    open( my $dfh, '<', $genome_list ) || die "Can't open $genome_list: $!\n";
+    open( my $dfh, '<', $genome_list ) || _die( "Can't open $genome_list: $!", __LINE__ );
     while ( <$dfh> ) {
         chomp;
         $seen{$_}++;
@@ -1124,7 +1122,7 @@ sub get_max_target_seqs {
 
     my @dupes = grep { $seen{$_} > 1 } keys %seen;
     if ( scalar @dupes ) {
-        die "Found duplicate genomes in $genome_list: ",join("\n",@dupes),"\n";
+        _die( "Found duplicate genomes in $genome_list:\n" . join("\n",@dupes) , __LINE__ ) ;
     }
 
     my $target = 2 * scalar( keys %seen );
@@ -1159,7 +1157,7 @@ sub blast_genomes {
     $blast_file_dir  = "$working_dir";
     $blast_file_path = "$working_dir/combined.blast";
 
-    my $max_target_seqs = get_max_target_seqs( $genome_list_file ) || die "Can't determine number of blast hits to get by examining $opts{ genome_list_file }: $!\n";
+    my $max_target_seqs = get_max_target_seqs( $genome_list_file ) || _die( "Can't determine number of blast hits to get by examining $opts{ genome_list_file }: $!", __LINE__ );
 
     my $blast_prog = ( $opts{ use_nuc } ) ? "$BLASTN_EXEC -task blastn": "$BLASTP_EXEC -task blastp";
     my $blast_cmd = "$blast_prog -db $combined_fasta -evalue 0.00001";  
@@ -1386,7 +1384,6 @@ sub check_params {
         $errors .= "MUST provide a --project_code or choose between --blast_local and --blast_file\n" unless $project_code;
 
     } 
-
 
     # check genome_list
     $genome_list_file = $opts{ genome_list_file } // "$working_dir/genomes.list";

@@ -28,7 +28,8 @@ library('getopt');
 
 params=c(
 	"input_file", "i", 1, "character",
-	"output_file", "o", 1, "character"
+	"output_file", "o", 1, "character",
+	"verb_on", "v", 0, "binary"
 );
 
 opt=getopt(spec=matrix(params, ncol=4, byrow=TRUE), debug=FALSE);
@@ -40,6 +41,7 @@ usage = paste (
 	"\n",
 	"	-i <input file name for tab delimited combinatorial pan-genome counts>\n",
 	"	-o <output file name for pdf plots and txt files>\n",
+	"	-v <turns on verbose setting, i.e. printing summaries to the standard output>\n", 
 	"\n",	
 	"This script will generate PDF and txt files for exponential and power law models of Core, Novel, and Pan-genome gene sizes.\n",
 	"\n",
@@ -98,7 +100,10 @@ for (i in min_genomes:max_genomes) {
 #rsq.nls
 print("Novel Genes : Power Model: Medians")
 nov_pwmed_nlsfit<-nls(ymed~k*xmed^(-a), start=list(k=min_genomes*max(ymed),a=1),trace=TRUE,control = nls.control(warnOnly=T, minFactor =0))
-summary(nov_pwmed_nlsfit)
+if (!is.null(opt$verb_on))
+{
+	summary(nov_pwmed_nlsfit)
+}
 rsq.nls<-1-(sum((residuals(nov_pwmed_nlsfit))^2)/sum((ymed-mean(ymed))^2))
 rsq.nls
 maxXlim <- 4 * max_genomes
@@ -124,8 +129,10 @@ lines(xf, predict(nov_pwmed_nlsfit, dxfmed), col="red", lwd=1)
 #rsq.nls<-1-(sum((residuals(nov_expm_nlsfit))^2)/sum((y-mean(y))^2))
 #rsq.nls
 print("Novel Genes: Exponential Model: Medians")
-nov_expmed_nlsfit<-nls(ymed~a*exp(-xmed/b)+c, start=list(a=exp(1)*(max(ymed)-min(ymed)),b=min_genomes,c=min(ymed)),trace=TRUE)
-summary(nov_expmed_nlsfit)
+nov_expmed_nlsfit<-nls(ymed~a*exp(-xmed/b)+c, start=list(a=exp(1)*(max(ymed)-min(ymed)),b=min_genomes,c=min(ymed)),trace=TRUE, )
+if (!is.null(opt$verb_on)){
+	summary(nov_expmed_nlsfit)
+}
 rsq.nls<-1-(sum((residuals(nov_expmed_nlsfit))^2)/sum((ymed-mean(ymed))^2))
 rsq.nls
 #lines(xf, predict(nov_expm_nlsfit, dxf), col="blue", lwd=1, lty="dashed")
@@ -146,13 +153,16 @@ for (i in min_genomes:max_genomes) {
     xmed <- c(xmed, i)
 }
 #print("Core Genes: Power Model: Means")
-#cor_pwm_nlsfit<-nls(y~k*x^(-a), start=list(k=max(y),a=2/(min_genomes+max_genomes)),trace=TRUE)
+#cor_pwm_nlsfit<-nls(y~k*x^(-a), start=list(k=max(y),a=2/(min_genomes+max_genomes)),trace=TRUE, control = nls.control(warnOnly=T, minFactor =0))
 #summary(cor_pwm_nlsfit)
 #rsq.nls<-1-(sum((residuals(cor_pwm_nlsfit))^2)/sum((y-mean(y))^2))
 #rsq.nls
 print("Core Genes: Power Model: Medians")
-cor_pwmed_nlsfit<-nls(ymed~k*xmed^(-a), start=list(k=max(ymed),a=2/(min_genomes+max_genomes)),trace=TRUE)
-summary(cor_pwmed_nlsfit)
+cor_pwmed_nlsfit<-nls(ymed~k*xmed^(-a), start=list(k=max(ymed),a=2/(min_genomes+max_genomes)),trace=TRUE, control = nls.control(warnOnly=T, minFactor =0))
+if (!is.null(opt$verb_on))
+{
+	summary(cor_pwmed_nlsfit)
+}
 rsq.nls<-1-(sum((residuals(cor_pwmed_nlsfit))^2)/sum((ymed-mean(ymed))^2))
 rsq.nls
 maxYlim <- max_core
@@ -173,8 +183,11 @@ lines(xf,predict(cor_pwmed_nlsfit, dxfmed),col="red", lwd=1)
 #rsq.nls<-1-(sum((residuals(cor_expm_nlsfit))^2)/sum((y-mean(y))^2))
 #rsq.nls
 print("Core Genes: Exponential Model: Medians")
-cor_expmed_nlsfit<-nls(ymed~a*exp(-xmed/b)+c, start=list(a=exp(1)*(max(ymed)-min(ymed)),b=min_genomes,c=min(ymed)),trace=TRUE)
-summary(cor_expmed_nlsfit)
+cor_expmed_nlsfit<-nls(ymed~a*exp(-xmed/b)+c, start=list(a=exp(1)*(max(ymed)-min(ymed)),b=min_genomes,c=min(ymed)),trace=TRUE, control = nls.control(warnOnly=T, minFactor =0))
+if (!is.null(opt$verb_on))
+{
+	summary(cor_expmed_nlsfit)
+}
 rsq.nls<-1-(sum((residuals(cor_expmed_nlsfit))^2)/sum((ymed-mean(ymed))^2))
 rsq.nls
 #lines(xf,predict(cor_expm_nlsfit, dxf), col="blue", lwd=1, lty="dashed")
@@ -200,8 +213,11 @@ for (i in min_genomes:max_genomes) {
 #rsq.nls<-1-(sum((residuals(pan_pwm_nlsfit))^2)/sum((y-mean(y))^2))
 #rsq.nls
 print("Pan-Genome: Power Model: Medians")
-pan_pwmed_nlsfit<-nls(ymed~k*xmed^(a), start=list(k=max(ymed)/min_genomes,a=1),trace=TRUE)
-summary(pan_pwmed_nlsfit)
+pan_pwmed_nlsfit<-nls(ymed~k*xmed^(a), start=list(k=max(ymed)/min_genomes,a=1),trace=TRUE, control = nls.control(warnOnly=T, minFactor =0))
+if (!is.null(opt$verb_on))
+{	
+	summary(pan_pwmed_nlsfit)
+}
 rsq.nls<-1-(sum((residuals(pan_pwmed_nlsfit))^2)/sum((ymed-mean(ymed))^2))
 rsq.nls
 maxYlim <- 1.5 * max_pan
@@ -222,8 +238,11 @@ lines(xf,predict(pan_pwmed_nlsfit, dxfmed), col="red", lwd=1)
 #rsq.nls<-1-(sum((residuals(pan_expm_nlsfit))^2)/sum((y-mean(y))^2))
 #rsq.nls
 print("Pan-Genome: Exponential Model: Medians")
-pan_expmed_nlsfit<-nls(ymed~-a*exp(-xmed/b)+c, start=list(a=max(ymed),b=(min_genomes+max_genomes)/2,c=max(ymed)+min(ymed)),trace=TRUE)
-summary(pan_expmed_nlsfit)
+pan_expmed_nlsfit<-nls(ymed~-a*exp(-xmed/b)+c, start=list(a=max(ymed),b=(min_genomes+max_genomes)/2,c=max(ymed)+min(ymed)),trace=TRUE, control = nls.control(warnOnly=T, minFactor =0))
+if (!is.null(opt$verb_on))
+{
+	summary(pan_expmed_nlsfit)
+}
 rsq.nls<-1-(sum((residuals(pan_expmed_nlsfit))^2)/sum((ymed-mean(ymed))^2))
 rsq.nls
 #lines(xf,predict(pan_expm_nlsfit, dxf),col="blue", lwd=1, lty="dashed")
@@ -252,8 +271,11 @@ for (i in min_genomes:max_genomes) {
 #rsq.nls<-1-(sum((residuals(pan_pwm_nlsfit))^2)/sum((y-mean(y))^2))
 #rsq.nls
 print("Unique: Power Model: Medians")
-pan_pwmed_nlsfit<-nls(ymed~k*xmed^(a), start=list(k=max(ymed)/min_genomes,a=1),trace=TRUE)
-summary(pan_pwmed_nlsfit)
+pan_pwmed_nlsfit<-nls(ymed~k*xmed^(a), start=list(k=max(ymed)/min_genomes,a=1),trace=TRUE, control = nls.control(warnOnly=T, minFactor =0))
+if (!is.null(opt$verb_on))
+{
+	summary(pan_pwmed_nlsfit)
+}
 rsq.nls<-1-(sum((residuals(pan_pwmed_nlsfit))^2)/sum((ymed-mean(ymed))^2))
 rsq.nls
 maxYlim <- 1.5 * max_uniq
@@ -278,8 +300,11 @@ lines(xf,predict(pan_pwmed_nlsfit, dxfmed),col="red", lwd=1)
 #rsq.nls<-1-(sum((residuals(pan_expm_nlsfit))^2)/sum((y-mean(y))^2))
 #rsq.nls
 print("Unique: Exponential Model: Medians")
-pan_expmed_nlsfit<-nls(ymed~-a*exp(-xmed/b)+c, start=list(a=max(ymed),b=(min_genomes+max_genomes)/2,c=max(ymed)+min(ymed)),trace=TRUE)
-summary(pan_expmed_nlsfit)
+pan_expmed_nlsfit<-nls(ymed~-a*exp(-xmed/b)+c, start=list(a=max(ymed),b=(min_genomes+max_genomes)/2,c=max(ymed)+min(ymed)),trace=TRUE, control = nls.control(warnOnly=T, minFactor =0))
+if (!is.null(opt$verb_on))
+{
+	summary(pan_expmed_nlsfit)
+}
 rsq.nls<-1-(sum((residuals(pan_expmed_nlsfit))^2)/sum((ymed-mean(ymed))^2))
 rsq.nls
 #lines(xf,predict(pan_expm_nlsfit, dxf),col="blue", lwd=1, lty="dashed")
@@ -308,8 +333,11 @@ for (i in min_genomes:max_genomes) {
 #rsq.nls<-1-(sum((residuals(pan_pwm_nlsfit))^2)/sum((y-mean(y))^2))
 #rsq.nls
 print("Dispensable: Power Model: Medians")
-pan_pwmed_nlsfit<-nls(ymed~k*xmed^(a), start=list(k=max(ymed)/min_genomes,a=1),trace=TRUE)
-summary(pan_pwmed_nlsfit)
+pan_pwmed_nlsfit<-nls(ymed~k*xmed^(a), start=list(k=max(ymed)/min_genomes,a=1),trace=TRUE, control = nls.control(warnOnly=T, minFactor =0))
+if (!is.null(opt$verb_on))
+{
+	summary(pan_pwmed_nlsfit)
+}
 rsq.nls<-1-(sum((residuals(pan_pwmed_nlsfit))^2)/sum((ymed-mean(ymed))^2))
 rsq.nls
 maxYlim <- 1.5 * max_disp
@@ -334,8 +362,11 @@ lines(xf,predict(pan_pwmed_nlsfit, dxfmed),col="red", lwd=1)
 #rsq.nls<-1-(sum((residuals(pan_expm_nlsfit))^2)/sum((y-mean(y))^2))
 #rsq.nls
 print("Dispensable: Exponential Model: Medians")
-pan_expmed_nlsfit<-nls(ymed~-a*exp(-xmed/b)+c, start=list(a=max(ymed),b=(min_genomes+max_genomes)/2,c=max(ymed)+min(ymed)),trace=TRUE)
-summary(pan_expmed_nlsfit)
+pan_expmed_nlsfit<-nls(ymed~-a*exp(-xmed/b)+c, start=list(a=max(ymed),b=(min_genomes+max_genomes)/2,c=max(ymed)+min(ymed)),trace=TRUE, control = nls.control(warnOnly=T, minFactor =0))
+if (!is.null(opt$verb_on))
+{
+	summary(pan_expmed_nlsfit)
+}
 rsq.nls<-1-(sum((residuals(pan_expmed_nlsfit))^2)/sum((ymed-mean(ymed))^2))
 rsq.nls
 #lines(xf,predict(pan_expm_nlsfit, dxf),col="blue", lwd=1, lty="dashed")
