@@ -1,5 +1,5 @@
 #!/usr/bin/env perl
-#Copyright (C) 2011-2015 The J. Craig Venter Institute (JCVI).  All rights reserved
+#Copyright (C) 2017-2022 The J. Craig Venter Institute (JCVI).  All rights reserved
 #Written by Derrick E. Fouts, Ph.D. and Granger Sutton, Ph.D.
 
 #This program is free software: you can redistribute it and/or modify

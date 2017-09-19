@@ -1,17 +1,26 @@
 #!/usr/bin/env perl
-# $Id: cluster_consensus.pl 36425 2012-03-13 23:58:43Z mbasu $
 
-##---------------------------------------------------------------------------##
-##  File: cluster_consensus.pl
-##
-##  Author:
-##        Malay <malay@bioinformatics.org>
-##
-##  Description:
-##
-#******************************************************************************
-#* Copyright (C) 2011 Malay K Basu <malay@bioinformatics.org>
-#* This work is distributed under the license of Perl iteself.
+###############################################################################
+#                                                                             #
+#       Copyright (C) 2016-2017 J. Craig Venter Institute (JCVI).             #
+#       All rights reserved.                                                  #
+#                                                                             #
+###############################################################################
+#                                                                             #
+#    This program is free software: you can redistribute it and/or modify     #
+#    it under the terms of the GNU General Public License as published by     #
+#    the Free Software Foundation, either version 3 of the License, or        #
+#    (at your option) any later version.                                      #
+#                                                                             #
+#    This program is distributed in the hope that it will be useful,          #
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of           #
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the            #
+#    GNU General Public License for more details.                             #
+#                                                                             #
+#    You should have received a copy of the GNU General Public License        #
+#    along with this program.  If not, see <http://www.gnu.org/licenses/>.    #
+#                                                                             #
+###############################################################################
 ###############################################################################
 
 =head1 NAME
@@ -22,18 +31,13 @@ cluster_consensus.pl - Create consensus cluster from individual clustering metho
 
 cluster_consensus.pl [options] <method1.result> <method2.result> >result.txt
 
-
 =head1 DESCRIPTION
 
 Very initial implemenation of creating consensus among all methods in SaucePan.
 
-
 =head1 ARGUMENTS 
 
 Individual method results files.
-
-
-
 
 =head1 OPTIONS
 
@@ -53,15 +57,7 @@ A directory containing individual genome multifasta files.
 
 Print this help.
 
-
 =back
-
-
-=head1 SEE ALSO
-
-=head1 COPYRIGHT
-
-Copyright (c) 2011 Malay K Basu <malay@bioinformatics.org>
 
 =head1 AUTHORS
 

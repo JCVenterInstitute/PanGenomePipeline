@@ -1,4 +1,28 @@
 #!/usr/bin/env perl
+
+###############################################################################
+#                                                                             #
+#       Copyright (C) 2016-2017 J. Craig Venter Institute (JCVI).             #
+#       All rights reserved.                                                  #
+#                                                                             #
+###############################################################################
+#                                                                             #
+#    This program is free software: you can redistribute it and/or modify     #
+#    it under the terms of the GNU General Public License as published by     #
+#    the Free Software Foundation, either version 3 of the License, or        #
+#    (at your option) any later version.                                      #
+#                                                                             #
+#    This program is distributed in the hope that it will be useful,          #
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of           #
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the            #
+#    GNU General Public License for more details.                             #
+#                                                                             #
+#    You should have received a copy of the GNU General Public License        #
+#    along with this program.  If not, see <http://www.gnu.org/licenses/>.    #
+#                                                                             #
+###############################################################################
+###############################################################################
+
 #use getopts;
 use Getopt::Std;
 use DBI;
@@ -10,7 +34,7 @@ require "$FindBin::Bin/graphical_elements_rainbow.pl";
 ############################################################
 #                   start your engines
 ############################################################
-$SERVER = "SYBTIGR";
+$SERVER = "DEFAULT";
 $dbtype = "Sybase";
 &handle_invocation();
 
@@ -38,7 +62,7 @@ $usage = "
 #   (feat_type<tab>end5<tab>end3<tab>main_role<tab>feat|locus_name<tab>com_name
 # t tick increment
 
-#Example 1: db2circle.spl -u access -p access -d gpg -a 1268 -c config.file -b 3 -w 2000 -s 4 > mycircle.fig
+#Example 1: db2circle.spl -u name -p pass -d gpg -a 1268 -c config.file -b 3 -w 2000 -s 4 > mycircle.fig
 #Example 2: db2circle.sp -G myGenome_att.txt -l 2989458 -c configfile > mycircle.fig
 
 ";

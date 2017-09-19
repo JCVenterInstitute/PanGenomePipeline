@@ -1,61 +1,27 @@
 #!/usr/bin/env perl
-# $Id: cluster_synteny.pl 32957 2010-08-05 16:22:09Z mbasu $
 
-##---------------------------------------------------------------------------##
-##  File: cluster_synteny.pl
-##
-##  Author:
-##        Malay <malay@bioinformatics.org>
-##
-##  Description:
-##
-#******************************************************************************
-#* Copyright (C) 2010 Malay K Basu <malay@bioinformatics.org>
-#* This work is distributed under the license of Perl iteself.
 ###############################################################################
-
-=head1 NAME
-
-cluster_synteny.pl - One line description.
-
-=head1 SYNOPSIS
-
-cluster_synteny.pl [options] -o <option>
-
-
-=head1 DESCRIPTION
-
-Write a description of your prgram. 
-
-
-=head1 ARGUMENTS 
-
-=over 4
-
-=item B<--option|-o>
-
-First option.
-
-
-
-=back
-
-=head1 OPTIONS
-
-Something here.
-
-
-=head1 SEE ALSO
-
-=head1 COPYRIGHT
-
-Copyright (c) 2010 Malay K Basu <malay@bioinformatics.org>
-
-=head1 AUTHORS
-
-Malay K Basu <malay@bioinformatics.org>
-
-=cut
+#                                                                             #
+#       Copyright (C) 2016-2017 J. Craig Venter Institute (JCVI).             #
+#       All rights reserved.                                                  #
+#                                                                             #
+###############################################################################
+#                                                                             #
+#    This program is free software: you can redistribute it and/or modify     #
+#    it under the terms of the GNU General Public License as published by     #
+#    the Free Software Foundation, either version 3 of the License, or        #
+#    (at your option) any later version.                                      #
+#                                                                             #
+#    This program is distributed in the hope that it will be useful,          #
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of           #
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the            #
+#    GNU General Public License for more details.                             #
+#                                                                             #
+#    You should have received a copy of the GNU General Public License        #
+#    along with this program.  If not, see <http://www.gnu.org/licenses/>.    #
+#                                                                             #
+###############################################################################
+###############################################################################
 
 ##---------------------------------------------------------------------------##
 ## Module dependencies
