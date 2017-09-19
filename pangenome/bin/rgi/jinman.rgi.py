@@ -184,7 +184,7 @@ def getORFDNASequence(file_name,orf):
 
 def getSubmittedProteinSequence(afile):
 	submitted_proteins_dict = {}
-	if os.stat(afile).st_size != 0:
+	if os.stat(os.path.abspath(afile)).st_size != 0:
 		from Bio import SeqIO
 		for record in SeqIO.parse(afile, 'fasta'):
 			submitted_proteins_dict[record.id] = str(record.seq)
