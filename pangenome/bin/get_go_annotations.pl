@@ -67,6 +67,11 @@ use File::Path qw(mkpath remove_tree);
 use File::Glob qw(glob);
 use grid_tasks;
 
+#TODO: Move these declarations out of the script and into a config file readable across the whole pipeline.
+use Env qw(@PATH @LD_LIBRARY_PATH);
+unshift @PATH, '/usr/local/packages/ncbi-blast+/bin/';
+unshift @LD_LIBRARY_PATH, '/usr/local/packages/python/lib/';
+
 my $BIN_DIR = $FindBin::Bin;
 my $FIX_HEADERS_EXEC = "$BIN_DIR/clean_multifasta.pl";
 my $TRANSLATE_ORFS_EXEC = 'transeq';
@@ -262,19 +267,28 @@ sub run_aro_searches {
     my ( $input_fasta ) = @_;
 
     my $aro_dir = "$working_dir/aro_searches";
+    my $abs_aro_dir = abs_path($aro_dir); ## For training machine
     mkdir $aro_dir || die "Can't make $aro_dir: $!\n";
     my $old_dir = getcwd();
+
+    copy( $input_fasta, $aro_dir ) || die "Can't copy $input_fasta: $!\n";
+
     chdir $aro_dir || die "Can't chdir into $aro_dir: $!\n";
+
+## For traininf machine
+$input_fasta = (fileparse($input_fasta))[0];
 
     my $output_json = $input_fasta . '.aro'; # Will actually be $input_fasta.aro.json
     my $output_file = 'dataSummary'; # Will actually be $input_fasta.aro.txt
+    #my $new_card_json  = "$aro_dir/card.json";
+    my $new_card_json  = "$abs_aro_dir/card.json"; ## for training machine
 
     # copy card.json & other files needed for the run. Every time.  sigh.
     copy_aro_files( "$RGI_DIR/_db", $aro_dir );
-    symlink "../$input_fasta", "$aro_dir/$input_fasta";
+#    symlink "../$input_fasta", "$aro_dir/$input_fasta";
 
     # Run rgi.
-    my @cmd = ( '/usr/bin/env', 'python', $RGI_EXEC, '-t', 'protein', '-i', $input_fasta, '-o', $output_json, '-cd', 'NO' );
+    my @cmd = ( '/usr/bin/env', 'python', $RGI_EXEC, '-t', 'protein', '-i', $input_fasta, '-o', $output_json );
     my $base = (fileparse($RGI_EXEC, qr/\.[^.]*/ ))[0];
     my $lf = "$log_dir/$base.log";
     my $ef = "$log_dir/$base.err";
