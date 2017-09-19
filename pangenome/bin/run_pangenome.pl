@@ -902,13 +902,15 @@ sub run_run_panoct {
 
     my ( $step_dir, $combined_fasta, $combined_att, $genome_list ) =@_;
 
-    my @cmd = ( $RUNPANOCT_EXEC, '-w', $step_dir, '-P', $opts{ project_code } );
+    my @cmd = ( $RUNPANOCT_EXEC, '-w', $step_dir);
+    push( @cmd, '-P', $opts{ project_code } ) if $opts{ project_code };
     push( @cmd, '-g', $genome_list ) if $genome_list;
     push( @cmd, '-a', $combined_att ) if $combined_att;
     push( @cmd, '-f', $combined_fasta ) if $combined_fasta;
     push( @cmd, '--use_nuc' ) if ( $opts{ use_nuc } );
     push( @cmd, '--strict', 'low' ) if ( $opts{ less_strict_panoct } );
     push( @cmd, '--panoct_local' ) if ( $opts{ panoct_local } );
+    push( @cmd, '--blast_local' ) if ( $opts{ blast_local });
     if ( $opts{ no_blast } ) {
         my $blast_file = "$step_dir/combined.blast";
         if ( -f $blast_file ) {

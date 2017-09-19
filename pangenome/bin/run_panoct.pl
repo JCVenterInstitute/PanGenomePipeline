@@ -662,7 +662,12 @@ sub call_genome_properties {
 
 sub call_annotation_scripts {
 
-    my @cmd = ( $ANNOT_EXEC, '-i', "$results_dir/centroids.fasta", '-P', $project_code, '-w', $results_dir, '-l', $log_dir );
+    my @cmd = ( $ANNOT_EXEC, '-i', "$results_dir/centroids.fasta", '-w', $results_dir, '-l', $log_dir );
+    if ( $project_code ) {
+        push( @cmd, '-P', $project_code );
+    } else {
+        push( @cmd, '--hmm_local' );
+    }
     push( @cmd, '--nuc' ) if ( $opts{ use_nuc } );
 
     _log( "Running annotation script:\n" . join( ' ', @cmd ), 0 );
