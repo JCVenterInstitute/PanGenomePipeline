@@ -28,7 +28,7 @@ B<--project_code>           :   Project code for UGE accounting purposes used wh
 
 B<--blast_local>            :   Run blast jobs on current host instead of farming them to a grid.
 
-B<--no_blast>               :   Don't rerun blast.
+B<--no_blast>               :   Don't rerun blast.  Assumes combined.blast exists wherever needed.
 
 B<--panoct_local>           :   Run panoct on current host instead of farming them to a grid.
 
@@ -902,13 +902,15 @@ sub run_run_panoct {
 
     my ( $step_dir, $combined_fasta, $combined_att, $genome_list ) =@_;
 
-    my @cmd = ( $RUNPANOCT_EXEC, '-w', $step_dir, '-P', $opts{ project_code } );
+    my @cmd = ( $RUNPANOCT_EXEC, '-w', $step_dir);
+    push( @cmd, '-P', $opts{ project_code } ) if $opts{ project_code };
     push( @cmd, '-g', $genome_list ) if $genome_list;
     push( @cmd, '-a', $combined_att ) if $combined_att;
     push( @cmd, '-f', $combined_fasta ) if $combined_fasta;
     push( @cmd, '--use_nuc' ) if ( $opts{ use_nuc } );
     push( @cmd, '--strict', 'low' ) if ( $opts{ less_strict_panoct } );
     push( @cmd, '--panoct_local' ) if ( $opts{ panoct_local } );
+    push( @cmd, '--blast_local' ) if ( $opts{ blast_local });
     if ( $opts{ no_blast } ) {
         my $blast_file = "$step_dir/combined.blast";
         if ( -f $blast_file ) {
@@ -1103,7 +1105,7 @@ sub check_options {
     $att_suffix = $opts{ use_nuc } ? '.natt' : 'patt';
     $att_suffix = $opts{ att_suffix } // $att_suffix;
 
-    unless ( $opts{ panoct_local } && $opts{ blast_local } ) {
+    unless ( $opts{ panoct_local } && ( $opts{ blast_local } || $opts{ no_blast } ) ) {
 
         $errors .= "Need to supply a --project_code\n" unless $opts{ project_code };
 
