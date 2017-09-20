@@ -24,7 +24,7 @@ echo "Making xfig pan-chromosome file ..."
 $src_dir/db2circle_rainbow_flatfile.spl -G genome.att -c config.file -F data.file > pan-chromosome.fig
 
 echo "Converting to .pdf ..."
-/usr/bin/fig2dev -L pdf pan-chromosome.fig pan-chromosome.pdf
+/usr/local/bin/fig2dev -L pdf pan-chromosome.fig pan-chromosome.pdf
 
 echo "Finished making the pan-chromosome circular figure."
 exit
