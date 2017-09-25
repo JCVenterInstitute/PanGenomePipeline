@@ -45,6 +45,7 @@ pangenome_statistics.pl - calculates general statistics and files
                                       -i <role ids>
                                       -t <com_name to limit by>
                                       --role_lookup
+                                      --core_threshold
                                       -o <output directory>
                                      ]
          
@@ -73,6 +74,8 @@ B<--frameshift,-f>      :   Path to a frameshift file <optional>
 B<--fusion>             :   Path to fusion/fragment file <optional>
 
 B<--role_lookup>        :   File of role_ids and their associated mainrole/subrole categories
+
+B<--core_threshold>     :   Percentage of genomes that need to be representd in a cluster for that cluster to be labeled as core [1-100].
 
 B<--help,-h>            :   Display this help message.
 
@@ -129,6 +132,7 @@ GetOptions( \%opts,
 	    'output|o=s',
 	    'hmm_file=s',
 	    'role_lookup=s',
+	    'core_threshold=i',
 	    'help|h') || die "Error getting options! $!";
                     
 pod2usage( { -exitval => 1, -verbose => 2 } ) if $opts{help};
@@ -963,24 +967,7 @@ sub process_db_file{
 
     return ($databases,\@db_array);
 }
-sub find_potential_clusters{
-    my ($cluster_hsh,$num_dbs) = @_;
 
-    my($sing,$core,$shared);
-
-    my $max_num = 0;
-
-    foreach my $id (keys %$cluster_hsh){
-	my $count = $cluster_hsh->{$id}->{member_count};
-        $max_num = $count if $count > $max_num;
-
-	$sing->{$id} = $cluster_hsh->{$id}->{members} if ($count == 1);
-	$core->{$id} = $cluster_hsh->{$id}->{members} if ($count == $num_dbs);
-	$shared->{$id} = $cluster_hsh->{$id}->{members} if ($count > 1);
-    }
-
-    return($sing,$core,$shared);
-}
 sub parse_cluster_results{
     my ($results_file,$num_dbs) = @_;
 
@@ -1015,7 +1002,13 @@ sub parse_cluster_results{
 	my $members = join(",",sort @values);
 	
 	$sing->{$id[0]} = $members if ($count == 1);
-	$core->{$id[0]} = $members if ($count == $num_dbs);
+
+	my $perc = ($count / $num_dbs) * 100;
+
+	if($perc >= $opts{core_threshold}){
+	    $core->{$id[0]} = $members;
+	}
+	
 	$shared->{$id[0]} = $members if ($count > 1);
     
 	$INITIAL_COUNTS->{cluster}++;
@@ -1105,5 +1098,8 @@ sub check_params {
     if ( $opts{combined_seq} ) {
         $errors .= "File is size zero or does not exist: $opts{combined_seq}\n" unless(-s $opts{combined_seq});
     }
+
+    $opts{core_threshold} = $opts{core_threshold} // 95;
+ 
     die $errors if $errors;
 }
