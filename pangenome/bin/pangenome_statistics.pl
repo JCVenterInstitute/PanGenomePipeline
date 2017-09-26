@@ -461,6 +461,10 @@ sub print_overview{
     print "Total Genomes: " . scalar @dbs . "\n";
     print "\n";
 
+    my $core_perc = (scalar @dbs) * ($opts{core_threshold}/100);
+    my $core_threshold = sprintf("%.3f",$core_perc);
+    print "Core cluster threshold: $opts{core_threshold}% ($core_threshold genomes)\n\n";
+    
     print "Type\tClusters\tLoci\n";
     my %print_rep = ("shared_no_ref" => "Shared clusters that do no include reference",
 		     "core_no_ref" => "Clusters that include all genomes except reference",
@@ -475,7 +479,7 @@ sub print_overview{
 	print  $display . ": " . $TYPE_COUNTS->{$type}->{cluster} . "\t" . $TYPE_COUNTS->{$type}->{loci} . "\n";
     }
     
-    print "Clusters with Fragments: $FRAME_COUNT\n" if $FRAME_COUNT;
+    print "Clusters with Fragments:" . scalar(keys %$FRAME_COUNT) . "\n" if defined $FRAME_COUNT;
     
     #Print HMM info
     if($opts{hmm_file}){
@@ -903,7 +907,6 @@ sub print_clusters_of_interest{
 			
 		    }else{
 			
-			my $num_of_dbs = scalar keys %$db_member;
 			print "\n" . $string;
 			$TYPE_COUNTS->{$type}->{cluster}++;
 			$TYPE_COUNTS->{$type}->{loci} += scalar @members;
@@ -916,8 +919,8 @@ sub print_clusters_of_interest{
 		    $TYPE_COUNTS->{$type}->{cluster}++;
 		    $TYPE_COUNTS->{$type}->{loci} += scalar @members;
 		    $HISTOGRAM->{$type}->{$num_of_dbs}++ if ($type =~ /\b(shared|singletons)\b/);
-		    $FRAME_COUNT++ if $frameshift;
-		    
+		    #$FRAME_COUNT++ if $frameshift;
+		    $FRAME_COUNT->{$cluster}++ if $frameshift;
 		    print "\n" . $string;
 		    
 		}
