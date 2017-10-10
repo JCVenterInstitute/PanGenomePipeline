@@ -312,9 +312,11 @@ sub parse_nuc_features {
             ( $end5, $end3 ) = ( $feat_object->start, $feat_object->end );
             # length check
             if ( $end3 - $end5 + 1 < $cutoff_len ) {
-                warn "Skipping feature at $end5..$end3 because it is smaller than the cutoff of $cutoff_len.\n" if $verbose;
-                $feature_counts->{ $filename }->{ skipped_length }++;
-                next;
+                unless ( $end3 == 1 ) {
+                    warn "Skipping feature at $end5..$end3 because it is smaller than the cutoff of $cutoff_len.\n" if $verbose;
+                    $feature_counts->{ $filename }->{ skipped_length }++;
+                    next;
+                }
             }
 
             $feature_counts->{ $filename }->{ $feat_object->primary_tag }++;
@@ -663,7 +665,12 @@ sub parse_coord_string {
     $coords =~ s/[\<\>]//g;
 
     #Get the key and end5 and end3
-    if ( $coords =~ /join\((.*)\)/ ) {
+    if ( $coords =~ /join\((\d+)\.\.\d+,1\)/ ) {
+        $e5=$1;
+        $e3=1;
+        $key="$e5..1";
+    } elsif ( $coords =~ /join\((.*)\)/ ) {
+    #if ( $coords =~ /join\((.*)\)/ ) {
 
         my $values = $1;
         $values =~ s/[\(\)]//;
