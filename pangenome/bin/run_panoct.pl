@@ -970,7 +970,7 @@ sub call_new_plot_pangenome {
 
     capture_merged{
 
-        system( @cmd ) == 0 || _die( "Couldn't run new plot pangenome script: $? $!", __LINE__ );
+        system( @cmd ) == 0 || _log( "Couldn't run new plot pangenome script: $? $!", __LINE__ );
 
     } stdout => $lh;
 
