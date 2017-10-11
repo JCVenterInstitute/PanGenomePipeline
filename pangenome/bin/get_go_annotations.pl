@@ -356,14 +356,13 @@ sub run_hmmer_searches {
         # Need to split the input fasta.
         $split_dir = "$working_dir/split_fastas";
         mkpath( $split_dir ) unless ( -d $split_dir );
-        my @split_cmd = ( $SPLIT_FASTA_EXEC, '-f', $input_fasta, '-n', '1000', '-o', $split_dir );
+        my @split_cmd = ( $SPLIT_FASTA_EXEC, '-f', $input_fasta, '-n', '1000', '-o', $split_dir, '-e', '.fasta' );
         my $base = (fileparse($SPLIT_FASTA_EXEC, qr/\.[^.]*/ ))[0];
         my $lf = "$log_dir/$base.log";
         my $lh = IO::File->new( $lf, "w+" ) || die "Can't open logfile: $lf: $!\n";
         capture_merged {
             system( @split_cmd ) == 0 || die( "Error running splitfasta: ", join( ' ', @split_cmd ), "\n" );
         } stdout => $lh;
-        rename_split_files( $split_dir );
         @file_list = <$split_dir/split_fasta.*>;
 
     }
@@ -467,24 +466,6 @@ sub run_hmmer_searches {
 }
 
 
-sub rename_split_files {
-# Hack to get around hmmer2go's convention of stripping away the last 'extension' on output files.
-
-    my ( $split_dir ) = @_;
-
-    my @files = glob("$split_dir/split_fasta.*");
-
-    for my $orig_file ( @files ) {
-
-        my $extension = ( fileparse( $orig_file, qr/\.[^.]*/) )[2];
-        my $new_name = $orig_file.$extension;
-        move( $orig_file, $new_name );
-
-    }
-
-}
-
-
 sub _cat {
 # Given a list of file names, concatonate the first through n minus one-th
 # onto the nth.
@@ -505,8 +486,7 @@ sub write_hmm_shell_script {
 
     my ( $input_fasta, $split_dir, $hmm_dir, $hmmer2go_cmd_ref, $db ) = @_;
 
-    # duplicate $SGE_TASK_ID string is intentional and necessary, and unintentionally hilarious
-    my @cmd = ( @$hmmer2go_cmd_ref, '-i', "$split_dir".'/split_fasta.$SGE_TASK_ID.$SGE_TASK_ID' );
+    my @cmd = ( @$hmmer2go_cmd_ref, '-i', "$split_dir".'/split_fasta.$SGE_TASK_ID.fasta' );
     my $script_name = "$hmm_dir/grid_$db".'_hmmer2go.sh';
 
     open( my $gsh, '>', $script_name ) || die "Can't write grid script: $script_name: $!\n";

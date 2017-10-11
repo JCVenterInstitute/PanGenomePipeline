@@ -43,11 +43,10 @@ use TIGR::Foundation;
 
 my %opts;
 GetOptions(\%opts,'fasta_file|f=s',
-	   'max_num|n=i',
-	   'output|o=s',
-           'help|h');
-
-&check_params;
+    'max_num|n=i',
+    'output|o=s',
+    'extension|e=s',
+    'help|h') || die "Couldn't get options! $!\n";
 
 my $tf_object = new TIGR::Foundation;
 my @errors;
@@ -55,38 +54,56 @@ my @errors;
 my $seq_count = 0;
 my $file_count = 1;
 my $output;
+my $extension;
 
-my $fr = new TIGR::FASTAreader ($tf_object,\@errors, $opts{fasta_file});
-my $fw = new TIGR::FASTAwriter($tf_object, \@errors);
-$fw->open("$output/split_fasta.$file_count");
+&check_params;
+
+my $fr = new TIGR::FASTAreader( $tf_object, \@errors, $opts{fasta_file} );
+my $fw = new TIGR::FASTAwriter( $tf_object, \@errors );
+my $filename = "$output/split_fasta.$file_count";
+$filename .= $extension if $extension;
+$fw->open( $filename );
 
 while ( $fr->hasNext() ) {
+
     my $seq_obj = $fr->next();
 
-    if($seq_count < $opts{max_num}){
-	$fw->write($seq_obj);
-	$seq_count++;
-    }else{
-	#Close and open new file
-	$file_count++;
-	$seq_count = 0;
-	$fw->open("$output/split_fasta.$file_count");
-	$fw->write($seq_obj);
-	$seq_count++;
+    if( $seq_count < $opts{max_num} ) {
+
+        $fw->write( $seq_obj );
+        $seq_count++;
+
+    } else {
+
+        #Close and open new file
+        $file_count++;
+        $seq_count = 0;
+        $filename = "$output/split_fasta.$file_count";
+        $filename .= $extension if $extension;
+        $fw->open( $filename );
+        $fw->write( $seq_obj );
+        $seq_count++;
+
     }
+
 }
 
 exit(0);
 
-sub check_params{
-    my $usage = "\nUsage: ./split_fasta.pl --fasta_file <fasta file to split> --max_num <max number of sequences per file> --output <location>\n\n";
+sub check_params {
+
+    my $usage = "\nUsage: ./split_fasta.pl --fasta_file <fasta file to split> --max_num <max number of sequences per file> --output <location> --extension <new fasta extension>\n";
     
-    if (!($opts{fasta_file}) || !($opts{max_num}) || $opts{help}){
-	print STDERR "$usage";
-	exit;
+    if ( !($opts{fasta_file}) || !($opts{max_num}) || $opts{help} ) {
+
+        die "$usage\n";
+
     }
 
-    $output = $opts{output} // cwd;
+    $extension = $opts{ extension } // undef;
+
+    $output = $opts{ output } // cwd;
     
-    mkpath($output) unless(-d $output);
+    mkpath( $output ) unless( -d $output );
+
 }
