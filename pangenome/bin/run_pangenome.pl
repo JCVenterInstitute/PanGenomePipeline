@@ -34,8 +34,9 @@ run_pangenome.pl - run the pangenome pipeline
 =head1 SYNOPSIS
 
     USAGE: run_pangenome.pl -P <project code> | --blast_local | --no_blast
-                            [-g <genomes.list> ] [-c <clusters.list>] [-w <working directorya>]
-                            [--rerun_groups <group_list>] [--expand_only]
+                            [-g <genomes.list> ] [-c <clusters.list>] [-w <working directory>]
+                            [--grouping_file <meta-grouping_file>]
+                            [--rerun_groups <group_list>] [--backend_only]
                             [--less_strict_panoct]
 
 =head1 OPTIONS
@@ -44,7 +45,11 @@ B<--genome_list_file, -g>   :   List of genome names. The order here determines 
 
 B<--working_dir, -w>        :   Path in which multiple directories are to be created [DEFAULT: current dir]
 
-B<--use_nuc, -n>                :   Use nucleotide versions of blast programs and input files
+B<--combined_fasta, -f>     :   Path to fasta file containing all features from all genomes.  (Not required for iterative runs. ) [DEFAULT: <working_dir>/fasta_dir/combined.fasta ]
+
+B<--combined_att, -a>       :   Path to gene attribute file containing all features from all genoems.  (Not required for iterative runs. ) [DEFAULT: <working_dir>/combined.att]
+
+B<--use_nuc, -n>            :   Use nucleotide versions of blast programs and input files
 
 B<--att_suffix>             :   Provide an alternate extension for recognizing .att files [DEFAULT: ".patt"/".natt"]
 
@@ -56,13 +61,15 @@ B<--no_blast>               :   Don't rerun blast.  Assumes combined.blast exist
 
 B<--panoct_local>           :   Run panoct on current host instead of farming them to a grid.
 
+B<--grouping_file>          :   Run meta-grouping analysis using the provided grouping of input genomes [DEFAULT: <working_dir>/groups.list, if available ]
+
 ITERATIVE OPTIONS:
 
-B<--cluster_file, -c>       :   The clustering file determining the order of the steps to run. [DEFAULT: <working_dir>/clusters.list ]
+B<--cluster_file, -c>       :   The clustering file determining the order of the steps to run. [DEFAULT: <working_dir>/clusters.list, if available ]
 
 B<--rerun_groups>           :   Provide a comma-seperated list of groups to rerun.
 
-B<--expand_only>            :   Sets --no_blast; skips straight to the expansion of
+B<--backend_only>            :   Sets --no_blast; skips straight to the expansion of
                                 'pseudo-genome' names in the very last step's result files. 
 
 PANOCT OPTIONS:
@@ -79,7 +86,7 @@ When used with a --cluster_file, will run the iterative JCVI panoct/pangenome pi
 
 1. Read in the cluster file and build an 'itinerary' of steps.
 
-2. For each step: (unless --expand_only is used)
+2. For each step: (unless --backend_only is used)
 
     a. Create a work area for this step.
     b. Create the combined.fasta needed for blast & panoct.
@@ -103,11 +110,13 @@ Modified files are recreated as <filename>.expanded, leaving the originals in pl
 
 The pipeline will run given a variety of setup options.  To run with as few command-line parameters as possible, the pipeline needs to have the following files in the described locations:
 
-B<genomes.list> - Expected in the current working directory.  Can be specified with --genome_list_file.  This file is a single-column file of genome IDs that have been used as filenames.
+B<genomes.list> - Expected in the working directory.  Can be specified with --genome_list_file.  This file is a single-column file of genome IDs that have been used as filenames.
 
-B<fasta_dir>    - directory within the current working directory containing a multifasta of feature sequences per genome, named according to the IDs in genomes.list
+B<fasta_dir>    - directory within the working directory containing a multifasta of feature sequences per genome, named according to the IDs in genomes.list
 
-B<att_dir>      - directory within the current working directory containing a 'gene attribute' file per genome, named according to the IDs in genomes.list
+B<att_dir>      - directory within the working directory containing a 'gene attribute' file per genome, named according to the IDs in genomes.list
+
+B<grouping_file> - Optional.  When present, directs the pipeline to run 'create_meta_groupings.pl' on the listed genomes.
 
 B<clusters.list> - Optional.  When present, directs the pipeline to enter 'iterative' mode.  A small sample file might look like:
 
@@ -138,6 +147,7 @@ use FindBin;
 use lib File::Spec->catdir( $FindBin::Bin, '..', 'lib' );
 
 use Capture::Tiny qw{ capture capture_merged };
+use Path::Tiny;
 use IO::File;
 use Cwd qw(cwd abs_path);
 use FindBin;
@@ -156,6 +166,7 @@ my $GENE_ORDER_EXEC  = "$BIN_DIR/gene_order.pl";
 my $CONVERT_ATT_EXEC = "$BIN_DIR/convert_att_file_to_hsh.pl";
 my $STATISTICS_EXEC  = "$BIN_DIR/pangenome_statistics.pl";
 my $RUNPANOCT_EXEC   = "$BIN_DIR/run_panoct.pl";
+my $GROUPING_EXEC    = "$BIN_DIR/create_meta_groupings.pl";
 
 my $DEFAULT_ATT_SUFFIX = 'att';
 my $DEFAULT_WORKING_DIR = Cwd::getcwd;
@@ -163,7 +174,10 @@ my $DEFAULT_WORKING_DIR = Cwd::getcwd;
 my $genome_list_file    = '';
 my $att_suffix          = '.patt';
 my $working_dir         = '';
+my $combined_att        = '';
+my $combined_fasta      = '';
 my $cluster_file        = '';
+my $grouping_file       = '';
 my $lfh                 = undef;
 my $debug               = 0;
 
@@ -180,7 +194,8 @@ GetOptions( \%opts,
             'panoct_local',
             'project_code|P=s',
             'less_strict_panoct',
-            'expand_only',
+            'backend_only',
+            'grouping_file=s',
             'help|h',
          ) || die "Problem getting options.\n";                             
 pod2usage( { -exitval => 1, -verbose => 2 } ) if $opts{help};
@@ -197,7 +212,7 @@ unless ( $cluster_file ) {
     _log( "No cluster_file found.  This is ok.\nProceeding with non-iterative pangenome.", 0 );
 
     # Run single pangenome.  Then exit.
-    run_run_panoct( $working_dir );
+    run_run_panoct( $working_dir, $combined_fasta, $combined_att, $genome_list_file, $grouping_file );
 
     exit(0);
 
@@ -218,6 +233,8 @@ my %locus2genome;
 
 # read in the cluster file, plot the itinerary, get some files.
 my $itinerary = build_itinerary( $cluster_file );
+# Need final step name for possible meta group run in iterative runs:
+my $final_step = (keys %{@$itinerary[-1]} )[0];
 
 # set up rerun_groups if requested
 my @rerun_groups;
@@ -228,7 +245,7 @@ if ( $opts{ rerun_groups } ) {
 
 }
 
-unless ( $opts{ expand_only } ) {
+unless ( $opts{ backend_only } ) {
 
     for my $step ( @$itinerary ) {
 
@@ -282,7 +299,72 @@ resolve_frameshift_loci( $itinerary );
 my $combined_stuff = run_statistics( abs_path( $genome_list_file ) );
 final_panoct_run( $combined_stuff );
 
+if ( $grouping_file ) {
+
+    my $combined_att_dat = make_combined_att_for_groups( $working_dir, $att_dir, $genome_list_file, $working_dir );
+    run_meta_grouping_analysis( $working_dir, $combined_att_dat, "$working_dir/centroids.fasta.expanded", "$working_dir/matchtable.txt.expanded", $grouping_file, "$working_dir/groups", $working_dir );
+
+}
+
 exit(0);
+
+
+sub make_combined_att_for_groups {
+
+    my ( $working_dir, $att_dir, $genomes_list, $log_dir ) = @_;
+
+    # look for target file, leave and return if it exists.
+    my $target_file = ( $combined_att ) ? "$combined_att.dat" : "$working_dir/combined.att.dat";
+    if ( -f $target_file ) {
+        return $target_file;
+    }
+    
+    # open genomes list so we can loop over att files, then combine them all (unless it already exists)
+    my $output_file = ( $combined_att ) ? $combined_att : "$att_dir/combined.att";
+
+    if ( -f $output_file ) {
+        my $basename = path( $output_file )->basename;
+        _log( "combined att file exists at: $output_file, will not recreate, but will create $working_dir/$basename.dat.", 0 );
+    } else {
+
+        my $ofh = path( $output_file );
+
+        my $gfh = path( $genomes_list );
+        for my $genome ( $gfh->lines ) {
+
+            chomp $genome;
+            my $att_file = "$att_dir/$genome$att_suffix";
+            _die( "Can't find $att_file", __LINE__ ) unless ( -f $att_file );
+
+            my $afh = path( $att_file );
+            my @att_lines = $afh->lines;
+
+            $ofh->append( @att_lines );
+
+        }
+
+    }
+
+    # run convert_att_file_to_hsh.pl
+    my @cmd = ( $CONVERT_ATT_EXEC, $output_file, $working_dir );
+    _log( "Running convert_att_file_to_hsh:\n" . join( ' ', @cmd ) . "\n", 0 );
+
+    my $clf = "$log_dir/convert_att_file_to_hsh.log_2";
+    my $clh = IO::File->new( $clf, "w+" ) || _die( "Can't open $clf for logging: $!", __LINE__ );
+    capture_merged{
+
+        system( @cmd ) == 0 || _die( "Error running convert_att_file_to_hsh.pl command!", __LINE__ );
+
+    } stdout => $clh;
+
+    # Make sure it exists, then scram.
+    if ( -f $target_file ) {
+        return $target_file;
+    } else {
+        _die(  "Can't find $target_file.", __LINE__ );
+    }
+
+}
 
 
 sub no_rerun {
@@ -499,7 +581,7 @@ sub create_final_combined_att {
 
 
 sub fill_locus2genome {
-# When --expand_only is used, locus2genome isn't populated on the fly, 
+# When --backend_only is used, locus2genome isn't populated on the fly, 
 # so we have to fill it with data from all of the att files for the
 # genomes in --genome_list
 # assume everything is in $working_dir/att_dir
@@ -887,6 +969,26 @@ sub expand_clusters {
 }
 
 
+sub run_meta_grouping_analysis {
+
+    my ( $working_dir, $gene_att_file, $centroids_fasta, $panoct_result, $grouping_file, $output_dir, $log_dir ) = @_;
+
+    my @cmd = ( $GROUPING_EXEC, '-a', $gene_att_file, '-c', $centroids_fasta, '-m', $panoct_result, '-f', $grouping_file, '-o', $output_dir, '-g', $genome_list_file );
+
+    _log( "Running grouping analysis:\n" . join( ' ', @cmd ) . "\n", 0 );
+
+    my $gl = "$log_dir/create_meta_groupings.log";
+    my $gh = IO::File->new( $gl, "w+" ) || _die( "Can't open $gl for logging: $!", __LINE__ );
+
+    capture_merged{
+
+        system( @cmd ) == 0 || _die( "Error running create_meta_groupings.pl command!", __LINE__ );
+
+    } stdout => $gh;
+
+}
+
+
 sub create_pseudo_genome_files {
 # create files representing a step that can be used as input for a downstream step in the pipeline.
 
@@ -924,9 +1026,9 @@ sub create_pseudo_genome_files {
 
 sub run_run_panoct {
 
-    my ( $step_dir, $combined_fasta, $combined_att, $genome_list ) =@_;
+    my ( $working_dir, $combined_fasta, $combined_att, $genome_list, $grouping_file ) =@_;
 
-    my @cmd = ( $RUNPANOCT_EXEC, '-w', $step_dir);
+    my @cmd = ( $RUNPANOCT_EXEC, '-w', $working_dir);
     push( @cmd, '-P', $opts{ project_code } ) if $opts{ project_code };
     push( @cmd, '-g', $genome_list ) if $genome_list;
     push( @cmd, '-a', $combined_att ) if $combined_att;
@@ -936,19 +1038,27 @@ sub run_run_panoct {
     push( @cmd, '--panoct_local' ) if ( $opts{ panoct_local } );
     push( @cmd, '--blast_local' ) if ( $opts{ blast_local });
     if ( $opts{ no_blast } ) {
-        my $blast_file = "$step_dir/combined.blast";
+        my $blast_file = "$working_dir/combined.blast";
         if ( -f $blast_file ) {
             push( @cmd, '--blast_file', $blast_file );
         } else {
-            _die( "--no_blast used, but I can't find combined.blast in $step_dir!", __LINE__ );
+            _die( "--no_blast used, but I can't find combined.blast in $working_dir!", __LINE__ );
         }
     }
 
-# hack: REMOVE ONCE NEW_PLOT_PANGENOME is FIXED
-#push( @cmd, '--no_new_plot' );
     _log( "Running run_panoct.pl:\n" . join( ' ', @cmd ), 0 );
 
     system( @cmd ) == 0 || _die( "Problem with running run_panoct.pl", __LINE__ );
+
+    if ( $grouping_file ) {
+
+        my $centroids_fasta = "$working_dir/results/centroids.fasta";
+        my $panoct_result = "$working_dir/results/panoct.result";
+        my $combined_att_dat = make_combined_att_for_groups( $working_dir, $att_dir, $genome_list_file, "$working_dir/logs" );
+
+        run_meta_grouping_analysis( $working_dir, $combined_att_dat, $centroids_fasta, $panoct_result, $grouping_file, "$working_dir/groups", "$working_dir/logs" );
+
+    }
 
 }
 
@@ -1139,6 +1249,22 @@ sub check_options {
     $genome_list_file = $opts{ genome_list_file } // "$working_dir/genomes.list";
     $errors .= "Can't find genome_list_file: $genome_list_file\n" unless ( -f $genome_list_file );
 
+    # check grouping file if it is passed in
+    if ( $opts{ grouping_file } ) {
+
+        $grouping_file = $opts{ grouping_file };
+        $errors .= "Can't find grouping_file: $grouping_file\n" unless ( -f $grouping_file );
+
+    } elsif ( -f "$working_dir/groups.list" ) {
+
+        $grouping_file = "$working_dir/groups.list";
+
+    }
+
+    if ( $grouping_file ) {
+        $grouping_file = abs_path( $grouping_file );
+    }
+
     # check cluster file
     if ( $opts{ cluster_file } ) { 
 
@@ -1150,6 +1276,19 @@ sub check_options {
         $cluster_file = "$working_dir/clusters.list";
 
     }
+
+    # check for combined.att
+    if ( $opts{ combined_att } ) {
+        $combined_att = $opts{ combined_att };
+        $errors .= "Can't find combined.att: $combined_att\n" unless ( -f $combined_att );
+    }
+
+    # check for combined.fasta
+    if ( $opts{ combined_fasta } ) {
+        $combined_fasta = $opts{ combined_fasta };
+        $errors .= "Can't find combined_fasta: $combined_fasta\n" unless ( -f $combined_fasta );
+    }
+
 
     die "$errors" if $errors;
 
