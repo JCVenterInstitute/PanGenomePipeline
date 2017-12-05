@@ -268,8 +268,22 @@ sub parse_data {
 
     # load ids if necessary
     my ( $biosample_ids, $assembly_accs, $names );
+    my %still_unseen; # Needed for --biosample_list checking.
     if ( $opts{ biosample_list } ) {
+
         $biosample_ids = load_input_ids( $opts{ biosample_list } ); 
+
+        # Let me explain this next line... we want a hash with biosample ids as the keys
+        # to both check for the existance of a given biosample and also make it easy to
+        # remove from the set of keys to check.  By the end of the process of looking
+        # for lines in assembly_summary.txt for matching lines, we'll have a hash with
+        # keys that represent biosample ids that are missing.
+        # Now, notice here we're assigning 'undef' to a hash slice (since we don't need values)
+        # Also notice we're using an array reference to tell the hash slice which keys will be
+        # set to undef.
+        # So this is just assigning undef to a hash slice keyed by an arrary reference is all. :)
+        @still_unseen{ @$biosample_ids } = undef;  
+
     }
     if ( $opts{ accession_list } ) {
         $assembly_accs = load_input_ids( $opts{ accession_list } );
@@ -302,9 +316,13 @@ sub parse_data {
                 next;
             }
         } elsif ( $opts{ biosample_list } ) {
-            unless ( grep { /^$biosample$/ } @$biosample_ids) {
+
+            unless ( grep { /^$biosample$/ } keys %still_unseen ) {
                 next;
-            } 
+            }
+            # Don't need to check this anymore:
+            delete $still_unseen{ $biosample };
+
         } elsif ( $opts{ accession_list } ) {
             unless ( grep { /^$assembly_accession$/ } @$assembly_accs ) {
                 next;
@@ -338,6 +356,13 @@ sub parse_data {
         $candidates{ $assembly_accession }->{ line } = $line;
         
     }
+
+    if ( $opts{ biosample_list } && scalar( keys %still_unseen ) )  {
+        _warn( "The following biosamples were not found in assembly_summary.txt.  These links may help determine why:\n", 0 );
+        for my $biosample ( keys %still_unseen ) {
+            _warn( "$biosample\thttps://www.ncbi.nlm.nih.gov/assembly/?term=$biosample\n", 0 );
+        }
+    } 
 
     filter_on_assembly_data( \%candidates, \@field_list, \%mapping, \%download );
     print_files( \%mapping, \%download );
