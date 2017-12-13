@@ -41,6 +41,8 @@ run_panoct.pl - utility for running the pangenome pipeline
                             --blast_file /path/to/blast/output/file
                             --panoct_local
                             --blast_local
+                            --project_code
+                            --no_grid
                             --no_stats
                             --no_trees
                             --working_dir /path/to/working_dir
@@ -52,7 +54,6 @@ run_panoct.pl - utility for running the pangenome pipeline
                             --strict
                             --hmm_file
                             --role_lookup
-                            --project_code
                             --no_graphics
                           ]
 
@@ -93,6 +94,8 @@ B<--hmm_file>                   :   A file of HMMs of interest, will produce fil
 
 B<--project_code, -P>           :   Valid project code for grid-accounting
 
+B<--no_grid>                    :   Run all subtasks locally.
+
 B<--no_trees>                   :   Don't run tree-making programs following the clustering algorithms
 
 B<--use_nuc>                    :   use nucleotide versions of blast and input files.
@@ -132,7 +135,6 @@ user must supply one with --gene_att_file.
 <External Data>
 An all-vs-all blast file of the proteins to be clusters is expected to be passed in with the option -b. 
 The all-vs-all blast must be in the NCBI Blast tab delimited -m9/-m8 output.
-
 
 <JCVI specific>
 Runs all-vs-all blast on the fasta sequences.  Uses formatdb on the combined.fasta
@@ -365,7 +367,6 @@ my $log_dir             = '';
 my $log_file            = '';
 my $lfh                 = undef;
 my $debug               = '';
-my $server              = 'SYBPROD';
 my $gene_att_file       = '';
 my $att_dir             = '';
 my $combined_fasta      = '';
@@ -388,6 +389,7 @@ GetOptions( \%opts,
     'combined_fasta|f=s',
     'fasta_dir|F=s',
     'log_dir=s',
+    'no_grid',
     'no_stats',
     'no_new_plot',
     'no_panoct',
@@ -1019,7 +1021,7 @@ sub call_panoct {
 
     my @grid_jobs;
 
-    unless ( $opts{ panoct_local } ) {
+    unless ( $opts{ panoct_local } || $opts{ no_grid } ) {
 
         my $panoct_script = write_grid_script( 'panoct', join( ' ', @params ) );
         _log( "Running panoct on grid.  See $panoct_script for invocation.", 0 );
@@ -1188,7 +1190,7 @@ sub blast_genomes {
     $blast_cmd .= " -outfmt \"6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore\" ";
     $blast_cmd .= " -qcov_hsp_perc 60 -max_target_seqs $max_target_seqs";
 
-    if ( $opts{ blast_local } ) {
+    if ( $opts{ blast_local } || $opts{ no_grid } ) {
 
         $blast_cmd .= " -query $combined_fasta -out $blast_file_path";
         
@@ -1405,7 +1407,7 @@ sub check_params {
 
     if ( ! ( $opts{ blast_file } || $opts{ blast_local } ) ) {
 
-        $errors .= "MUST provide a --project_code or choose between --blast_local and --blast_file\n" unless $project_code;
+        $errors .= "MUST provide a --project_code, --no_grid, or choose between --blast_local and --blast_file\n" unless $project_code || $opts{no_grid};
 
     } 
 
