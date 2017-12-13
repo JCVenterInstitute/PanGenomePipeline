@@ -107,7 +107,6 @@ my $HMMER2GO_DATA       = "$HMMER2GO_DIR/data";
 my $RGI_DIR             = "$BIN_DIR/rgi";
 my $ORIGINAL_CARD_JSON  = "$RGI_DIR/_data/card.json";
 my $RGI_EXEC            = "$RGI_DIR/jcvi.rgi.py";
-my $RGI_CONVERT_EXEC    = "$RGI_DIR/convertJsonToTSV.py";
 
 my $DEFAULT_HMMDB       = 'both';
 my $DEFAULT_ROLES2GO    = "$HMMER2GO_DATA/Main_roles2GO";
@@ -291,25 +290,21 @@ sub run_aro_searches {
     my ( $input_fasta ) = @_;
 
     my $aro_dir = "$working_dir/aro_searches";
-    my $abs_aro_dir = abs_path($aro_dir); ## For training machine
+    my $abs_aro_dir = abs_path($aro_dir); 
     mkdir $aro_dir || die "Can't make $aro_dir: $!\n";
     my $old_dir = getcwd();
 
     copy( $input_fasta, $aro_dir ) || die "Can't copy $input_fasta: $!\n";
 
     chdir $aro_dir || die "Can't chdir into $aro_dir: $!\n";
-
-## For traininf machine
-$input_fasta = (fileparse($input_fasta))[0];
+    $input_fasta = (fileparse($input_fasta))[0];
 
     my $output_json = $input_fasta . '.aro'; # Will actually be $input_fasta.aro.json
-    my $output_file = 'dataSummary'; # Will actually be $input_fasta.aro.txt
-    #my $new_card_json  = "$aro_dir/card.json";
-    my $new_card_json  = "$abs_aro_dir/card.json"; ## for training machine
+    my $output_file = 'dataSummary'; # Will actually be datasummary.txt
+    my $new_card_json  = "$abs_aro_dir/card.json";
 
     # copy card.json & other files needed for the run. Every time.  sigh.
     copy_aro_files( "$RGI_DIR/_db", $aro_dir );
-#    symlink "../$input_fasta", "$aro_dir/$input_fasta";
 
     # Run rgi.
     my @cmd = ( '/usr/bin/env', 'python', $RGI_EXEC, '-t', 'protein', '-i', $input_fasta, '-o', $output_json );
@@ -324,20 +319,6 @@ $input_fasta = (fileparse($input_fasta))[0];
 
     } stdout => $lh, stderr => $eh;
 
-    # Run conversion from json to tab-delimitted:
-# It looks like the latest version of rgi.py does this automaatically.
-#    @cmd = ( '/usr/bin/env', 'python', $RGI_CONVERT_EXEC, '-i', "$output_json.json", '-o', $output_file );
-#    $base = (fileparse($RGI_CONVERT_EXEC, qr/\.[^.]*/ ))[0];
-#    $lf = "$log_dir/$base.log";
-#    $ef = "$log_dir/$base.err";
-#    $lh = IO::File->new( $lf, "w+" ) || die "Can't open log_file $lf: $!\n";
-#    $eh = IO::File->new( $ef, "w+" ) || die "Can't oprn err file $ef: $!\n";
-#    capture{
-#
-#        system( @cmd ) == 0 || die "Error converting rgi json into tabbed-text: ", join( ' ', @cmd ), "\n";
-#
-#    } stdout => $lh, stderr => $eh;
-#
     chdir $old_dir;
 
 }
