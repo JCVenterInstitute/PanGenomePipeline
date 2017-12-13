@@ -55,6 +55,8 @@ B<--att_suffix>             :   Provide an alternate extension for recognizing .
 
 B<--project_code>           :   Project code for UGE accounting purposes used when blast jobs/panoct are executed on the grid.
 
+B<--no_grid>                :   Run without any access to a grid.
+
 B<--blast_local>            :   Run blast jobs on current host instead of farming them to a grid.
 
 B<--no_blast>               :   Don't rerun blast.  Assumes combined.blast exists wherever needed.
@@ -184,18 +186,19 @@ my $debug               = 0;
 my %opts;
 GetOptions( \%opts,
             'att_suffix=s',
-            'genome_list_file|g=s',
-            'cluster_file|c=s',
-            'rerun_groups=s',
-            'working_dir|w=s',
-            'use_nuc|n',
-            'no_blast',
+            'backend_only',
             'blast_local',
+            'cluster_file|c=s',
+            'genome_list_file|g=s',
+            'grouping_file=s',
+            'less_strict_panoct',
+            'no_blast',
+            'no_grid',
             'panoct_local',
             'project_code|P=s',
-            'less_strict_panoct',
-            'backend_only',
-            'grouping_file=s',
+            'rerun_groups=s',
+            'use_nuc|n',
+            'working_dir|w=s',
             'help|h',
          ) || die "Problem getting options.\n";                             
 pod2usage( { -exitval => 1, -verbose => 2 } ) if $opts{help};
@@ -1035,8 +1038,9 @@ sub run_run_panoct {
     push( @cmd, '-f', $combined_fasta ) if $combined_fasta;
     push( @cmd, '--use_nuc' ) if ( $opts{ use_nuc } );
     push( @cmd, '--strict', 'low' ) if ( $opts{ less_strict_panoct } );
+    push( @cmd, '--no_grid' ) if ( $opts{ no_grid } );
     push( @cmd, '--panoct_local' ) if ( $opts{ panoct_local } );
-    push( @cmd, '--blast_local' ) if ( $opts{ blast_local });
+    push( @cmd, '--blast_local' ) if ( $opts{ blast_local } );
     if ( $opts{ no_blast } ) {
         my $blast_file = "$working_dir/combined.blast";
         if ( -f $blast_file ) {
@@ -1239,7 +1243,7 @@ sub check_options {
     $att_suffix = $opts{ use_nuc } ? '.natt' : 'patt';
     $att_suffix = $opts{ att_suffix } // $att_suffix;
 
-    unless ( $opts{ panoct_local } && ( $opts{ blast_local } || $opts{ no_blast } ) ) {
+    unless ( $opts{no_grid} || ( $opts{ panoct_local } && ( $opts{ blast_local } || $opts{ no_blast } ) ) ) {
 
         $errors .= "Need to supply a --project_code\n" unless $opts{ project_code };
 
