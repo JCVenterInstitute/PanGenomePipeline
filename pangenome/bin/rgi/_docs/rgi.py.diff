@@ -1,0 +1,25 @@
+25c25
+< working_directory = os.getcwd()
+---
+> working_directory = os.getcwd()+'/'
+29,31c29,35
+< path = script_path+"/_db/"
+< data_path = script_path+"/_data/"
+< tmp = script_path+"/_tmp/"
+---
+> #path = script_path+"/_db/"
+> #data_path = script_path+"/_data/"
+> #tmp = script_path+"/_tmp/"
+> 
+> path = working_directory
+> data_path = working_directory
+> tmp = working_directory
+1111c1115,1116
+< 		with open(working_directory+"/"+outputFile+".json", 'w') as f:
+---
+> 		#with open(working_directory+"/"+outputFile+".json", 'w') as f:
+> 		with open(outputFile+".json", 'w') as f:
+1457c1462
+< 	parser.add_argument('-cd','--clean_databases', dest="clean_databases", default="YES", help="This removes blast databases before rgi run. Options are NO or YES (default=YES for remove)")
+---
+> 	parser.add_argument('-cd','--clean_databases', dest="clean_databases", default="NO", help="This removes blast databases before rgi run. Options are NO or YES (default=NO)")
