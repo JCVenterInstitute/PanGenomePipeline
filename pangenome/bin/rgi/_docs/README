@@ -1,0 +1,108 @@
+
+###
+A Word About This Version of rgi:
+
+We have, with permission from McMaster University, included a modified
+version of rgi.py with the JCVI Pangenome Pipeline.
+
+The changes are summarized in the accompanying file rgi.py.diff.  In short,
+the script no longer looks for card.json or the blast/diamond dbs in the
+bin dir, but instead looks for them in the working directory.  To minimize
+the needed changes within rgi.py, we leave it up to the user (or rather,
+the Pipeline) to ensure the files are found in the working directory.
+
+These changes were made to allow concurrent access when multiple users
+were invoking the software, and to remove the requirement of having users
+be granted sudo permissions to run the commands from a centralized/global
+installation.
+
+Another important note is that we have included a particular version of
+the card database and associated blast files.  This is a lazy but reliable
+way of ensuring new installations of the Pangenome Pipeline will have a
+functional version of rgi.py included.
+
+Please send any correspondence regarding this aspect of the software to:
+jinman@jcvi.org
+###
+
+|--------------------------------------------------------------------------
+| Running RGI localy
+|--------------------------------------------------------------------------
+
+
+|--------------------------------------------------------------------------
+| Files
+|--------------------------------------------------------------------------
+
+
+`-- rgi/
+   |-- _data/
+         |-- card.json
+   |-- _db/
+         ... (BLAST DBs)
+   |-- _docs/
+         |-- INSTALL
+         |-- README
+         |-- rgi.py.diff ( new in this distribution )
+   |-- _tmp/
+   |-- tests/
+   |-- __init__.py
+   |-- blastnsnp.py
+   |-- clean.py
+   |-- contigToORF.py
+   |-- contigToProteins.py
+   |-- convertJsonToTSV.py
+   |-- create_gff3_file.py
+   |-- filepaths.py
+   |-- formatJson.py
+   |-- fqToFsa.py
+   |-- load.py
+   |-- orig.rgi.py ( new in this distribution.  Formerly rgi.py )
+   |-- jcvi.rgi.py ( new in this distribution.  See ./_docs/rgi.py.diff for changes )
+   |-- rgi.py ( changed in this distribution to be a symlink to jcvi.rgi.py )
+   |-- rrna.py
+   
+
+
+|--------------------------------------------------------------------------
+| Commands for Running RGI localy
+|--------------------------------------------------------------------------
+
+
+$ python rgi.py -h
+
+$ python clean.py -h
+
+$ python convertJsonToTSV.py -h
+
+$ python load.py -h
+
+$ python formatJson.py -h 
+
+
+|--------------------------------------------------------------------------
+| Running RGI system-wide
+|--------------------------------------------------------------------------
+
+# install RGI
+
+$ conda install --channel rgi
+
+# un-install RGI
+
+$ conda remove --channel rgi
+
+|--------------------------------------------------------------------------
+| Commands for Running RGI system-wide
+|--------------------------------------------------------------------------
+
+$ rgi -h
+
+$ rgi_clean -h
+
+$ rgi_jsontab -h
+
+$ rgi_load -h
+
+$ rgi_jsonformat -h
+
