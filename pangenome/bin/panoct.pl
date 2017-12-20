@@ -1,5 +1,5 @@
 #!/usr/bin/env perl
-#Copyright (C) 2017-2022 The J. Craig Venter Institute (JCVI).  All rights reserved
+#Copyright (C) 2011-2015 The J. Craig Venter Institute (JCVI).  All rights reserved
 #Written by Derrick E. Fouts, Ph.D. and Granger Sutton, Ph.D.
 
 #This program is free software: you can redistribute it and/or modify
@@ -66,7 +66,7 @@ my @BSR_cluster_levels = ();
 
 ## use boolean logic:  TRUE = 1, FALSE = 0
 
-my $version = "3.26";
+my $version = "3.27";
 if ($opt_d) {
     $compute_centroids = 1;
 } else {
@@ -1135,12 +1135,16 @@ sub print_pairwise_matrix  { # subroutine to print similarity or distance matric
 	print $outfile "$genome_number\n";
     } else {
 	foreach my $tag (@tag_array)  {
-	    printf $outfile "\t%7s", substr ($tag, -7);
+	    print $outfile "\t$tag";
 	}
 	print $outfile "\n";
     }
     foreach my $row_index (0 .. $#tag_array)  {
-	printf $outfile "%-7s", substr ($tag_array[$row_index], -7);
+	if ($phylip_dist) {
+	    printf $outfile "%-7s", substr ($tag_array[$row_index], -7);
+	} else {
+	    print $outfile "$tag_array[$row_index]";
+	}
 	my $allowed_per_line = 1;
 	foreach my $col_index (0 .. $#tag_array)  {
 	    if ($phylip_dist) {
