@@ -33,7 +33,7 @@ create_meta_groupings.pl
 
 =head1 SYNOPSIS
 
-    USAGE: ./create_meta_groupings.pl -a gene_attribute.dat -c centroids.fasta -m panoct.result -f metadata_groupings.txt -g genomes.list [-r role_lookup.txt -t threshold_file -o output/dir --print_amb --help  'data_file|a=s']
+    USAGE: ./create_meta_groupings.pl -a gene_attribute.dat -c centroids.fasta -m panoct.result -f metadata_groupings.txt -g genomes.list [-r role_lookup.txt -t threshold_file -o output/dir --print_amb --help ]
 	  
 
 =head1 OPTIONS
@@ -959,6 +959,37 @@ sub check_params {
 
     my $default_cutoffs = shift;
     my ( $thresholds, $output, $errors, $threshold_cutoffs );
+
+    # Check parameters
+    if ( $opts{data_file} ) {
+        $errors .= "Your --data_file appears to be empty/non-existent.\n" unless ( -s $opts{data_file} );
+    } else {
+        $errors .= "Please supply a --data_file\n";
+    }
+    if ( $opts{centroids} ) {
+        $errors .= "Your --centroids file appears to be empty/non-existent.\n" unless ( -s $opts{centroids} );
+    } else {
+        $errors .= "Please supply a --centroids file\n";
+    }
+    if ( $opts{method_result} ) {
+        $errors .= "Your --method_result file appears to be empty/non-existent.\n" unless ( -s $opts{method_result} );
+    } else {
+        $errors .= "Please supply a --method_result file\n";
+    }
+    if ( $opts{metadata_file} ) {
+        $errors .= "Your --metadata_file appears to be empty/non-existent.\n" unless ( -s $opts{metadata_file} );
+    } else {
+        $errors .= "Please supply a --metadata_file\n";
+    }
+    if ( $opts{genomes_list} ) {
+        $errors .= "Your --genomes_list file appears to be empty/non-existent.\n" unless ( -s $opts{genomes_list} );
+    } else {
+        $errors .= "Please supply a --genomes_list file\n";
+    }
+
+
+
+
 
     #Make output directory if it doesn't exist
     $output = $opts{output} // cwd();
