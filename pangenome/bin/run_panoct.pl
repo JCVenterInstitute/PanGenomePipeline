@@ -339,6 +339,7 @@ my $GENE_ORDER_EXEC         = "$BIN_DIR/gene_order.pl";
 my $PAN_CHROMO_EXEC         = "$BIN_DIR/pan_chromosome/make_pan_chromosome_fig.sh";
 my $ANNOT_EXEC              = "$BIN_DIR/get_go_annotations.pl";
 my $MAPGOVIABLAST_EXEC      = "$BIN_DIR/map_go_via_blast.pl";
+my $MAP_FGI_ANNOT_EXEC      = "$BIN_DIR/map_annotation_to_fgis.pl";
 my $GENOME_PROP_DIR         = "$BIN_DIR/genome_properties";
 my $ALIGN_CLUSTER_EXEC      = "$BIN_DIR/align_clusters.pl";
 my $CHECK_COMBINED_EXEC     = "$BIN_DIR/check_combined_files.pl";
@@ -478,7 +479,16 @@ unless ( $opts{ no_trees } ) {
 }
 
 
-# Step 7: Annotate the clusters.
+
+#Step 7: Call graphics scripts.
+unless ( $opts{ no_graphics } ) {
+
+    call_graphics_scripts();
+
+}
+
+
+# Step 8: Annotate the clusters.
 unless ( $opts{ no_annotation } ) {
 
     #call_genome_properties();
@@ -486,13 +496,6 @@ unless ( $opts{ no_annotation } ) {
 
 }
 
-
-#Step 8: Call graphics scripts.
-unless ( $opts{ no_graphics } ) {
-
-    call_graphics_scripts();
-
-}
 
 #Step 9: Call align_clusters.pl
 unless ( $opts{ no_align_clusters } ) {
@@ -688,6 +691,7 @@ sub call_genome_properties {
 
 sub call_annotation_scripts {
 
+    # First up: run hmms and rgi card on centroids
     my @cmd = ( $ANNOT_EXEC, '-i', "$results_dir/centroids.fasta", '-w', $results_dir, '-l', $log_dir );
     if ( $project_code ) {
         push( @cmd, '-P', $project_code );
@@ -706,6 +710,7 @@ sub call_annotation_scripts {
 
     } stdout => $lh;
 
+    # Next, use blast to look for plasmid seqeunces:
     @cmd = ( $MAPGOVIABLAST_EXEC, '-i', "$results_dir/centroids.fasta", '-o', "$results_dir/plasmid_blast.out" );
     push( @cmd, '-n' ) if ( $opts{ use_nuc } );
     if ( $project_code ) {
@@ -723,6 +728,30 @@ sub call_annotation_scripts {
         system( @cmd ) == 0 || _die( "Problem running blast annotation script", __LINE__ );
 
     } stdout => $blh;
+
+    # Finally, use the previously run HMM/RGI and Blast results for annotating fGIs:
+    my $fgi_report_index = "$results_dir/fGIs/fGI_report.txt.index";
+    my $cluster_roles    = "$results_dir/centroids.cluster_roles.txt";
+    my $plasmid_blast    = "$results_dir/plasmid_blast.out";
+    my @input_files;
+    push @input_files, $cluster_roles if -s $cluster_roles;
+    push @input_files, $plasmid_blast if -s $plasmid_blast;
+    if ( scalar @input_files ) {
+
+        @cmd = ( $MAP_FGI_ANNOT_EXEC, '-i', $fgi_report_index, '-c', join(',', @input_files), '-o', "$results_dir/fGI_annotation.txt" );
+        _log( "Running fGI annotation mapping:\n" . join( ' ', @cmd ), 0 );
+
+        my $falf = "$log_dir/map_annotation_to_fgis.pl.log";
+        my $falh = IO::File->new( $falf, "w+" ) || _die( "Can't open $falf for logging: $!", __LINE__ );
+        capture_merged{
+
+            system( @cmd ) == 0 || _die( "Problem running fgi annotation mapping", __LINE__ );
+
+        } stdout => $falh;
+
+    } else {
+        _log( "No need to run fgi annotation as neither $cluster_roles nor $plasmid_blast have any data", 0 );
+    }
 
 }
 
