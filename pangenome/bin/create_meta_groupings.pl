@@ -50,7 +50,7 @@ B<--genomes_list, -g>   :   db.list file used in the pangenome run
 
 B<--threshold_file>     :   [Optional] File giving the thresholds to use for label cutoffs
 
-B<--role_lookup, -r>    :   [Optional] role_id_lookup.txt if it exists it should be in the pangenome results directory. It only generates if there are SGD genomes.
+B<--role_lookup, -r>    :   [Optional] role_id_lookup.txt, if it exists, should be in the pangenome results directory.  It is only generated if pipeline input was SGD genomes.
 
  -- OR --
 
@@ -113,7 +113,7 @@ For a cluster to be given a label it must contain at least the high threshold of
 
 =over 1
 
-<name>.clusters_<high threshold>_<low threshold>.txt - A tab delimited file for each threshold combination listing the clusters, their labels and the associated annotation
+<name>.clusters_<high threshold>_<low threshold>.txt - A tab delimited file for each threshold combination listing the clusters, their labels and the associated annotation.
 
 <name>.counts_<high threshold>_<low threshold>.txt - An overview file that gives an overview of the genomes and their associated label. As well as what number of genomes
 must be present for a given label for that cluster to be said to have that label based on the thresholds.
@@ -960,7 +960,7 @@ sub check_params {
     my $default_cutoffs = shift;
     my ( $thresholds, $output, $errors, $threshold_cutoffs );
 
-    # Check parameters
+    # Check required parameters
     if ( $opts{data_file} ) {
         $errors .= "Your --data_file appears to be empty/non-existent.\n" unless ( -s $opts{data_file} );
     } else {
@@ -986,8 +986,19 @@ sub check_params {
     } else {
         $errors .= "Please supply a --genomes_list file\n";
     }
-
-
+    # Check optional file parameters
+    if ( $opts{role_lookup} ) {
+        $errors .= "Your --role_lookup appears to be empty/non-existent.\n" unless ( -s $opts{role_lookup} );
+    }
+    if ( $opts{role_file} ) {
+        $errors .= "Your --role_file appears to be empty/non-existent.\n" unless ( -s $opts{role_file} );
+    }
+    if ( $opts{role_lookup} && $opts{role_file} ) {
+        $errors .= "Please supply only ONE of --role_lookup and --role_file.\n";
+    }
+    if ( $opts{index} ) {
+        $errors .= "Your --index file appears to be empty/non-existent.\n" unless ( -s $opts{index} );
+    }
 
 
 
