@@ -147,13 +147,15 @@ for my $fgi ( sort { $a <=> $b } keys %fgis ) {
             $annotations{ $annotation }++;
         }
     }
+
     # This might seem redundant.  But sorting on the keystring ends up sorting on both the description and GO ID at the same
     # time, and then splitting lets us print the GO terms first, which was the desired output.
     for my $keystring ( sort { $a cmp $b } keys %annotations ) {
 
         my ( $description, $GO ) = split("\t",$keystring);
-        #print "$fgi\t$GO\t$description\n";
-        print $ofh "$fgi\t$GO\t$description\n";
+        $GO = $GO // '';
+        #print "$fgi\t$GO\t$annotations{ $keystring }\t$description\n";
+        print $ofh "$fgi\t$GO\t$annotations{ $keystring }\t$description\n";
 
     }
 
