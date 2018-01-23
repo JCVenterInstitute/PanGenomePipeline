@@ -64,6 +64,8 @@ B<--preserve_assembly_summary>  :   Save a copy of the retrieved assembly_summar
 
 B<--kingdom>                    :   Choose a kingdom within refseq from which to work in.  [Default is 'bacteria']
 
+B<--section>                    :   Choose a section of the ftp site to download from.  Can be: 'refseq' [Default] or 'genbank'
+
 B<--assembly_summary_file>      :   Use a previously saved assembly_summary.txt file.
 
 B<--id_length>                  :   Max length of newly generated ids. [Default is 7]
@@ -163,6 +165,7 @@ use LWP::UserAgent;
 use Data::Dumper;
 
 my $DEFAULT_KINGDOM = 'bacteria';
+my $DEFAULT_SECTION = 'refseq';
 my $DEFAULT_OUTPUT_BASENAME = 'refseq_download';
 my $TODAY = get_date();
 my @DEFAULT_DOWNLOAD_LIST = qw( );
@@ -197,6 +200,7 @@ GetOptions( \%opts,
             'output_dir|o=s',
             'output_prefix|p=s',
             'preserve_assembly_summary',
+            'section=s',
             'separate_downloads',
             'wgs',
             'working_dir|w=s',
@@ -226,7 +230,7 @@ if ( $opts{ assembly_summary_file } ) {
     $data = read_file( $opts{ assembly_summary_file } );
 } else {
     # ... or get the summary file via ftp.
-    my $summary_url = 'ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/'. $opts{ kingdom } . '/assembly_summary.txt';
+    my $summary_url = 'ftp://ftp.ncbi.nlm.nih.gov/genomes/'. $opts{section} . '/'. $opts{ kingdom } . '/assembly_summary.txt';
     _log("Retrieving assembly_summary.txt\n", 1);
     my $response = $ua->get( $summary_url );
     if ( $response->is_success ) {
@@ -1079,6 +1083,10 @@ sub check_options {
     $opts{ kingdom }        = $opts{ kingdom }          // $DEFAULT_KINGDOM;
     unless ( $opts{ kingdom } =~ /^(bacteria|archaea|fungi|invertebrate|plant|protozoa|vertebrate_mammalian|vertebrate_other|viral)$/ ) {
         $errors .= "--kingdom MUST be one of the following:\n\tbacteria (default)\n\tarchaea\n\tfungi\n\tplant\n\tprotozoa\n\tvertebrate_mammalian\n\tvertebrate_other\n\tviral\n";
+    } 
+    $opts{ section }        = $opts{ section }          // $DEFAULT_SECTION;
+    unless ( $opts{ section } =~ /^(refseq|genbank)$/ ) {
+        $errors .= "--section MUST be either 'refseq' or 'genbank'\n";
     } 
 
 
