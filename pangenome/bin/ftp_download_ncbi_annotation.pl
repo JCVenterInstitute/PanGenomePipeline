@@ -166,7 +166,7 @@ use Data::Dumper;
 
 my $DEFAULT_KINGDOM = 'bacteria';
 my $DEFAULT_SECTION = 'refseq';
-my $DEFAULT_OUTPUT_BASENAME = 'refseq_download';
+my $DEFAULT_OUTPUT_BASENAME = 'download';
 my $TODAY = get_date();
 my @DEFAULT_DOWNLOAD_LIST = qw( );
 my $DEFAULT_LOG_LEVEL = 0;
@@ -1078,7 +1078,6 @@ sub check_options {
     # set up some default values
     $opts{ id_length }      = $opts{ id_length }        // $DEFAULT_ID_LENGTH;
     $opts{ loglevel }       = $opts{ loglevel }         // $DEFAULT_LOG_LEVEL;
-    $opts{ output_prefix }  = $opts{ output_prefix }    // "$DEFAULT_OUTPUT_BASENAME.$TODAY";
     $working_dir            = $opts{ working_dir }      // $working_dir;
     $opts{ kingdom }        = $opts{ kingdom }          // $DEFAULT_KINGDOM;
     unless ( $opts{ kingdom } =~ /^(bacteria|archaea|fungi|invertebrate|plant|protozoa|vertebrate_mammalian|vertebrate_other|viral)$/ ) {
@@ -1088,6 +1087,7 @@ sub check_options {
     unless ( $opts{ section } =~ /^(refseq|genbank)$/ ) {
         $errors .= "--section MUST be either 'refseq' or 'genbank'\n";
     } 
+    $opts{ output_prefix }  = $opts{ output_prefix }    // "$opts{ section }_$DEFAULT_OUTPUT_BASENAME.$TODAY";
 
 
     die $errors if $errors;
