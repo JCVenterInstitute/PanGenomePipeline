@@ -99,51 +99,74 @@ Under normal operation, the script does the following:
 
 =back
 
-In addition to the normal operational mode, the user may specify --no_download, which will perform the first three
+In addition to the normal operational mode, the user may specify B<--no_download>, which will perform the first three
 steps.  It will still download the assembly_summary.txt file, but will not retrieve the gb or fasta files in step 4.  
-The user might instead specify --download_only, in which case the first three steps are skipped, and the script will
-only attempt to download the files from the urls in the file specified with --download_file.  If --cleanup_ids is 
+The user might instead specify B<--download_only>, in which case the first three steps are skipped, and the script will
+only attempt to download the files from the urls in the file specified with B<--download_file>.  If B<--cleanup_ids> is 
 used, any non-alpha-numeric characters will be stripped out of the ids in the download file.
 
 =head1 INPUTS
 
-The --organism_search_term provides a string that will be interpreted as a regular expression used against the
+The B<--organism_search_term> provides a string that will be interpreted as a regular expression used against the
 fields in the assembly_summary.txt file that hold organism name information.  If more advanced regex are supplied,
 or if a regex was used that required fancy shell-escaping to get passed in, it might be useful to run this script in
---no_download mode, examine the resulting .mapping and/or .download files, and once deemed satisfactory, proceed with
-operation in --download_only mode (or simply rerun without --no_download, as the script doesn't mind writing over 
+B<--no_download mode>, examine the resulting .mapping and/or .download files, and once deemed satisfactory, proceed with
+operation in B<--download_only> mode (or simply rerun without B<--no_download>, as the script doesn't mind writing over 
 previous runs' output files)
 
-As an alternative to --organism_search_term, the user may provide a list of BioSample IDs with --biosample_list, or a
-list of assembly accession IDs with --accession_list.  For any ID in those files, the script will find matches in the 
+As an alternative to B<--organism_search_term>, the user may provide a list of BioSample IDs with B<--biosample_list>, or a
+list of assembly accession IDs with B<--accession_list>.  For any ID in those files, the script will find matches in the 
 'biosample' or 'assembly accession' columns of assembly_summary.txt and use matching rows to create the download
 file.
 
-If --min_N50 is used to supply a minimum value for N50, the script will compare it with each non-complete genome's
+If B<--min_N50> is used to supply a minimum value for N50, the script will compare it with each non-complete genome's
 contig-N50 value from its _assembly_stats.txt file, and omit assemblies that do not equal or exceed the given value.
 
-If --max_contigs is used to supply a maximum number of allowed contigs, the script will (again, for each non-complete
+If B<--max_contigs> is used to supply a maximum number of allowed contigs, the script will (again, for each non-complete
 genome) compare the supplied value with the value in _assembly_stats.txt for 'contig-count'.  It will reject genomes 
-that have more than --max_contgs contigs, and will allow genomes if they have a value of 'contig-count' equal to or 
-less than --max_contigs.
+that have more than B<--max_contgs> contigs, and will allow genomes if they have a value of 'contig-count' equal to or 
+less than B<--max_contigs>.
 
 =head1 OUTPUTS
 
-There are three files produced under normal operation and when run in --no_download mode:
+There are three files produced under normal operation and when run in B<--no_download> mode:
 
 =over 1
 
-=item 1. Mapping File - by default, named "refseq_download_[TIMESTAMP].mapping", but may be supplied as --mapping_file; This file maps Ids generated from the strain name (or, if not present, the organism name) to the Biosample ID (if present) and the organism name and strain fields as found in assembly_summary.txt, along with the contig_n50 and contig_count fields from the assembly's _assembly_stats.txt file.  (The last two columns will contain 'complete' if the assembly is listed as a 'Complete Genome' in the assembly_sumamry.txt file, as those assemblies do not have those columns in _assembly_stats.txt)
+=item 1. B<Mapping File> - by default, named "[SECTION]_download_[TIMESTAMP].mapping", but may be supplied as B<--mapping_file>; This file maps Ids generated from the strain name (or, if not present, the organism name) to:
 
-=item 2. Download File - by default, named the same as mapping file, but ending in .download instead of .mapping (or whataver .extention might be present on the end of the --mapping_file value); the name may also be supplied as --download_file; two columns: id and the ftp_url.  Used as the list provided by --download_file when --download_only is invoked.
+=over 2 
 
-=item 3. Log File - named the same as mapping file, but ending in .log instead of .mapping (or whatever .extension might be present on the end of --mapping_file value); the name may also be specified as --log_file; a file containing various warnings related to file retrieval and other issues arising during operation of the script.
+=item 1. Biosample ID (if present)
+
+=item 2. organism name as found in assembly_summary.txt
+
+=item 3. strain fields as found in assembly_summary.txt
+
+=item 4. contig_n50 from the assembly's _assembly_stats.txt file
+
+=item 5. contig_count  from the assembly's _assembly_stats.txt file
+
+=item 6. type-strains will have 'type strain' here
 
 =back
 
-Note that log file will also be written during --download_only operation, and still follows the same naming conventions.
+contig_n50 and contig_count will contain 'complete' if the assembly is listed as a 'Complete Genome' in the assembly_sumamry.txt file, as those assemblies do not have those columns in _assembly_stats.txt
 
-In addition to these files, the downloaded files will be placed in whatever path is specified in --output_dir.  If the user specifies B<--separate_downloads>, each downloaded file is placed in a directory specific to the genome to which it belongs, named by the ID created within this script, foudn in the --output_dir.  Additionally, B<--separate_downloads> also creates a list file for each type of file downlaoded.  (output_dir/fasta.list and/or output_dir/gb.list).
+
+=item 2. B<Download File> - by default, named the same as mapping file, but ending in .download instead of .mapping (or whataver .extention might be present on the end of the B<--mapping_file> value); the name may also be supplied as B<--download_file>; two columns: id and the ftp_url.  Used as the list provided by B<--download_file> when B<--download_only> is invoked.
+
+=back
+
+=over 1
+
+=item 3. B<Log File> - named the same as mapping file, but ending in .log instead of .mapping (or whatever .extension might be present on the end of B<--mapping_file> value); the name may also be specified as B<--log_file>; a file containing various warnings related to file retrieval and other issues arising during operation of the script.
+
+=back
+
+Note that log file will also be written during B<--download_only> operation, and still follows the same naming conventions.
+
+In addition to these files, the downloaded files will be placed in whatever path is specified in B<--output_dir>.  If the user specifies B<--separate_downloads>, each downloaded file is placed in a directory specific to the genome to which it belongs, named by the ID created within this script, foudn in the B<--output_dir>.  Additionally, B<--separate_downloads> also creates a list file for each type of file downlaoded.  (output_dir/fasta.list and/or output_dir/gb.list).
 
 =head1 CONTACT
 
@@ -298,7 +321,7 @@ sub parse_data {
 
 
     my %candidates;
-    my @field_list = qw/biosample infraspecific_name isolate version_status assembly_level ftp_link/;
+    my @field_list = qw/biosample infraspecific_name isolate version_status assembly_level ftp_link type_strain/;
     for my $line ( split( "\n", $data ) ) {
 
         next if ( $line =~ /^#/ );
@@ -313,6 +336,7 @@ sub parse_data {
         my $version_status      = $line_array[10];
         my $assembly_level      = $line_array[11];
         my $ftp_link            = $line_array[19];
+        my $type_strain         = $line_array[21];
 
         # check if it matches organism_search_term or our other search criteria
         if ( $opts{ organism_search_term } ) {
@@ -355,8 +379,12 @@ sub parse_data {
             next;
         }
 
+        # make sure we have a defined value for type_strain
+        $type_strain = $type_strain // 'NA';
+        $line_array[21] = $type_strain;
+
         # At this point, this genome has passed the first round of 'cuts'.  Move it to the list of genomes for which to download assembly_stats.txt
-        @{$candidates{ $assembly_accession }}{ @field_list } = @line_array[2,7,8,10,11,19];
+        @{$candidates{ $assembly_accession }}{ @field_list } = @line_array[2,7,8,10,11,19,21];
         $candidates{ $assembly_accession }->{ line } = $line;
         
     }
@@ -444,7 +472,7 @@ sub filter_on_assembly_data {
         my @asmbl_data = read_file( $assembly_stats_file );
 
         # Just a little assignment of values into a list using an array reference as a hash reference slice:
-        my ( $biosample, $infraspecific_name, $isolate, $version_status, $assembly_level, $ftp_link ) = 
+        my ( $biosample, $infraspecific_name, $isolate, $version_status, $assembly_level, $ftp_link, $type_strain ) = 
                 @{$candidates->{ $assembly_accession }}{ @$field_list };
         my $line = $candidates->{ $assembly_accession }->{ line };
 
@@ -478,7 +506,7 @@ sub filter_on_assembly_data {
         my $id = check_row( $biosample, $infraspecific_name, $isolate, $line, $download, $mapping, \$dupe_index );
 
         if ( $id ) {
-            add_rows( $download, $mapping, $id, $biosample, $ftp_link, $infraspecific_name, $isolate, $N50, $contig_count, $total_length );
+            add_rows( $download, $mapping, $id, $biosample, $ftp_link, $infraspecific_name, $isolate, $N50, $contig_count, $total_length, $type_strain );
         }
 
         unlink $assembly_stats_file;
@@ -679,7 +707,7 @@ sub get_assembly_stats {
 
 sub add_rows {
 
-    my ( $download, $mapping, $id, $biosample, $ftp_link, $infraspecific_name, $isolate, $N50, $contig_count, $total_length ) = @_;
+    my ( $download, $mapping, $id, $biosample, $ftp_link, $infraspecific_name, $isolate, $N50, $contig_count, $total_length, $type_strain ) = @_;
 
     # store line for the .downlaod file
     $download->{ $id } = $ftp_link;
@@ -699,7 +727,7 @@ sub add_rows {
 
     $isolate =~ s/strain=(.*)/$1/;
 
-    $mapping->{ $id } = "$biosample\t$infraspecific_name\t$isolate\t$N50\t$contig_count\t$total_length";
+    $mapping->{ $id } = "$biosample\t$infraspecific_name\t$isolate\t$N50\t$contig_count\t$total_length\t$type_strain";
     $biosamples{ $biosample }++;
 
 }
