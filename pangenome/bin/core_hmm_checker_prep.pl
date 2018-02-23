@@ -26,12 +26,18 @@ core_hmm_prep.pl-  Creates input files for core_hmm_checker.pl
 =head1 SYNOPSIS
 
   USAGE: core_hmm_checker_prep.pl --gb_list <file>
+                             --use_nuc [Optional]
+                             --both [Optional]
                              --output <dir> [Optional]
                              --help [Optional]
 
 =head1 OPTIONS
 
 B<--gb_list|g>     : List of genome genbank files (<genome><location of gb file>)
+
+B<--use_nuc>       : Parse nuc from genbank
+
+B<--both>          : Parse nuc/prot from genbank
 
 B<--output|o>      : Output directory [Default: Current]
 
@@ -55,6 +61,8 @@ my %opts;
 #Arguments/Options
 GetOptions( \%opts,
 	    'gb_list|g=s',
+	    'use_nuc',
+	    'both',
 	    'output|o=s',
 	    'help|h');
 
@@ -75,32 +83,41 @@ sub run_parse_gb{
 
 	my ($genome,$location) = split(/\t/,$_);
         my $parse_file = "$parse_dir/parse.list";
+	my $parse_exec = "$Bin/parse_genbank_files.pl";
+  
 	my $cmd = "cut -f 2 $opts{gb_list} > $parse_file";
 	system($cmd) == 0 || die("Failed:$!");
 
-	$cmd = "$Bin/parse_genbank_files.pl -l $parse_file -o $parse_dir --no_dos2unix";
-	system($cmd) == 0 || die("Failed:$!");
+	my @cmd = ( $parse_exec, '-l', $parse_file, '-o', $parse_dir, '--no_dos2unix');
+	
+	push(@cmd,'--nuc') if($opts{use_nuc});
+	push(@cmd,'--both') if($opts{both});
+		       
+	system(@cmd) == 0 || die("Failed:$!", __LINE__);
     }
 
-    make_genome_list_file($parse_dir);
+    make_genome_list_file($parse_dir,$gb_list);
 }
 
 sub make_genome_list_file{
 
-    my $dir= shift;
+    my ($dir,$gb_list) = @_;
 
-    if(-s "$dir/genomes.list"){
-	open(my $fh, "<" , "$dir/genomes.list");
-	open(my $ofh, ">" , "$dir/pep.list");
-
+    if(-e $dir){
+	open(my $fh, "<" , "$gb_list");
+	open(my $gfh, ">" ,  "$dir/genomes.list");
+	open(my $pfh, ">" , "$dir/genomes.pep") unless($opts{use_nuc});
+	
 	foreach (<$fh>){
-	    my $genome = $_;
+	    my ($genome,$location) = split(/\t/,$_);
 	    $genome =~ s/\s+$//;
-	    print $ofh "$genome\t$dir/$genome" . ".pep\n";
+
+	    print $gfh "$genome\n";
+	    print $pfh "$genome\t$dir". "$genome.pep\n" unless($opts{use_nuc});
 	}
 
-	close $fh;
-	close $ofh;
+	close $pfh unless($opts{use_nuc});
+	close $gfh;
     }else{
 	die("ERROR: $dir/genomes.list file does not exist\n");
     }
@@ -112,7 +129,7 @@ sub check_params{
     my $errors;
 
     if($opts{gb_list}){
-	$errors .= "File does not exist or is size zero\n" unless(-s $opts{gb_list});
+	$errors .= "File does not exist or is size zero: $opts{gb_list}\n" unless(-s $opts{gb_list});
     }else{
 	$errors .= "Must supply --gb_list\n" unless($opts{gb_list});
     }
