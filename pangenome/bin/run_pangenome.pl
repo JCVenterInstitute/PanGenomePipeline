@@ -34,7 +34,8 @@ run_pangenome.pl - run the pangenome pipeline
 =head1 SYNOPSIS
 
     USAGE: run_pangenome.pl -P <project code> | --blast_local | --no_blast
-                            [-g <genomes.list> ] [-c <clusters.list>] [-w <working directory>]
+                            [-g <genomes.list> | --gb_list_file <gb.list> | --gb_dir <dir>] 
+                            [-c <clusters.list>] [-w <working directory>]
                             [--grouping_file <meta-grouping_file>]
                             [--rerun_groups <group_list>] [--backend_only]
                             [--less_strict_panoct]
@@ -42,6 +43,10 @@ run_pangenome.pl - run the pangenome pipeline
 =head1 OPTIONS
 
 B<--genome_list_file, -g>   :   List of genome names. The order here determines the ordering in later files. [DEFAULT: <working_dir>/genomes.list]
+
+B<--gb_list_file>           :   List of .gb file locations to be used on genome list input.
+
+B<--gb_dir>                 :   Direcotry containing gb files named <genome>.gb
 
 B<--working_dir, -w>        :   Path in which multiple directories are to be created [DEFAULT: current dir]
 
@@ -169,11 +174,13 @@ my $CONVERT_ATT_EXEC = "$BIN_DIR/convert_att_file_to_hsh.pl";
 my $STATISTICS_EXEC  = "$BIN_DIR/pangenome_statistics.pl";
 my $RUNPANOCT_EXEC   = "$BIN_DIR/run_panoct.pl";
 my $GROUPING_EXEC    = "$BIN_DIR/create_meta_groupings.pl";
+my $CORE_PREP_EXEC   = "$BIN_DIR/core_hmm_checker_prep.pl";
 
 my $DEFAULT_ATT_SUFFIX = 'att';
 my $DEFAULT_WORKING_DIR = Cwd::getcwd;
 
 my $genome_list_file    = '';
+my $gb_list_file        = '';
 my $att_suffix          = '.patt';
 my $working_dir         = '';
 my $combined_att        = '';
@@ -190,6 +197,8 @@ GetOptions( \%opts,
             'blast_local',
             'cluster_file|c=s',
             'genome_list_file|g=s',
+            'gb_list_file=s',
+	    'gb_dir=s',
             'grouping_file=s',
             'less_strict_panoct',
             'no_blast',
@@ -208,6 +217,13 @@ check_options( \%opts );
 # Set up logging.
 my $log_file = "$working_dir/run_pangenome.log";
 open( $lfh, '>', $log_file ) || _die( "Can't open log file $log_file: $!", __LINE__ );
+
+# Parse gb_list_file
+# Run gb parser and move files to appropriate location
+if($gb_list_file){
+    parse_gb_list_file($gb_list_file);
+    $genome_list_file = move_gb_files();
+}
 
 # Run panoct directly on our inputs if there is no cluster file:
 unless ( $cluster_file ) {
@@ -291,7 +307,6 @@ unless ( $opts{ backend_only } ) {
         create_pseudo_genome_files( $step_dir, $step_name );
 
     }
-
 }
 
 _log( "Time to expand clusters!", 0 );
@@ -311,6 +326,56 @@ if ( $grouping_file ) {
 
 exit(0);
 
+sub move_gb_files{
+
+    #Move nuc, pep files to fasta_dir
+    #Make att file directory and move att files to dir
+    
+    my $fasta_dir = "$working_dir/fasta_dir";
+    my $att_dir = "$working_dir/att_dir";
+    my $pep_dir = "$working_dir/gb/pep";
+    my $fasta_suffix;
+   
+    $opts{use_nuc} ? $fasta_suffix = ".nuc" : $fasta_suffix = ".pep";
+    
+    #Move genomes.list file to working dir
+    if(-s "$pep_dir/genomes.list"){
+	path("$pep_dir/genomes.list")->move("$working_dir/genomes.list");
+    }else{
+	die("ERROR: Missing $pep_dir/genomes.list");
+    }
+
+    #Make att_dir and move att files
+    path($att_dir)->mkpath unless(-d $att_dir);
+    my @att_files = glob("$pep_dir/*" . "$att_suffix");
+    
+    foreach(@att_files){
+	my $name = path($_)->basename($att_suffix);
+	path($_)->move("$att_dir/$name". $att_suffix); 
+    }
+
+    #Make fasta_dir and move fasta files
+    path($fasta_dir)->mkpath unless(-d $fasta_dir);
+    my @fasta_files = glob("$pep_dir/*" . "$fasta_suffix");
+
+    foreach(@fasta_files){
+	my $name = path($_)->basename($fasta_suffix);
+	path($_)->move("$fasta_dir/$name". $fasta_suffix);
+    }
+
+    return("$working_dir/genomes.list");
+}
+sub parse_gb_list_file{
+
+    my $gb_list = shift;
+    my $fasta_dir = "$working_dir/gb";
+
+    my @cmd = ( $CORE_PREP_EXEC, '-g', $gb_list, '-o', $fasta_dir);
+    push(@cmd, '--use_nuc') if $opts{use_nuc};
+    
+    _log( "Running core_hmm_pre:\n" . join( ' ', @cmd ) . "\n", 0 );       
+    system( @cmd ) == 0 || _die( "Error running core_hmm_prep.pl command!", __LINE__);
+}
 
 sub make_combined_att_for_groups {
 
@@ -1249,9 +1314,43 @@ sub check_options {
 
     }
 
-    # check genome list
-    $genome_list_file = $opts{ genome_list_file } // "$working_dir/genomes.list";
-    $errors .= "Can't find genome_list_file: $genome_list_file\n" unless ( -f $genome_list_file );
+    # check genome list, gb_list_file or gb_dir
+    if($opts{gb_list_file}){
+	
+	if($opts{genome_list_file}){
+	    $errors .= "Can only supply one option: --gb_list_file,--genome_list_file, --gb_dir\n";
+	}else{
+	    $gb_list_file = $opts{ gb_list_file};
+	    $errors .= "Can't find gb_list_file: $gb_list_file\n" unless (-f $gb_list_file);
+	}
+	
+    }elsif($opts{genome_list_file}){
+	
+	$genome_list_file = $opts{ genome_list_file };# // "$working_dir/genomes.list";
+	$errors .= "Can't find genome_list_file: $genome_list_file\n" unless ( -f $genome_list_file );
+	
+    }elsif($opts{gb_dir}){
+	
+	if($opts{genome_list_file} || $opts{gb_list_file}){
+	    $errors .= "Can only supply one option: --gb_list_file,--genome_list_file, --gb_dir\n";
+	}
+	
+	$errors .= "Directory does not exist: $opts{gb_dir}\n" unless (-d $opts{gb_dir});
+	$gb_list_file = make_gb_list_file($opts{gb_dir});
+	
+    }elsif(-f "$working_dir/genomes.list"){
+	
+	$genome_list_file = "$working_dir/genomes.list";
+	
+    }elsif(-f "$working_dir/gb.list"){
+
+	$gb_list_file = "$working_dir/gb.list";
+
+    }else{
+	
+	$errors .= "Must provide --gb_list_file,--genome_list_file,--gb_dir OR have a genomes.list or gb.list in the working directory: $working_dir\n";
+    
+    }
 
     # check grouping file if it is passed in
     if ( $opts{ grouping_file } ) {
@@ -1298,6 +1397,22 @@ sub check_options {
 
 }
 
+sub make_gb_list_file{
+
+    my $dir = shift;
+
+    my @files = glob("$dir/*" . ".gb");
+    my $gb_file = "$working_dir/gb.list";
+    my $fh = path($gb_file)->filehandle(">");
+    
+    foreach (@files){
+	my $real_path = path($_)->realpath;
+	my $name = path($_)->basename(".gb");
+	print $fh "$name\t$real_path\n";
+    }
+
+    return $gb_file;
+}
 sub _log {
 
     my ( $msg, $lvl ) = ( @_ );
