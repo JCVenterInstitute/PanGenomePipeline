@@ -239,7 +239,6 @@ mkdir $opts{ output_dir } unless ( -d $opts{ output_dir } );
 my $mapping_file = $opts{ mapping_file } // $opts{ output_prefix } . '.mapping';
 my $download_file = $opts{ download_file } // (fileparse( $mapping_file, qr/\.[^.]*/ ))[0] . '.download';
 my $log_file = $opts{ log_file }    // (fileparse( $mapping_file, qr/\.[^.]*/ ))[0] . '.log';
-my $count_file = (fileparse( $mapping_file, qr/\.[^.]*/ ))[0] . '.count';
 open ( my $lfh, '>', $log_file ) || die "Problem opening log file: $log_file: $!\n";
 
 # need these (maybe)
