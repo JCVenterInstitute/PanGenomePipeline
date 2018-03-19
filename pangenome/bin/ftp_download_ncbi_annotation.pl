@@ -950,8 +950,6 @@ sub get_expected_cds {
     open( my $cds_fh, '<', $file ) || die "Error opening $file!\n$!\n";
     my $total_flag = 0;
 
-    my($coding_cds,$pseudo);
-    
     while ( <$cds_fh> ) {
 
 	#Match if CDS includes total
@@ -973,11 +971,6 @@ sub get_expected_cds {
 	    }
         }
 
-	#To create file to compare to gb parser count
-	$coding_cds = $1 if ($_ =~ / {12}CDS\s+\(coding\)\s+[:]{0,2}\s+([\d]+\,?[\d]+)/ );
-	$pseudo = $1 if ( $_ =~/ {12}Pseudo Genes\s+\(total\)\s+[:]{0,2}\s+([\d]+\,?[\d]+)/ );
-	$coding_cds =~ s/,//g if $coding_cds;
-	$pseudo =~ s/,//g if $pseudo;
     }
 
     return $expected_cds_count;
