@@ -134,7 +134,6 @@ open( my $lfh, "<", $opts{file_list}) || die "Can't open $opts{file_list}: $!\n"
 # create genomes.list file if we will be running the locus checks:
 my %seen_genomes;
 
-my $sum_features;
 # Go through each GenBank file that was passed in
 while( my $file = <$lfh> ) {
     
