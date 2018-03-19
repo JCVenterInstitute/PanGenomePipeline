@@ -169,7 +169,7 @@ while( my $file = <$lfh> ) {
             } else {
                 next;
             }
-            
+	    
             #Store Keyword's value in assembly hash
             if ( $keyword eq "ACCESSION" ) {
               
@@ -198,11 +198,14 @@ while( my $file = <$lfh> ) {
 
                 #We parse the features here. This is the hard part.
                 $assembly->{'features'} =  &parse_features( $fh, $assembly );
-                $seen_genomes{ $filename }++; # Add to the hash of seen genomes if we're doing checks.
+		
+		$seen_genomes{ $filename }++; # Add to the hash of seen genomes if we're doing checks.
+	
                 $feature_counts = &print_files($assembly->{'accession'},$assembly->{'features'},$filename,$feature_counts);
 
+
             }
-        } 
+        }
 
         close $fh;
 
@@ -560,7 +563,7 @@ sub parse_features {
 
     #Cycle through features section and store information.  Will filter it later
     my $key;  # Will hold the` coords string (i.e. 246..2043)
- 
+        
 FEATURES: while( my $line = <$fh> ) {
 
         chomp( $line );
@@ -590,8 +593,8 @@ FEATURES: while( my $line = <$fh> ) {
 
                 #Parse end5, end3 from coordinate line
                 ($key, $e5, $e3) = &parse_coord_string( $coords );
-                
-                #Store the information
+
+		#Store the information
                 $pre_feature->{$key}->{'end5'} = $e5;
                 $pre_feature->{$key}->{'end3'} = $e3;
                 
@@ -601,8 +604,11 @@ FEATURES: while( my $line = <$fh> ) {
 
             #This is not a gene or cds and we don't want it.
             #This is like an RNA or something
-            $pre_feature->{$1}->{'not_gene'} = $1;
-            $key = "";
+	    #Allo for genes that take up the whole assembly
+	    unless($line =~ /(^     source|CONTIG)/ ){
+		$pre_feature->{$1}->{'not_gene'} = $1;
+		$key = "";
+	    }
 
         } elsif($line =~ /\/pseudo/){
             $pre_feature->{$key}->{pseudo} = 1 ;
@@ -612,7 +618,7 @@ FEATURES: while( my $line = <$fh> ) {
             last FEATURES;
         }
 
-        #From here and below, we only look into these if we have an active key
+	#From here and below, we only look into these if we have an active key
         #If our key is eq "", this means we don't want to parse the stuff
         next if( !defined( $key ) || $key eq "" );
 
@@ -628,6 +634,7 @@ FEATURES: while( my $line = <$fh> ) {
         } 
 	
     }
+
     
     return $pre_feature;
 

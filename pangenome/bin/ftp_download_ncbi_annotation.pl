@@ -239,7 +239,6 @@ mkdir $opts{ output_dir } unless ( -d $opts{ output_dir } );
 my $mapping_file = $opts{ mapping_file } // $opts{ output_prefix } . '.mapping';
 my $download_file = $opts{ download_file } // (fileparse( $mapping_file, qr/\.[^.]*/ ))[0] . '.download';
 my $log_file = $opts{ log_file }    // (fileparse( $mapping_file, qr/\.[^.]*/ ))[0] . '.log';
-
 open ( my $lfh, '>', $log_file ) || die "Problem opening log file: $log_file: $!\n";
 
 # need these (maybe)
@@ -884,10 +883,12 @@ sub retrieve_gb_and_fasta_files {
 
                 # If we don't have an expected cds, print what we have and move on.
                 if ( $expected_cds == 0 ) {
-                    _log( "Don't know how many CDS to look for in $target_file, but found $found_CDS\n", 0 );
+		    _log( "Don't know how many CDS to look for in $target_file, but found $found_CDS\n", 0 );
                 } elsif ( $found_CDS != $expected_cds ) {
-                    _log( "Found $found_CDS CDS but expected $expected_cds CDS from $target_file!\n", 0 );
-                }
+		    _log( "Found $found_CDS CDS but expected $expected_cds CDS from $target_file!\n", 0 );
+                } elsif ($found_CDS == $expected_cds){
+		    _log ("Found $found_CDS CDS, same as expected $expected_cds from $target_file\n", 0 );
+		}
 
             } else {
                 _log( "Found ZERO CDS features in $target_file!\n", 0 );
@@ -947,19 +948,27 @@ sub get_expected_cds {
     my $expected_cds_count = 0;
 
     open( my $cds_fh, '<', $file ) || die "Error opening $file!\n$!\n";
+    my $total_flag = 0;
 
     while ( <$cds_fh> ) {
 
-        if ( / {12}CDS\s+[:]{0,2}\s+([\d\,]+)/ ) {
-
+	#Match if CDS includes total
+	if ( / {12}CDS\s+\(total\)\s+[:]{0,2}\s+([\d]+\,?[\d]+)/ ) {
             ( $expected_cds_count = $1 ) =~ s/,//g; # don't forget to strip out the commas.
+	    $total_flag = 1;
 
-        } elsif ( /Pseudo Genes\s+::\s+([\d\,]+)/ ) { 
+	#Match if CDS line does not include total
+        } elsif (/ {12}CDS\s+[:]{0,2}\s+([\d]+\,?[\d]+)/ ){
+	    ( $expected_cds_count = $1 ) =~ s/,//g; # don't forget to strip out the commas.
 
-            ( my $pseudos = $1 ) =~ s/,//g;
-            $expected_cds_count += $pseudos;
-            last;
+	#Add pseudo gene count for non total CDS count
+	} elsif ( / {12}Pseudo Genes\s+[:]{0,2}\s+([\d]+\,?[\d]+)/ ) { 
 
+	    unless($total_flag){
+		( my $pseudos = $1 ) =~ s/,//g;
+		$expected_cds_count += $pseudos;
+		last;
+	    }
         }
 
     }
