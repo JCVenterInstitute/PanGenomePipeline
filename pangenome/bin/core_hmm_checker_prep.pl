@@ -72,9 +72,9 @@ run_parse_gb($opts{gb_list});
 
 sub run_parse_gb{
 
-    my $gb_list = shift;
     my $parse_dir = "$OUTPUT/pep";
-
+    $parse_dir = "$OUTPUT/nuc" if $opt{use_nuc};
+    
     mkdir($parse_dir) unless (-d $parse_dir);
     
     open(my $fh, "<", $gb_list);
@@ -92,7 +92,7 @@ sub run_parse_gb{
     
     system(@cmd) == 0 || die("Failed:$!", __LINE__);
     
-    make_genome_list_file($parse_dir,$gb_list);
+    make_genome_list_file($parse_dir,$opts{gb_list});
 }
 
 sub make_genome_list_file{
