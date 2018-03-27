@@ -72,31 +72,25 @@ run_parse_gb($opts{gb_list});
 
 sub run_parse_gb{
 
-    my $gb_list = shift;
     my $parse_dir = "$OUTPUT/pep";
-
+    $parse_dir = "$OUTPUT/nuc" if $opt{use_nuc};
+    
     mkdir($parse_dir) unless (-d $parse_dir);
     
-    open(my $fh, "<", $gb_list);
-
-    foreach (<$fh>){
-
-	my ($genome,$location) = split(/\t/,$_);
-        my $parse_file = "$parse_dir/parse.list";
-	my $parse_exec = "$Bin/parse_genbank_files.pl";
-  
-	my $cmd = "cut -f 2 $opts{gb_list} > $parse_file";
-	system($cmd) == 0 || die("Failed:$!");
-
-	my @cmd = ( $parse_exec, '-l', $parse_file, '-o', $parse_dir, '--no_dos2unix');
-	
-	push(@cmd,'--nuc') if($opts{use_nuc});
-	push(@cmd,'--both') if($opts{both});
-		       
-	system(@cmd) == 0 || die("Failed:$!", __LINE__);
-    }
-
-    make_genome_list_file($parse_dir,$gb_list);
+    my $parse_file = "$parse_dir/parse.list";
+    my $parse_exec = "$Bin/parse_genbank_files.pl";
+    
+    my $cmd = "cut -f 2 $opts{gb_list} > $parse_file";
+    system($cmd) == 0 || die("Failed:$!");
+    
+    my @cmd = ( $parse_exec, '-l', $parse_file, '-o', $parse_dir, '--no_dos2unix');
+    
+    push(@cmd,'--nuc') if($opts{use_nuc});
+    push(@cmd,'--both') if($opts{both});
+    
+    system(@cmd) == 0 || die("Failed:$!", __LINE__);
+    
+    make_genome_list_file($parse_dir,$opts{gb_list});
 }
 
 sub make_genome_list_file{
