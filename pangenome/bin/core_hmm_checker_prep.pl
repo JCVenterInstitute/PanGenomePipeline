@@ -73,7 +73,7 @@ run_parse_gb($opts{gb_list});
 sub run_parse_gb{
 
     my $parse_dir = "$OUTPUT/pep";
-    $parse_dir = "$OUTPUT/nuc" if $opt{use_nuc};
+    $parse_dir = "$OUTPUT/nuc" if $opts{use_nuc};
     
     mkdir($parse_dir) unless (-d $parse_dir);
     
