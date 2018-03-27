@@ -77,8 +77,6 @@ sub run_parse_gb{
     
     mkdir($parse_dir) unless (-d $parse_dir);
     
-    open(my $fh, "<", $gb_list);
-
     my $parse_file = "$parse_dir/parse.list";
     my $parse_exec = "$Bin/parse_genbank_files.pl";
     
