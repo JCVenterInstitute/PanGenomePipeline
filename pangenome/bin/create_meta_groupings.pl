@@ -832,7 +832,8 @@ sub parse_metadata {
 
     my @lines = read_file($file);
     my ( $hsh, $counts, $labels );
-
+    my @bad_dbs;
+    
     #Store values in hash
     foreach my $line (@lines) {
 
@@ -845,17 +846,26 @@ sub parse_metadata {
             my ( $db, $group, $type, $short ) = @values;
             my $use_label = ($short) ? $short : $type;
 
-            $hsh->{$db}->{$group}->{$use_label} = 1;
-            $counts->{$group}->{$use_label}->{original_count}++;
-
-            push( @{ $labels->{$group}->{$use_label} }, $db );
-
-        } else {
+	    #Verify db name is valid
+	    push(@bad_dbs,$db) unless (exists $DATABASES->{$db});
+	    
+	    $hsh->{$db}->{$group}->{$use_label} = 1;
+	    $counts->{$group}->{$use_label}->{original_count}++;
+	    
+	    push( @{ $labels->{$group}->{$use_label} }, $db );
+	    
+	} else {
             die("Problem parsing metadata file (line: $line). Must have genome<tab>group<tab>label.");
         }
 
     }
 
+    #Die if there are not valid DBS
+    if(scalar @bad_dbs > 0){
+	my $bad_dbs = join(",",@bad_dbs);
+	die("Genomes found in grouping file that are not in $opts{genomes_list}: $bad_dbs\n");
+    }
+    
     foreach my $group ( keys %$counts ) {
 
         foreach my $label ( keys %{ $counts->{$group} } ) {
