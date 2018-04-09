@@ -4,5 +4,5 @@ The JCVI Pan-Genome Pipeline is a collection of programs designed to allow users
 
 # Publications
   1. PanOCT: automated clustering of orthologs using conserved gene neighborhood for pan-genomic analysis of bacterial strains and closely related species.
-   Fouts DE1, Brinkac L, Beck E, Inman J, Sutton G.
+   Fouts DE, Brinkac L, Beck E, Inman J, Sutton G.
    http://www.ncbi.nlm.nih.gov/pubmed/22904089
