@@ -51,10 +51,11 @@ use File::Slurp;
 use Data::Dumper;
 use File::Path;
 use File::Copy;
-use File::Touch;
 use Cwd;
 use FindBin qw($Bin);
 use lib "$Bin";
+use lib "$Bin/../lib";
+use File::Touch;
 
 my %opts;
 
