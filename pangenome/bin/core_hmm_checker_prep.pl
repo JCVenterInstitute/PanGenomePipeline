@@ -71,6 +71,8 @@ my $OUTPUT = &check_params;
 
 run_parse_gb($opts{gb_list});
 
+exit(0);
+
 sub run_parse_gb{
 
     my $parse_dir = "$OUTPUT/pep";
@@ -82,14 +84,14 @@ sub run_parse_gb{
     my $parse_exec = "$Bin/parse_genbank_files.pl";
     
     my $cmd = "cut -f 2 $opts{gb_list} > $parse_file";
-    system($cmd) == 0 || die("Failed:$!");
+    system($cmd) == 0 || die("Failed running cmd: $cmd");
     
     my @cmd = ( $parse_exec, '-l', $parse_file, '-o', $parse_dir, '--no_dos2unix');
     
     push(@cmd,'--nuc') if($opts{use_nuc});
     push(@cmd,'--both') if($opts{both});
     
-    system(@cmd) == 0 || die("Failed:$!", __LINE__);
+    system(@cmd) == 0 || die('Failed running cmd: ' . join(" ",@cmd ) );
     
     make_genome_list_file($parse_dir,$opts{gb_list});
 }
