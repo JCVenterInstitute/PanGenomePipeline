@@ -335,9 +335,8 @@ sub move_gb_files{
     my $fasta_dir = "$working_dir/fasta_dir";
     my $att_dir = "$working_dir/att_dir";
     my $pep_dir = "$working_dir/gb/pep";
-    my $fasta_suffix;
-   
-    $opts{ use_nuc } ? $fasta_suffix = ".nuc" : $fasta_suffix = ".pep";
+    $pep_dir = "$working_dir/gb/nuc" if $opts{ use_nuc };
+    my $fasta_suffix = $opts{ use_nuc } ? ".nuc" : ".pep";
     
     #Move genomes.list file to working dir
     if ( -s "$pep_dir/genomes.list" ) {
@@ -361,7 +360,7 @@ sub move_gb_files{
 
     foreach( @fasta_files ) {
         my $name = path( $_ )->basename( $fasta_suffix );
-        path( $_ )->move( "$fasta_dir/$name" . $fasta_suffix );
+        path( $_ )->move( "$fasta_dir/$name" . $fasta_suffix ) || _die("Can't move fasta file: $!", __LINE__ );;
     }
 
     return( "$working_dir/genomes.list" );
