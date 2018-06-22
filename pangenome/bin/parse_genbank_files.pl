@@ -169,7 +169,7 @@ while( my $file = <$lfh> ) {
             } else {
                 next;
             }
-	    
+
             #Store Keyword's value in assembly hash
             if ( $keyword eq "ACCESSION" ) {
               
@@ -198,9 +198,9 @@ while( my $file = <$lfh> ) {
 
                 #We parse the features here. This is the hard part.
                 $assembly->{'features'} =  &parse_features( $fh, $assembly );
-		
-		$seen_genomes{ $filename }++; # Add to the hash of seen genomes if we're doing checks.
-	
+
+                $seen_genomes{ $filename }++; # Add to the hash of seen genomes if we're doing checks.
+
                 $feature_counts = &print_files($assembly->{'accession'},$assembly->{'features'},$filename,$feature_counts);
 
 
@@ -286,10 +286,10 @@ sub parse_nuc_features {
 
             # get sequence version
             ## Don't think this is needed anymore
-            $assembly->{version} = $seq_object->seq_version;
+            #$assembly->{version} = defined $seq_object->seq_version ? $seq_object->seq_version : 'undef'; 
 
             # Organism is a little more convoluted to get:
-            $assembly->{organism} =  $seq_object->species->node_name;
+            #$assembly->{organism} = defined $seq_object->species->node_name ? $seq_object->species->node_name : 'undef';
 
             $is_first = 0;
 
