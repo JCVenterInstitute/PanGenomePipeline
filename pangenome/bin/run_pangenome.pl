@@ -76,8 +76,10 @@ B<--cluster_file, -c>       :   The clustering file determining the order of the
 
 B<--rerun_groups>           :   Provide a comma-seperated list of groups to rerun.
 
-B<--backend_only>            :   Sets --no_blast; skips straight to the expansion of
+B<--backend_only>           :   Sets --no_blast; skips straight to the expansion of
                                 'pseudo-genome' names in the very last step's result files. 
+
+B<--no_lite>                :   Run full-fledged run_panoct.pl for sub-groups.
 
 PANOCT OPTIONS:
 
@@ -207,6 +209,7 @@ GetOptions( \%opts,
             'rerun_groups=s',
             'use_nuc|n',
             'working_dir|w=s',
+            'no_lite',
             'help|h',
          ) || die "Problem getting options.\n";                             
 pod2usage( { -exitval => 1, -verbose => 2 } ) if $opts{help};
@@ -1111,6 +1114,7 @@ sub run_run_panoct {
     push( @cmd, '--no_grid' ) if ( $opts{ no_grid } );
     push( @cmd, '--panoct_local' ) if ( $opts{ panoct_local } );
     push( @cmd, '--blast_local' ) if ( $opts{ blast_local } );
+    push( @cmd, '--lite' ) unless ( $opts{ no_lite } );
     if ( $opts{ no_blast } ) {
         my $blast_file = "$working_dir/combined.blast";
         if ( -f $blast_file ) {
@@ -1382,6 +1386,11 @@ sub check_options {
     } elsif ( -f "$working_dir/clusters.list" ) {
 
         $cluster_file = "$working_dir/clusters.list";
+
+    } else {
+
+        # With none of these, assume we want full run_panoct.pl:
+        $opts{ no_lite }++;
 
     }
 

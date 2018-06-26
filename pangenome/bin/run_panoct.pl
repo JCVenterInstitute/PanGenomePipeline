@@ -55,6 +55,7 @@ run_panoct.pl - utility for running the pangenome pipeline
                             --hmm_file
                             --role_lookup
                             --no_graphics
+                            --lite
                           ]
 
 
@@ -102,6 +103,8 @@ B<--use_nuc>                    :   use nucleotide versions of blast and input f
 
 B<--no_graphics>                :   Don't execute the various scripts that produce graphics
 
+B<--lite>                       :   Don't run anything after panoct.  Intended for use by run_pangnome.pl in hierarchical mode.
+
 =head2 Misc options
 
 B<--log_dir>                    :   Place to write run_panoct.log, along with a small collection of log files
@@ -121,8 +124,6 @@ FTP Files can be downloaded from Genbank/RefSeq. These files will
 be stored in the "fasta_dir" directory. Each genome will get it's own
 sub directory and the resulting combined.fasta will be created.
 
-<JCVI specific>
-First, pulls ORF sequences from a list of SGD databases given -d.
 Sequences are stored in a directory named 'fasta_dir' within the working dir.  This
 step can be skipped by supplying the --no_fetch flag, however -d will
 still be needed.  
@@ -407,6 +408,7 @@ GetOptions( \%opts,
     'role_lookup=s',
     'project_code|P=s',
     'use_nuc',
+    'lite',
     'debug=i',
     'help|h',
     ) || die "Error getting options! $!";
@@ -444,6 +446,8 @@ if ( $opts{ no_panoct } ) {
 
 #Step 3: Move result files to final locations
 clean_move_files();
+
+exit(0) if ( $opts{lite} );
 
 #Step 4: Generate stats
 unless ( $opts{no_stats} ) {
