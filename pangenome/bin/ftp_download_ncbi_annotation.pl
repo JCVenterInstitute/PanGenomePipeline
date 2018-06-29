@@ -44,11 +44,17 @@ B<--biosample_list>             :   Provide a list of biosample IDs to be used a
 
 B<--accession_list>             :   Provide a list of assembly accession IDs to be used as input.
 
+B<--name_list>                  :   Provide a list of 'infraspecific species' names to download.
+
 B<--cg, --wgs>                  :   Limit output to only complete genomes (B<--cg>) or incomplete genomes (B<--wgs>) based on 'assembly level' in the assembly sumamry file.  Default is to not limit output.
+
+B<--working_dir, -w>            :   Directory to store various intermediate files, and look for/place the mapping, download, and log files by default.  Default is cwd.
 
 B<--output_dir, -o>             :   Path to location where downloads will go.
 
 B<--log_file, -l>               :   Path to a file containing warnings, etc.
+
+B<--loglevel>                   :   0 for less detailed logs, 1 for more detailed.  Default is 0.
 
 B<--no_downlaod>                :   Don't attempt to download anything, just create the output files.
 
@@ -60,15 +66,15 @@ B<--mapping_file, -m>           :   Path to a file mapping ids to biosample ids.
 
 B<--output_prefix>              :   Use the supplied term as the prefix for all log files, including download and mapping files.
 
-B<--preserve_assembly_summary>  :   Save a copy of the retrieved assembly_summary.txt file
-
 B<--kingdom>                    :   Choose a kingdom within refseq from which to work in.  [Default is 'bacteria']
 
 B<--section>                    :   Choose a section of the ftp site to download from.  Can be: 'refseq' [Default] or 'genbank'
 
-B<--assembly_summary_file>      :   Use a previously saved assembly_summary.txt file.
+B<--preserve_assembly_summary>  :   Save a copy of the retrieved assembly_summary.txt file
 
-B<--id_length>                  :   Max length of newly generated ids. [Default is 7]
+B<--assembly_summary_file>      :   Path to a previously saved assembly_summary.txt file.
+
+B<--id_length>                  :   Max length of newly generated ids. [Default is 10]
 
 B<--min_N50>                    :   Minimum N50 for download. [ Not used by default ]
 
@@ -93,15 +99,17 @@ Under normal operation, the script does the following:
 
 =item  2. Parse the file for rows matching various user-defined specifications
 
-=item  3. Create several files based on that parsing
+=item  3. Retrieve and parse assembly_stats.txt for potential download candidates
 
-=item  4. Retrieve gb, fasta, or both types of file from the urls associated with any identified genomes.
+=item  4. Create several files based on that parsing
+
+=item  5. Retrieve gb, fasta, or both types of file from the urls associated with any identified genomes.
 
 =back
 
-In addition to the normal operational mode, the user may specify B<--no_download>, which will perform the first three
+In addition to the normal operational mode, the user may specify B<--no_download>, which will perform the first foure
 steps.  It will still download the assembly_summary.txt file, but will not retrieve the gb or fasta files in step 4.  
-The user might instead specify B<--download_only>, in which case the first three steps are skipped, and the script will
+The user might instead specify B<--download_only>, in which case the first four steps are skipped, and the script will
 only attempt to download the files from the urls in the file specified with B<--download_file>.  If B<--cleanup_ids> is 
 used, any non-alpha-numeric characters will be stripped out of the ids in the download file.
 
@@ -114,10 +122,11 @@ B<--no_download mode>, examine the resulting .mapping and/or .download files, an
 operation in B<--download_only> mode (or simply rerun without B<--no_download>, as the script doesn't mind writing over 
 previous runs' output files)
 
-As an alternative to B<--organism_search_term>, the user may provide a list of BioSample IDs with B<--biosample_list>, or a
-list of assembly accession IDs with B<--accession_list>.  For any ID in those files, the script will find matches in the 
-'biosample' or 'assembly accession' columns of assembly_summary.txt and use matching rows to create the download
-file.
+As an alternative to B<--organism_search_term>, the user may provide a list of BioSample IDs with B<--biosample_list>, a
+list of assembly accession IDs with B<--accession_list>, or a list of 'infraspecific species names' with B<--name_list>.
+For any ID in those files, the script will find matches in the 'biosample', 'assembly accession', or 'infraspecific species'
+columns of assembly_summary.txt and use matching rows to create the download file.  Note that unlike B<--organism_search_term>,
+items in these alternative lists must match exactly to the respective fields in assembly_summary.txt to be considered for download.
 
 If B<--min_N50> is used to supply a minimum value for N50, the script will compare it with each non-complete genome's
 contig-N50 value from its _assembly_stats.txt file, and omit assemblies that do not equal or exceed the given value.
@@ -147,7 +156,9 @@ There are three files produced under normal operation and when run in B<--no_dow
 
 =item 5. contig_count  from the assembly's _assembly_stats.txt file
 
-=item 6. type-strains will have 'type strain' here
+=item 6. total_length from the assembly's _assembly_stats.txt file
+
+=item 7. type-strains will have 'type strain' here
 
 =back
 
@@ -166,7 +177,7 @@ contig_n50 and contig_count will contain 'complete' if the assembly is listed as
 
 Note that log file will also be written during B<--download_only> operation, and still follows the same naming conventions.
 
-In addition to these files, the downloaded files will be placed in whatever path is specified in B<--output_dir>.  If the user specifies B<--separate_downloads>, each downloaded file is placed in a directory specific to the genome to which it belongs, named by the ID created within this script, foudn in the B<--output_dir>.  Additionally, B<--separate_downloads> also creates a list file for each type of file downlaoded.  (output_dir/fasta.list and/or output_dir/gb.list).
+In addition to these files, the downloaded files will be placed in the path specified as B<--output_dir>.  If the user specifies B<--separate_downloads>, each downloaded file is placed in a directory specific to the genome to which it belongs, named by the ID created within this script, found in the B<--output_dir>.  Additionally, B<--separate_downloads> also creates a list file for each type of file downlaoded.  (output_dir/fasta.list and/or output_dir/gb.list).
 
 =head1 CONTACT
 
@@ -193,7 +204,7 @@ my $DEFAULT_OUTPUT_BASENAME = 'download';
 my $TODAY = get_date();
 my @DEFAULT_DOWNLOAD_LIST = qw( );
 my $DEFAULT_LOG_LEVEL = 0;
-my $DEFAULT_ID_LENGTH = 7;
+my $DEFAULT_ID_LENGTH = 10;
 my $working_dir = getcwd();
 
 my $MAX_DOWNLOAD_ATTEMPTS = 3;
@@ -206,6 +217,7 @@ GetOptions( \%opts,
             'biosample_list=s',
             'both',
             'cg',
+            'cleanup_ids',
             'download_file|d=s',
             'download_only',
             'fasta',
@@ -213,7 +225,7 @@ GetOptions( \%opts,
             'id_length=i',
             'kingdom|k=s',
             'log_file|l=s',
-            'log_level=i',
+            'loglevel=i',
             'mapping_file|m=s',
             'max_contigs=i',
             'min_N50=i',
