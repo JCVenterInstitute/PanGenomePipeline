@@ -1,4 +1,4 @@
-#!/usr/local/bin/perl
+#!/usr/bin/env perl
 
 ###############################################################################
 #                                                                             #
@@ -33,19 +33,18 @@ run_panoct.pl - utility for running the pangenome pipeline
 
 =head1 SYNOPSIS
 
-    USAGE: run_panoct.pl  -d /path/to/genome_list_file
-                            -u <sybase user> && -p <sybase password> || -D database_file
+    USAGE: run_panoct.pl  -g /path/to/genome_list_file
                            [
                             --use_nuc
-                            --gene_att_file /path/to/gene_attribute_file
-                            --blast_file /path/to/blast/output/file
+                            --working_dir /path/to/working_dir
+                            --att_dir /path/to/att_dir || --gene_att_file /path/to/gene_attribute_file
+                            --project_code || --no_grid
+                            --blast_file /path/to/blast/output/file || --blast_local
                             --panoct_local
-                            --blast_local
-                            --project_code
-                            --no_grid
+                            --lite
                             --no_stats
                             --no_trees
-                            --working_dir /path/to/working_dir
+                            --no_graphics
                             --log_file /path/to/log_file
                             --reference
                             --role_ids
@@ -54,56 +53,48 @@ run_panoct.pl - utility for running the pangenome pipeline
                             --strict
                             --hmm_file
                             --role_lookup
-                            --no_graphics
-                            --lite
                           ]
 
 
 =head1 OPTIONS
 
-=head2 Required options
+B<--genome_list_file,-g>        :   File containing list of genome names
 
-B<--genome_list_file,-d>            :   File containing list of genome names and download location
+B<--use_nuc>                    :   use nucleotide versions of blast and input files.
 
-=head2 Optional Options
+B<--working_dir, -w>            :   Path to be consedered the working directory for the pipeline.  Defaults to cwd ('./').
 
 B<--att_dir, -A>                :   Directory containing genome .att files
 
 B<--gene_att_file. -a>          :   Use this gene_att_file instead of creating one from att_dir 
 
-B<--blast_file,-b>              :   Path to a file of all-vs-all blast results. Must be -m 8 or -m 9 tab delimited output.
+B<--project_code, -P>           :   Valid project code for grid-accounting
+
+B<--no_grid>                    :   Run all subtasks locally instead of in parallel on an SGE/Univa grid.
+
+B<--blast_local>                :   Runs BLAST locally.
+
+B<--blast_file,-b>              :   Path to a file of all-vs-all BLAST results. Must be -m 8 or -m 9 tab delimited output.
+
+B<--panoct_local>               :   Runs PanOCT locally.
+
+B<--lite>                       :   Don't run anything after panoct.  Intended for use by run_pangnome.pl in hierarchical mode.
 
 B<--no_stats>                   :   Flag to not run statistics program. 
 
-B<--panoct_local>               :   Runs PanOCT locally <JCVI Specific>
+B<--no_trees>                   :   Don't run tree-making programs following the clustering algorithms
 
-B<--blast_local>                :   Runs Blast locally <JCVI Specific>
-
-B<--limiting_genome>            :   Genome(s) limiter used in stat generation
+B<--no_graphics>                :   Don't execute the various scripts that produce graphics
 
 B<--role_ids>                   :   Role id limiter used in stat generation (Surrounded in quotes,separated by comma)
 
 B<--terms>                      :   Protein name limiter used in stat generation (Surrounded in quotes, separated by commas)
 
-B<--strict>                     :   Level of clustering method strictness(none, low, high) (Default: low)
+B<--strict>                     :   Level of clustering method strictness (no, yes, more) (Default: yes)
 
 B<--percent_id>                 :   Blast cutoff to use within a clustering method's algorithm
 
-B<--methods>                    :   Options are either panoct or none (skips the clustering step). (Default: panoct)
-
 B<--hmm_file>                   :   A file of HMMs of interest, will produce files with clusters that have these HMMs
-
-B<--project_code, -P>           :   Valid project code for grid-accounting
-
-B<--no_grid>                    :   Run all subtasks locally.
-
-B<--no_trees>                   :   Don't run tree-making programs following the clustering algorithms
-
-B<--use_nuc>                    :   use nucleotide versions of blast and input files.
-
-B<--no_graphics>                :   Don't execute the various scripts that produce graphics
-
-B<--lite>                       :   Don't run anything after panoct.  Intended for use by run_pangnome.pl in hierarchical mode.
 
 =head2 Misc options
 
@@ -117,75 +108,92 @@ B<--help,-h>                    :   Display this help message.
 
 Runs several scripts that make up the pangenome pipeline:
 
-=head2 Data Pulling 
-
-<External Data: Genbank>
-FTP Files can be downloaded from Genbank/RefSeq. These files will
-be stored in the "fasta_dir" directory. Each genome will get it's own
-sub directory and the resulting combined.fasta will be created.
-
-Sequences are stored in a directory named 'fasta_dir' within the working dir.  This
-step can be skipped by supplying the --no_fetch flag, however -d will
-still be needed.  
-
-Note that this is done concurrently with building the gene_att file.  If this step is skipped via --no_fetch, and panoct is to be run, the
-user must supply one with --gene_att_file.
-
 =head2 BLAST
 
-<External Data>
-An all-vs-all blast file of the proteins to be clusters is expected to be passed in with the option -b. 
-The all-vs-all blast must be in the NCBI Blast tab delimited -m9/-m8 output.
-
-<JCVI specific>
-Runs all-vs-all blast on the fasta sequences.  Uses formatdb on the combined.fasta
+Run all-vs-all BLAST+ on the input fasta sequences.  Uses makeblastdb on the combined.fasta
 file found in the fasta_dir directory, then blasts with the same file against the new db.  This
-step can be passed by supplying a --blast_file of concatenated -m9 formatted blast results.
+step can be passed by supplying a B<--blast_file> of previously run NCBI BLAST+ results.
 
 =head2 Clustering
 
-Third, runs any clustering methods supplied by the --methods parameter, containing a comma-
-sepsrated list of method names.  Currently implemented names include:
+Produce clusters using panoct.pl with the follwoing parameters:
 
-    panoct [Default]
-    none [skips this step.]
+ panoct.pl -b ./results -t combined.blast -f genomes.list -g combined.att -P combined.fasta -L 1 -M Y -H Y -V Y -N Y -F 1.33 -G y -c '0,50,95,100' -T
 
-Results are placed in the working dir under the directory results, named "method_name.result".
+See the panoct.pl help info for more information.
+
+=head2 EXIT HERE IF --lite IS USED.
+
+If this script is rnu in B<--lite> mode, none of the following sections are run.
 
 =head2 Generate Statistics
 
-Finally, the statistics program can be run at the end of the pipeline unless --no_stats is set. 
+Run:
+
+ pangenome_statistics.pl - A statistics program run unless B<--no_stats> is set.
+
+=head2 Create various pan-genome files
+
+Run:
+
+ paralog_matchtable.pl - Create paralog_matchtable, indicating number of paralogs in a matchtable-style file.
+
+ compute_pangenome.R   - Create a table of combinatorial counts for subsets of the pan-genome
+
+ new_plot_pangenome.pl - Generate PDF and txt files for exponential and power law models of Core, Novel, and Pan-genome gene sizes.
+
+=head2 Tree making
+
+Run:
+
+ make_BSR_trees.sh - make UPGMA and Neighbor-Joining trees of core and all proteins using the PanOCT BSR distance matrices.
+
+unless B<--no_trees> is used.
+
+=head2 Graphics scripts
+
+Run:
+
+ core_cluster_histogram.R   - generate a core_cluster_histogram.pdf file, showing the PanOCT cluster size distribution from singletons (min) to core genes (max).
+
+ gene_order.pl              - to produce conssensus gene order and fGI information for use with the next script:
+
+ make_pan-chromosome_fig.sh - make a pan-chromosome circular figure
+
+unless B<--no_graphics> is used.
+
+=head2 Annotation scripts
+
+Run:
+
+ get_go_annotations.pl     - run HMM and RGI searches to assign funcitonal annotation and GO terms to clusters
+
+ map_go_via_blast.pl       - map GO terms not covered by HMMs to clusters.
+
+ map_annotation_to_fgis.pl - map GO terms onto fGIs given cluster annotations.
+
+unless B<--no_annotation> is used. 
+
+=head2 Align clusters
+
+Run:
+
+ align_clusters.pl - create a multiple alignment file of the members in each cluster
+
+unless B<--no_align_clusters> is used.
 
 =head1  INPUT
 
-=head2 Database File <JCVI specific>
+=head2 Fasta File
 
-File listing the username/password/server combination that allows for JCVI specific database
-logins. The format is username, password and databse server. Seperated by newline. 
-
-Example file:
-username
-password123
-SYBPROD
-
-=head2 Fasta Files
-
-<External data>
-A protein fasta file of all proteins to be clustered must be stored in a directory called "fasta_dir". The 
+A protein (or nucleotide, if running with B<--use_nuc>) fasta file of all proteins to be clustered must be stored in a directory called "fasta_dir". The 
 fasta_dir directory needs to be located in your working directory and the fasta file must be called "combined.fasta".
 
-<JCVI specific>
-Protein fasta files will be pulled from the databases passed into this program, default. 
-
-If supplying a fasta file provide the option --no_fetch.
-
-If you use the --no_fetch and are running PanOCT you must pass in an associated --gene_att_file.
+Alternatively, the path to this file may be supplied using B<--fasta_file>.
 
 =head2 Gene attribute file
 
-<External data>
-To create the file each gene will have a corresponding line with 
-the following information:
+A file listing all genes, wherin each gene will have a corresponding line with the following information:
 
 Molecule Name/ID<tab>Gene Identifier<tab>End 5<tab>End 3<tab>Protein Name<tab>Database/Genome<tab>Protein length<tab>TIGRFAM Role ID<tab>HMMs
 
@@ -193,43 +201,12 @@ Note: The TIGRFAM role id and HMM are optional.
 The TIGRFAM role id can be substituted for any other classification system you'd wish to later refine your output by. If you
 choose not to supply this information put a tab in the column.
 
-=head2 Database List
+=head2 Genome List
 
-The genome_list_file is a file that contains what genomes you'd like to compare as well as where the data
-should be pulled from.
-
-Format should be:
-display name<tab>source<tab>asmbl_id(if JCVI)
-
-Display name: Name of genome showed in the output files
-Source: JCVI SGD
-Asmbl_id(JCVI specific): If none is specified ISCURRENT is default
+The genome_list_file is a file that contains the names of all genomes you'd like to compare, in a single-column.
 
 Note: The display name must match the genome name found in the gene attribute
 file if running PanOCT.
-
-JCVI Specific Note: If only the display name is given then that will be assumed to be the
-SGD and the name to be shown
-
-If you are not pulling data from SGD (--no_fetch) and are providing the script with your own
-fasta file and gene attribute file then genome_list_file is still required, however, you must
-only supply it with the genome names found in the gene attribute file.
-
-Examples of genome_list_file:
-
-  Just JCVI DBs
-  % cat genome_list.file
-  ntab08
-  ntab16
-  ntab17
-  ntab20
-
-  Used with --no_fetch, these names match what's in the gene attribute file
-  & cat genome_list.file
-  Acinetobacter_baumannii_ATCC_17978_uid17477
-  Acinetobacter_baumannii_AYE_uid28921
-  Acinetobacter_baumannii_AB0057_uid21111
-  Acinetobacter_baumannii_uid13001
 
 =head2 HMM File
 
@@ -255,23 +232,15 @@ But can be specified using --log_file.  The level of messages (verbosity) can be
 specified using the --debug option, passing in an integer value. 0 results in the
 fewest messages, increasing the number results in more detailed explanation.
 
-=head2 Fasta Files
-
-The fasta files created in the first step include multifastas per genome of each
-genomes ORFS, and a multifasta that combines all of those into one 'combined.fasta'.
-These files are found in working_dir/fasta_dir.  This location is currently non-configurable.
-
 =head2 BLAST Db Files
 
-During the second step, a blast database is created in the working directory.  
-The combined.blast file is the output of the blast run with the -m9 flag set, 
+During the BLAST step, a BLAST+ database is created in the working directory.  
+The combined.blast file is the output of BLAST run with the -m9 flag set, 
 which produces tabular output featuring headers between each input sequence.
 
 =head2 Clustering Results
 
-Results for each clustering algorithm are parsed and stored as 'method_name.result'
-in the working_dir/results. All files created from a clustering method are also stored
-in this directory. 
+Results for panoct are stored in working_dir/results.
 
 =head2 Stats Files
 
@@ -282,7 +251,7 @@ code repository.
 =head2 Graphics Files
 
 Unless B<--no_graphics> is invoked, the pipeline produces various images summarizing
-the pangenome.
+the pangenome, found in working_dir/results
 
 =head1  CONTACT
 
@@ -311,7 +280,6 @@ use File::Temp;
 use FindBin;
 use lib File::Spec->catdir( $FindBin::Bin, '..', 'lib' );
 use SeqToolBox::SeqDB;
-#use Pangenome::DB::ProkSybase;
 use Pangenome::ConsistencyChecks;
 use Pangenome::Download;
 use Data::Dumper;
@@ -325,9 +293,9 @@ use grid_tasks;
 # Executables
 my $BIN_DIR = $FindBin::Bin;
 my $BLAST_BIN_DIR           = '/usr/local/packages/ncbi-blast+/bin'; #JCVI SPECIFIC
-my $MAKEBLASTDB_EXEC        = "$BLAST_BIN_DIR/makeblastdb";          #JCVI SPECIFIC
-my $BLASTP_EXEC             = "$BLAST_BIN_DIR/blastp";               #JCVI SPECIFIC
-my $BLASTN_EXEC             = "$BLAST_BIN_DIR/blastn";               #JCVI SPECIFIC
+my $MAKEBLASTDB_EXEC        = "makeblastdb";
+my $BLASTP_EXEC             = "blastp";
+my $BLASTN_EXEC             = "blastn";
 my $PANOCT_EXEC             = "$BIN_DIR/panoct.pl";
 my $STATS_EXEC              = "$BIN_DIR/pangenome_statistics.pl";
 my $SPLIT_FASTA             = "$BIN_DIR/split_fasta.pl";
@@ -1504,10 +1472,10 @@ sub check_params {
 
         my $op = lc( $opts{ strict } );
         $strict = $opts{ strict };
-        $errors .= "--strict can be low, high, none\n" unless ( $op =~ /(low|high|none)/ );
+        $errors .= "--strict can be no, yes, more\n" unless ( $op =~ /^(no|yes|more)$/ );
 
     } else {
-        $strict = "low";
+        $strict = "yes";
     }
 
     if ( $opts{ role_lookup } ) {
