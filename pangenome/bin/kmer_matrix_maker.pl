@@ -1,4 +1,4 @@
-#!/usr/local/bin/perl
+#!/usr/bin/env perl
 
 ###############################################################################
 #                                                                             #
@@ -65,7 +65,7 @@ use File::Basename;
 use File::Path;
 use File::Temp qw( tempfile );;
 
-my $MERYL_BIN = '/usr/local/bin/meryl';
+my $MERYL_BIN = 'meryl';
 
 my %opts;
 GetOptions( \%opts,

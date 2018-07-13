@@ -1,4 +1,4 @@
-#!/usr/local/bin/perl
+#!/usr/bin/env perl
 #Copyright (C) 2017-2022 The J. Craig Venter Institute (JCVI).  All rights reserved
 #This program is free software: you can redistribute it and/or modify
 #it under the terms of the GNU General Public License as published by

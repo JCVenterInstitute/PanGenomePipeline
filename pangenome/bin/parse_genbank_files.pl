@@ -1,4 +1,4 @@
-#!/usr/local/bin/perl
+#!/usr/bin/env perl
 
 ###############################################################################
 #                                                                             #
@@ -58,9 +58,9 @@ B<--help, -h>       :   Displays Help
 =head1 DESCRIPTION
 
 This script takes in a list of genbank files. It then parses each file and creates a protein fasta file
-and a gene attribute file which can then be used as input to the Pangenome pipeline.  If --nuc is used, a
+and a gene attribute file which can then be used as input to the Pangenome pipeline.  If B<--nuc> is used, a
 nucleotide fasta file is created instead, and the gene attribute file and fasta file will include more than
-just genes; it will also contain various rna features and pseudogenes, etc., longer than --length (default: 30)
+just genes; it will also contain various rna features and pseudogenes, etc., longer than B<--length> (default: 30)
 
 Once the set of files has been downloaded, runs B<'check_att_files.pl'> to identify and resolve any cases of:
 
