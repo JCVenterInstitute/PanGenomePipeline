@@ -1,4 +1,4 @@
-#!/usr/local/bin/perl -w
+#!/usr/bin/env perl
 #Copy (C) 2013  The J. Craig Venter Institute (JCVI).  All rights reserved
 #Written by Granger Sutton, Ph.D.
 

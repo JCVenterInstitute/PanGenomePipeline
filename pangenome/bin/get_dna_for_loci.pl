@@ -71,7 +71,7 @@ use Getopt::Long  qw(:config no_ignore_case no_auto_abbrev);
 use Path::Tiny;
 use Pod::Usage;
 
-my $CUTFASTA_EXEC = '/usr/local/common/cutFasta';
+my $CUTFASTA_EXEC = 'cutFasta';
 my $instructions = './instructions';
 
 my %opts;

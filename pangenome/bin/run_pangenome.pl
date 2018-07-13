@@ -33,12 +33,21 @@ run_pangenome.pl - run the pangenome pipeline
 
 =head1 SYNOPSIS
 
-    USAGE: run_pangenome.pl -P <project code> | --blast_local | --no_blast
-                            [-g <genomes.list> | --gb_list_file <gb.list> | --gb_dir <dir>] 
-                            [-c <clusters.list>] [-w <working directory>]
-                            [--grouping_file <meta-grouping_file>]
-                            [--rerun_groups <group_list>] [--backend_only]
-                            [--less_strict_panoct]
+    USAGE: run_pangenome.pl -P <project code> | --no_grid 
+                          [ --blast_local | --no_blast ]
+                          [ --panoct_local ]
+                          [ --genome_list_file <genomes.list> | --gb_list_file <gb.list> | --gb_dir <gb_dir> ]
+                          [ --working_dir /path/to/working_dir
+                            --combined_fasta <combined.fasta>
+                            --combined_att <combined.att> ]
+                          [ --use_nuc ]
+                          [ --att_suffix .att ]
+                          [ --grouping_file <groups.list> ]
+                          [ --hierarchy_file <hierarchy_file> ]
+                          [ --rerun_groups L1B3,L1B4,L2B1 ]
+                          [ --backend_only ]
+                          [ --no_lite ]
+                          [ --less_strict_panoct ]
 
 =head1 OPTIONS
 
@@ -46,7 +55,7 @@ B<--genome_list_file, -g>   :   List of genome names. The order here determines 
 
 B<--gb_list_file>           :   List of .gb file locations to be used on genome list input.
 
-B<--gb_dir>                 :   Direcotry containing gb files named <genome>.gb
+B<--gb_dir>                 :   Directory containing gb files named <genome>.gb
 
 B<--working_dir, -w>        :   Path in which multiple directories are to be created [DEFAULT: current dir]
 
@@ -58,7 +67,7 @@ B<--use_nuc, -n>            :   Use nucleotide versions of blast programs and in
 
 B<--att_suffix>             :   Provide an alternate extension for recognizing .att files [DEFAULT: ".patt"/".natt"]
 
-B<--project_code>           :   Project code for UGE accounting purposes used when blast jobs/panoct are executed on the grid.
+B<--project_code, -P>       :   Project code for UGE accounting purposes used when blast jobs/panoct are executed on the grid.
 
 B<--no_grid>                :   Run without any access to a grid.
 
@@ -72,7 +81,7 @@ B<--grouping_file>          :   Run meta-grouping analysis using the provided gr
 
 ITERATIVE OPTIONS:
 
-B<--cluster_file, -c>       :   The clustering file determining the order of the steps to run. [DEFAULT: <working_dir>/clusters.list, if available ]
+B<--hierarchy_file, -c>     :   The file determining the order of the steps to run. [DEFAULT: <working_dir>/hierarchy_file, if available ]
 
 B<--rerun_groups>           :   Provide a comma-seperated list of groups to rerun.
 
@@ -89,9 +98,9 @@ B<--less_strict_panoct> :   Use panoct's "-S N" flag to reduce strictness of clu
 
 Run the JCVI Prokaryotic Group's pangenome software, panoct, along with other scripts that perform ancillary functions.
 
-In the absence of a --cluster_file, will run panoct (via run_panoct.pl) on all input genomes found within --genome_list_file.
+In the absence of a --hierarchy_file, will run panoct (via run_panoct.pl) on all input genomes found within --genome_list_file.
 
-When used with a --cluster_file, will run the iterative JCVI panoct/pangenome pipeline on the genomes contained within:
+When used with a --hierarchy_file, will run the iterative JCVI panoct/pangenome pipeline on the genomes contained within:
 
 1. Read in the cluster file and build an 'itinerary' of steps.
 
@@ -117,17 +126,19 @@ Modified files are recreated as <filename>.expanded, leaving the originals in pl
 
 =head1 INPUT
 
-The pipeline will run given a variety of setup options.  To run with as few command-line parameters as possible, the pipeline needs to have the following files in the described locations:
+The pipeline will run given a variety of setup options.  To run with as few command-line parameters as possible, the pipeline needs to have a directory of .gb (genbank flatfile format) files.  For maximum compatibility, the files should come from the RefSeq or Genbank, and should have annotations derived via NCBI's PGAP software (which is a given for files downloaded from RefSeq).  The directory should be provided with B<--gb_dir>, or a list of .gb file paths can be provided with B<--gb_list_file>.
 
-B<genomes.list> - Expected in the working directory.  Can be specified with --genome_list_file.  This file is a single-column file of genome IDs that have been used as filenames.
+Alternatively, this script can be run with the following files in the described locations:
+
+B<genomes.list> - Expected in the working directory.  Can be specified with B<--genome_list_file>.  This file is a single-column file of genome IDs that have been used as filenames.
 
 B<fasta_dir>    - directory within the working directory containing a multifasta of feature sequences per genome, named according to the IDs in genomes.list
 
 B<att_dir>      - directory within the working directory containing a 'gene attribute' file per genome, named according to the IDs in genomes.list
 
-B<grouping_file> - Optional.  When present, directs the pipeline to run 'create_meta_groupings.pl' on the listed genomes.
+B<grouping_file> - Optional.  When present, directs the pipeline to run 'create_meta_groupings.pl' on the listed genomes.  See that script for more information on the format of this file.
 
-B<clusters.list> - Optional.  When present, directs the pipeline to enter 'iterative' mode.  A small sample file might look like:
+B<hierarchy_file> - Optional.  When present, directs the pipeline to enter 'iterative' mode.  A small sample file might look like:
 
     L1B1(GenomeA,GenomeB,GenomeC)
     L1B2(GenomeD,GenomeE,GenomeF,GenomeG)
@@ -135,7 +146,7 @@ B<clusters.list> - Optional.  When present, directs the pipeline to enter 'itera
     L1B4(GenomeM,GenomeN,GenomeO)
     L2B1(L1B1,L1B2,L1B3,L1B4)
 
-Using this sample clusters.list file will generate four typical pangenome runs along with one run that uses 'pseudo-genomes' to represent clusters identified in the previous runs.  For this L2 run, the cluster represntatives found in the prior L1 level runs' centroids.fasta files are used as the potential members in newly generated clusters.
+Using this sample hierarchy_file file will generate four typical pangenome runs along with one run that uses 'pseudo-genomes' to represent clusters identified in the previous runs.  For this L2 run, the cluster represntatives found in the prior L1 level runs' centroids.fasta files are used as the potential members in newly generated clusters.
 
 Certain useful files from the L2 level run will be 'expanded' such that the cluster reprentatives found in those files are replaced with the entire subset of members from the original cluster, giving the appearance that those expanded files were generated from a single pangenome run including all of the input genomes.
 
@@ -186,7 +197,7 @@ my $att_suffix          = '.patt';
 my $working_dir         = '';
 my $combined_att        = '';
 my $combined_fasta      = '';
-my $cluster_file        = '';
+my $hierarchy_file        = '';
 my $grouping_file       = '';
 my $lfh                 = undef;
 my $debug               = 0;
@@ -196,7 +207,7 @@ GetOptions( \%opts,
             'att_suffix=s',
             'backend_only',
             'blast_local',
-            'cluster_file|c=s',
+            'hierarchy_file|c=s',
             'genome_list_file|g=s',
             'gb_list_file=s',
             'gb_dir=s',
@@ -204,12 +215,12 @@ GetOptions( \%opts,
             'less_strict_panoct',
             'no_blast',
             'no_grid',
+            'no_lite',
             'panoct_local',
             'project_code|P=s',
             'rerun_groups=s',
             'use_nuc|n',
             'working_dir|w=s',
-            'no_lite',
             'help|h',
          ) || die "Problem getting options.\n";                             
 pod2usage( { -exitval => 1, -verbose => 2 } ) if $opts{help};
@@ -230,9 +241,9 @@ if ( $gb_list_file ) {
 }
 
 # Run panoct directly on our inputs if there is no cluster file:
-unless ( $cluster_file ) {
+unless ( $hierarchy_file ) {
 
-    _log( "No cluster_file found.  This is ok.\nProceeding with non-iterative pangenome.", 0 );
+    _log( "No hierarchy_file found.  This is ok.\nProceeding with non-iterative pangenome.", 0 );
 
     # Run single pangenome.  Then exit.
     run_run_panoct( $working_dir, $combined_fasta, $combined_att, $genome_list_file, $grouping_file );
@@ -241,7 +252,7 @@ unless ( $cluster_file ) {
 
 } else {
 
-    _log( "Cluster file: $cluster_file\nProceeding with iterative pangenome run.", 0 );
+    _log( "Cluster file: $hierarchy_file\nProceeding with iterative pangenome run.", 0 );
 
 }
 
@@ -255,7 +266,7 @@ my @genome_order = get_genome_order( $genome_list_file );
 my %locus2genome;
 
 # read in the cluster file, plot the itinerary, get some files.
-my $itinerary = build_itinerary( $cluster_file );
+my $itinerary = build_itinerary( $hierarchy_file );
 # Need final step name for possible meta group run in iterative runs:
 my $final_step = (keys %{@$itinerary[-1]} )[0];
 
@@ -718,7 +729,7 @@ sub resolve_frameshift_loci {
 
     my ( $itinerary ) = @_;
 
-    my $output_file = abs_path( $cluster_file ) . ".frameshifts";
+    my $output_file = abs_path( $hierarchy_file ) . ".frameshifts";
     open ( my $ofh, '>', $output_file ) || _die( "Can't open $output_file for writing: $!", __LINE__ );
 
     for my $step ( @$itinerary ) {
@@ -1222,12 +1233,12 @@ sub make_combined_att {
 sub build_itinerary {
 # Seperate the cluster file into steps, retrieve all fasta & gene_att files at this time, too.
 
-    my ( $cluster_file ) = @_;
+    my ( $hierarchy_file ) = @_;
     my @itinerary;
 
-    _log( "Building itinerary from cluster file: $cluster_file.", 1 );
+    _log( "Building itinerary from cluster file: $hierarchy_file.", 1 );
 
-    open( my $ifh, '<', $cluster_file ) || _die( "Can't open cluster_file $cluster_file: $!", __LINE__ );
+    open( my $ifh, '<', $hierarchy_file ) || _die( "Can't open hierarchy_file $hierarchy_file: $!", __LINE__ );
 
     while ( <$ifh> ) {
 
@@ -1378,14 +1389,14 @@ sub check_options {
     }
 
     # check cluster file
-    if ( $opts{ cluster_file } ) { 
+    if ( $opts{ hierarchy_file } ) { 
 
-        $cluster_file = $opts{ cluster_file };
-        $errors .= "Can't find cluster_file: $cluster_file\n" unless ( -f $cluster_file );
+        $hierarchy_file = $opts{ hierarchy_file };
+        $errors .= "Can't find hierarchy_file: $hierarchy_file\n" unless ( -f $hierarchy_file );
 
-    } elsif ( -f "$working_dir/clusters.list" ) {
+    } elsif ( -f "$working_dir/hierarchy_file" ) {
 
-        $cluster_file = "$working_dir/clusters.list";
+        $hierarchy_file = "$working_dir/hierarchy_file";
 
     } else {
 

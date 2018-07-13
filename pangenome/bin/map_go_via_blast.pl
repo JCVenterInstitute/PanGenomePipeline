@@ -54,7 +54,7 @@ B<--blast_file, -b>     :   Skip BLAST, run using this results file instead.
 
 =back
 
-B<--blast_db, -s>      :   Path to BLAST db for searching.
+B<--blast_db, -s>       :   Path to BLAST db for searching.
 
 B<--mapping_file, -m>   :   Path to file mapping blast headers to go, roles, etc.
 
@@ -72,9 +72,21 @@ B<--use_nuc, -n>        :   Input is in nucleotide space, also use blastn.
 
 =head1 DESCRIPTION
 
+This script takes in an input fasta file, and a predetermined blast database with associated GO mapping, and maps the GO terms to the input sequence after examining the blast results.
+
 =head1 INPUT
 
+B<--input_seqs>   - typically centroids.fasta
+
+B<--blast_db>     - blast db of some group of interesting genes.
+
+B<--mapping_file> - maps the sequences in the B<--blast_db> to associated GO terms.
+
 =head1 OUTPUT
+
+B<--output_file> - contains the mappings in the format:
+
+<input_seq_id>\t<hit description>\t<GO Term>\n
 
 =head1 CONTACT
 
