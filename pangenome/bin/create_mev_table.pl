@@ -27,6 +27,36 @@ use warnings;
 use strict;
 $|++;
 
+=head1 NAME
+
+create_mev_table.pl - Formats Panocts matchtable results into a .mev format
+
+=head1 SYNOPSIS
+
+  USAGE: create_mev_table.pl --matchtable
+         --genomes_list
+         --att_file
+         --output [Optional]
+         --help [Optional]
+
+=head1 OPTIONS
+
+B<--matchtable|m>   : Matchtable file created by PanOct
+
+B<--genomes_list|g> : List of genomes
+
+B<--att_file|a>     : Genome attribute file
+
+B<--output|o>       : Output directory
+
+B<--help|h>         : Prints help
+
+=head1 OUTPUT
+
+mev.table - New .mev file representing PanOct's matchtable results
+
+=cut
+    
 use Getopt::Long qw(:config no_ignore_case no_auto_abbrev);
 use Pod::Usage;
 use Cwd;
@@ -43,6 +73,8 @@ GetOptions( \%opts,
 	    'att_file|a=s',
 	    'output|o=s',
 	    'help|h') || die "Error getting options! $!";
+
+pod2usage( { -exitval => 1, -verbose => 2 } ) if $opts{help};
 
 my $OUTPUT_DIR;
                     
@@ -176,9 +208,7 @@ sub parse_dbs{
 sub check_params{
     my $error;
 
-    if($opts{help}){
-	$error = "\nUsage: ./create_mev_table.pl -g <genomes_list> -m <PanOCT matchtable> -a <gene_att_file> [-o <output, optional>]\n\n";
-    }elsif(!($opts{matchtable} && $opts{genomes_list} && $opts{att_file})){
+    if(!($opts{matchtable} && $opts{genomes_list} && $opts{att_file})){
 	$error .= "Must supply --matchtable, --genomes_list and --att_file\n";
     }else{
 	$error .= "$opts{matchtable} does not exist or is size zero\n" unless (-s $opts{matchtable});

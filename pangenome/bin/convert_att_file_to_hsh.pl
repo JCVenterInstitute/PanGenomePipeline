@@ -27,17 +27,36 @@ use warnings;
 use strict;
 $|++;
 
+=head1 NAME
+
+convert_att_file_to_hsh.pl - Parses the att file and converts it to a hash saved locally
+
+=head1 SYNOPSIS
+
+  USAGE: convert_att_file_to_hsh.pl <attribute.file> <output directory>  
+
+=head1 OPTIONS
+
+  --help, h : Prints usage 
+
+=cut
+    
 use Pod::Usage;
+use Getopt::Long qw( :config no_auto_abbrev no_ignore_case ); 
 use Cwd;
 use Cwd 'abs_path';
 use feature qw(switch);
 use MLDBM qw( DB_File Data::Dumper );
 use Fcntl;
-use Data::Dumper;
 use File::Basename;
 
 my $file = $ARGV[0];
 my $out = $ARGV[1];
+my %opts;
+
+#Options
+GetOptions(\%opts, 'help|h');
+pod2usage( { -exitval => 1, -verbose => 2 } ) if $opts{help};
 
 my ($name,$path,$suffix) = fileparse($file);
 open(IN,$file);

@@ -54,10 +54,7 @@ hmm_missing.txt - Lists the files that did not match the cutoff of interested HM
     
 use Getopt::Long qw(:config no_ignore_case no_auto_abbrev);
 use Pod::Usage;
-use File::Basename;
 use File::Path;
-use File::Copy;
-use File::Touch;
 use Cwd;
 use FindBin qw($Bin);
 use lib "$Bin";
@@ -103,10 +100,10 @@ sub print_results{
     map{print $mfh "$_\n"} @$pass;
     map{print $fhf "$_\n"} @$fail;
 
-  
     close $mfh;
     close $fhf;
 }
+
 sub find_core_acc{
 
     my $file = shift;
@@ -114,6 +111,7 @@ sub find_core_acc{
     my @core_hmms;
     
     my @values = split(/\s+/,$count);
+
     foreach my $value (@values){
 	push(@core_hmms,$value) if($value ne "NAME");
     }
