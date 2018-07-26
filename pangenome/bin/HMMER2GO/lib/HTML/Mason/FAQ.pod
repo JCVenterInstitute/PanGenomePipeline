@@ -1,0 +1,1055 @@
+=pod
+
+=head1 NAME
+
+HTML::Mason::FAQ - Frequently asked questions
+
+=head1 AUTOHANDLERS, METHODS, ATTRIBUTES, INHERITANCE
+
+=head2 Can I set a page's inheritance dynamically at request time (e.g. based on URL arguments)?
+
+No. Inheritance is a fixed property of a component, determined once when the component is loaded. Dynamic inheritance is on the todo list.
+
+=head2 How can I tell Mason to use autohandlers or dhandlers when calling one component from another component (i.e. internal redirect)?
+
+Usually this situation arises when a top-level component makes a run-time decision to use a second component as the "real" page, and calls it via <& &> or $m->comp.
+
+Autohandlers and dhandlers are only triggered for the top-level component of a request. In 1.1, you can use an Apache internal redirect or a Mason subrequest ($m->subexec) to solve the problem.
+
+=head2 I added a simple autohandler to a directory and now my pages don't appear.
+
+Make sure to include a call to $m->call_next somewhere in the autohandler.
+
+=head2 Where does a dhandler inherit from? Can I change it to inherit based on the URL path?
+
+A dhandler's inheritance is determined by its location in the hierarchy, not by the URL that invoked it.
+
+Consider a site with the following components:
+
+       /autohandler
+       /dhandler
+       /products/autohandler
+
+and suppose a request comes in for /products/index.html. /dhandler will handle the request but will still inherit from /autohandler.
+
+This is not always the desired behavior, but there is no easy way to change it. If you want /products/* requests to use /products/autohandler, you'll need to create /products/dhandler as well.
+
+=head2 Can I change the value of an attribute dynamically, based on the request?
+
+No, attributes are static. The closest thing to a dynamic attribute is a method. If you've been using an attribute widely and don't want to change it to a method everywhere, consider using an attribute/method combination. Suppose your attribute is called 'bgcolor'. Create a default method called 'bgcolor' in the autohandler:
+
+       <%method bgcolor>
+       <%init>
+       return $m->base_comp->attr('bgcolor');
+       <%init>
+       </%method>
+
+Then replace every other
+
+       $m->base_comp->attr('bgcolor');
+
+with
+
+       $m->base_comp->call_method('bgcolor')
+
+or
+
+       <& SELF:bgcolor &>
+
+Now you can leave the attribute definitions alone, but define a method if and when you need a dynamically computed value.
+
+=head2 When using multiple component roots and autohandlers, does every autohandler in every root get called, and in what or
+
+
+Mason will try each autohandler path in turn, e.g.
+
+   /foo/bar/baz/autohandler
+   /foo/bar/autohandler
+   /foo/autohandler
+   /autohandler
+
+For each path, it will search all of the component roots, and only run the *first* autohandler found. Some of the autohandlers might come from one root and some from another.  However, there is no way that multiple autohandlers would be run for the same path (/foo/autohandler, for example.) There is also no way for /foo/autohandler in root 1 to explicitly call /foo/autohandler in root 2.
+
+People sometimes ask for this behavior to be changed. We feel it's a bad idea because multiple component roots, right now, are very clean in both behavior and implementation. Trying to run multiple autohandlers for the same path would require a complex set of precedence rules that would almost certainly lead to unpredictable behavior. (Think about multiple versions of multiple autohandlers at different directory levels, and trying to predict which order they'd run in.)
+
+=head1 CACHING
+
+=head2 When I change a component I don't always see the results in the output. How do I invalidate Mason code caches?
+
+Mason employs two kinds of code caching. First, Mason caches loaded components in memory. Second, Mason keeps an object file (a compiled version of the component) for every loaded component under data_root/obj.
+
+Before executing a memory-cached component, Mason compares the stored timestamp with the timestamp of the source file. If the source file has a later timestamp, Mason will load the component from the filesystem.
+
+Similarly, before using an object file, Mason compares the modified timestamp of the source and object files. If the source file has a later timestamp, then it is reparsed and the object file is overwritten.
+
+The system is designed so that you will immediately see the effects of source file changes. There are several ways for this system to breakdown; most are easy to avoid once you know about them.
+
+* If you copy or move in a component source file from elsewhere, it will retain the original file's timestamp, which may be earlier than the object file.
+
+* If you use tar, rsync, rdist or similar programs to transfer components, the timestamps of the created files may not be updated to the current time. Check the program's documentation for timestamp-related options.
+
+* If you use a shared file system like NFS, the timestamps of locally created files may not jibe with timestamps of NFS files due to differences in machine clocks.
+
+* If you ftp files onto a running server, Mason may read the file while it is incomplete. If the ftp then completes within the same second, Mason will not notice the change, and won't ever read the complete file.
+
+When in doubt, touching the source files (with the Unix touch command, or by re-saving in an editor) should force Mason to reload the component. If that does not work, try removing the object files and/or restarting the server to clear the memory cache. However, these remedies should be necessary only to diagnose the caching problem, not for normal Mason operation. On a normal Mason system cache expiration should just work "as expected".
+
+=head2 Mason code caching breaks down often in my situation. Couldn't you do something smarter than just comparing the timestamps?
+
+When coming up with invalidation schemes, we must consider efficiency as well as failure predictability. The current scheme does fail in certain situations, but those situations are very predictable. If you incorrectly use tar or copy or another technique mentioned above, you'll see the cache invalidation failure very quickly.
+
+Some alternatives that have been suggested:
+
+* Compare the sizes of the files as well as timestamps, or use the more liberal "source timestamp != object timestamp". This would indeed increase the chance of catching a change. But it would still fail occasionally (e.g. when changing a single character, or when copying an old-timestamp file that just happens to match the current timestamp), resulting in intermittent, head-scratching errors. In our opinion, it is better to fail miserably up front and be forced to fix your system than to have a mostly-working system that fails once a week. This is especially true when you are relying on Mason's cache invalidation on a production system.
+
+* Comparing MD5 or other signatures of the content. This would be very accurate, but would require reading and processing the source file instead of just performing a stat. This extra expense reduces the effectiveness of the cache.
+
+The bottom line: If you are relying on Mason's cache invalidation on a production system, you should take the time and build in the appropriate infrastructure to ensure that source file timestamps are always up-to-date after they are copied/untarred into place.
+
+=head2 When I change code in a library file I don't see the results. How can I get Mason to reread the library files?
+
+mod_perl processes, in general, do not automatically reread your library files. You either have to stop and start the server whenever you change a library file, or install something like Apache::Reload which will automate their reloading. However, see ApacheReload for important usage information.
+
+=head2 Once I've made an error in a component, the error keeps appearing in the logs, no matter how many times I fix it and reload!
+
+Are you using Apache::Reload in its default (!ReloadAll) mode? If so, see ApacheReload for details.
+
+=head2 Do data cache files expire automatically when a component or its dependencies change?
+
+Unfortunately they do not. This is on the to-do list.
+
+With Mason 1.1x and beyond, you can use the following idiom to say ``expire when my component source file changes'':
+
+      $m->cache(...,
+        expire_if=>sub {
+              (stat($m->current_comp->source_file))[9] > $_[0]->get_created_at
+        } )
+
+With Mason <= 1.05, the idiom looks like:
+
+      $m->cache(...,
+         expire_if=>sub { 
+              (stat($m->current_comp->source_file))[9] > $_[0]
+         } )
+
+
+=head1 COMPONENTS
+
+=head2 What is a component?
+
+A component is a file that contains some combination of text (typically HTML), perl code and HTML::Mason directives.
+
+Some components are accessed directly by web browsers. These are called top-level components. A top-level component might consist purely of static HTML.
+
+Other components are support components, which are called by top-level components or other support components. These components are analogous to perl subroutines -- they allow you to create small packages of code that you can reuse throughout your project.
+
+=head2 How do components communicate with each other?
+
+Components can return values to their callers, just like subroutines.
+
+Some components may have very simple return values. As an example, consider a component called isNetscape which returns a true value when the client's browser is Netscape and undef when it is not. The isNetscape component could then be used easily in an if() or other control statement.
+
+Of course, components can also return strings of text, arrays, hashes or other arbitrarily complex perl data structures.
+
+=head2 How do I use modules in components?
+
+Technically you can just say "use module-name" at the beginning of a component. The disadvantages of this method are that:
+
+* the module will be used separately by every httpd child process, costing both time and memory.
+
+* it is difficult to keep track of all the modules being used on a site.
+
+A more efficient method is to put the use line in the handler.pl or use the PerlModule directive. If you want components to be able to refer to symbols exported by the module, you need to use the module inside the HTML::Mason::Commands package. See the "External modules" section of the Administrator's Guide:
+
+=head2 Can I define subroutines in components?
+
+Defining a named subroutine in a <%perl> or <%init> section does not work reliably because such a definition would end up residing inside another subroutine, and Perl doesn't like that.
+
+You can technically define named subroutines inside the <%once> section of any component, but we highly discourage this, because all components are executed in the same namespace. This makes it easy to create two subroutines with the same name in two different components.
+
+Consider the following options:
+
+* If the routine is going to display HTML, use a separate component or a <%def> subcomponent.
+
+* If the subroutine is only of use in your component, use an anonymous subroutine defined in <%once>. Even though you could define the anonymous subroutine in any section, a <%once> is recommended, both for performance and to avoid nested-anonymous-subroutine leaks in Perl <=5.6. Example:
+
+      <%once>
+      my $foo = sub {
+        ...
+      };
+      </%once>
+
+      ...
+
+      % $foo->()
+
+* If the subroutine is of interest to more than just your component, have you considered putting it in a module?
+
+Note that calling a component, while reasonably fast, is about an order of magnitude slower than calling an equivalent subroutine. So if you're going to call the routine many times in a loop, you may wish to use the anonymous subroutine for performance reasons. Benchmark for yourself.
+
+=head2 Does Mason set the current working directory (".") for me?
+
+Mason does not touch the working directory, as this would entail an unnecessary performance hit for the majority of users that don't need it.
+
+In an Apache environment, the working directory will be set in a more-or-less random way, depending on such seemingly irrelevant factors as whether you started the server in single-process mode or not. In a non-Apache environment the working directory will be whatever it was before Mason started executing.
+
+Often people expect the working directory to be the directory of the current component. You can, instead, get that directory manually with
+
+       $m->current_comp->source_dir
+
+=head2 How do I exit from all components including the ones that called me?
+
+Use $m->abort, documented in the Request manual:
+
+=head2 Why does my output have extra newlines/whitespace and how can I get rid of it?
+
+Any newlines that are not either inside a tag or on a %-line will become part of the output. Since browsers ignore extra whitespace this is not generally a problem, but there are situations where it matters, e.g. within <pre> tags.
+
+First, for components that only return a value and shouldn't output *any* content, you should always use <%init>:
+
+      <%args>
+       $foo
+      </%args>
+
+      This content will be ignored.
+
+      <%init>
+       my $bar = $dbh->selectrow_array("SELECT bar FROM t WHERE foo=?", $foo);
+       return $bar;
+      </%init>
+
+In components that do display content, there are various strategies. To eliminate selected newlines, use the backslash. For example,
+
+       <PRE>
+       foo\
+       % if (1) {
+       bar\
+       % }
+       baz
+       </PRE>
+
+outputs "foobarbaz" with no newlines.
+
+To prevent a component from outputting any newlines, use a filter:
+
+       <%filter>
+       s/\n//g;
+       </%filter>
+
+To emit binary data without the risk of inserting extra whitespace, surround your code with $m->clear_buffer and $m->abort, to suppress any preceding and following content:
+
+      <%init>
+       $m->clear_buffer;
+       my $fh = IO::File->new('< binary_file') or die $!;
+       my $buffer;
+       while (read $fh, $buffer, 8192) {
+         $m->print($buffer);
+       }
+       $m->abort;
+      </%init>
+
+At some point Mason will probably offer a "reasonable" whitespace removal feature, controlled by parameter.
+
+=head2 I'm trying to generate an image or other binary file, but it seems to be getting corrup
+
+
+This is almost always caused by unwanted whitespace at the beginning or end of your binary data. Put a $m->clear_buffer before, and an $m->abort after, your code. See the last part of the answer above.
+
+In Apache 1.0 a real working example looks like this:
+
+   my $fh;
+   my $fileName = '/tmp/mypic.jpg';
+   open ( $fh, $fileName ) or die $!;
+
+   $m->clear_buffer();
+   $r->content_type( 'image/jpeg' ); # set mime-type 
+   $r->send_http_header;
+   $r->send_fd ( $fh );
+   close ( $fh );
+
+In Apache 2.0 use:
+
+   use Apache2::Const qw(HTTP_OK)
+
+   my $fileName = 'someimage.jpg';
+   $m->clear_buffer();
+   $r->content_type( 'image/jpeg' );
+   $r->sendfile( $fileName )
+   $r->abort( Apache2::Const::HTTP_OK );
+
+=head2 How do I put comments in components?
+
+* Put general comments in the <%doc> section.
+
+* In the <%init> and <%cleanup> sections, and in a <%perl> block, use standard Perl comments ('#').
+
+* In Mason 1.3 and beyond, use <%# %> for single or multi-line comments anywhere outside of Perl sections. Before 1.3, this syntax isn't guaranteed to work; one alternative is to begin a line with %#.
+
+* If you are producing HTML, you can use standard HTML comments delimited by <!-- -->. The difference is that these comments will appear in the final output.
+
+=head2 What's a good way to temporarily comment out code in a component?
+
+For HTML, you might be tempted to surround the section with <!-- -->. But be careful! Any code inside the section will still execute. Here's a example of commenting out a call to an ad server:
+
+      <!-- temporarily comment out
+      <& FetchAd &>
+      -->
+
+The ad will still be fetched and counted, but not displayed!
+
+A better way to block out a section is if (0):
+
+      % if (0) {
+        ...
+      % }
+
+Code blocked out in this way will neither be executed nor displayed, and multiple if (0) blocks can be nested inside each other (unlike HTML comments).
+
+Another way to block out code is with a <%doc> tag or a <%# %> comment, although these not cannot be nested.
+
+=head2 How can I capture the output of a component (and modify it, etc.) instead of having it automatically output?
+
+Use $m->scomp, documented in the Request manual:
+
+=head2 Can I use globals in components?
+
+All HTML::Mason components run in the same package (HTML::Mason::Commands), so if you set a global variable in one you'll be able to read it in all the others. The only problem is that Mason by default parses components with strict mode on, so you'll get a warning about the global (and Mason considers all such warnings fatal). To avoid errors, simply declare your globals via the MasonAllowGlobals parameter.
+
+      PerlSetVar MasonAllowGlobals $dbh
+      PerlAddVar MasonAllowGlobals $user
+
+If you have a handler.pl file, you can also declare global variables in the handler() subroutine as long as you explicitly put them in the HTML::Mason::Commands package.
+
+      package HTML::Mason::Commands;
+      use vars qw(...);
+
+or use the Parser allow_globals parameter.
+
+Alternatively you can turn off strict entirely by passing:
+
+      use_strict => 0
+
+when you create the Parser object. Then you can use all the globals you want. Doing this is terribly silly, however, and is bound to get you in trouble down the road.
+
+=head2 How do I share variables between components?
+
+First, you can pass variables from one component to another.
+
+Second, you can use globals. All components run in the same package (HTML::Mason::Commands as of this writing), so globals in this package are visible to all components. See the previous question.
+
+There is no way to share a variable between just a few components; this is a limitation of Perl's scoping rules. You can make a variable /visible/ to only certain components using 'our' declarations:
+
+        <%once>
+        our ($shared_var);
+        </%once>
+
+See the Perl documentation on 'our' to make sure you understand what this is doing.
+
+The <%shared> section is /not/ for sharing variables among different file components. It is for sharing variables among the subcomponents and methods of a single file component.
+
+=head2 Why does the order of output get mixed up when I use print or $r->print?
+
+This should no longer happen with Mason 1.10+. For those users still using older versions of Mason, read the following:
+
+Since your server is most likely in batch mode, all Mason output gets buffered til the end of the request. print and $r->print circumvent the buffer and thus come out before other Mason output.
+
+Solution: don't use print or $r->print. Use $m->out if you must output inside a Perl section. See the section on output mode in the Administrator's Guide.
+
+and the section on $m->out in the Request manual.
+
+=head2 Why doesn't my <%cleanup> code run every time the component runs?
+
+
+A <%cleanup> block is equivalent to a C<< <%perl> >> block at the end of the component. This means it will NOT execute if the component explicitly returns, or if an abort or error occurs in that component or one of its children.
+
+If you need code that is guaranteed to run when the component or
+request exits, consider using a mod_perl cleanup handler, or creating
+a custom class with a DESTROY method.
+
+=head2 Is <%args> exactly like %ARGS, and do I need to worry about it?
+
+Mason allows you to predeclare arguments to components by specifying variables to hold those arguments in an <%args></%args> section. Because these are perl variables that you are predeclaring, they must have legal perl identifier names -- they can't, for example, contain periods.
+
+If you want to pass arguments that are not identified with legal perl names, you must manually pull those arguments out of the %ARGS hash that mod_perl sets up for you. Why would you want to name your arguments un-legally, you ask? Well, just for starters, the form input element <input type="image" name="clickable"> will pass arguments clickable.x and clickable.y to the action url automatically. If you want to access these, you'd have to use $ARGS{clickable.x} and $ARGS{clickable.y} rather than trying to declare them in <%args>.
+
+=head2 Why does Mason display the wrong line numbers in errors?
+
+Due to limitations in the 1.0x parser, Mason can only display line numbers relative to object files.
+
+In 1.1 and on, error line numbers correctly reflect the component source.
+
+=head2 How can I get a list of components matching a path pattern?
+
+Use the resolver's glob_path method:
+
+      my @paths = $m->interp->resolver->glob_path('/some/comp/path/*');
+
+This will work even with multiple component roots; you'll get a combined list of all matching component paths in all component roots.
+
+=head2 Can I access $m (the request object) from outside a component, e.g. inside a subroutine?
+
+In 1.1x and on, use
+
+      my $m = HTML::Mason::Request->instance;
+
+Before 1.1x, use
+
+      my $m = HTML::Mason::Commands::m;
+
+=head2 How can I make the |h escape flag work with my Russian/Japanese/other-non-western encoding?
+
+The |h flag is implemented with [=HTML::Entities::encode_html]. This function, by default, escapes control chars and high-bit chars as well as <, >, &, and ". This works well for ISO-8559-1 encoding but not with other encodings.
+
+To make |h escape just <, >, &, and ", which is often what people want, put the following in your Apache configuration:
+
+       PerlSetVar  MasonEscapeFlags  "h => \&HTML::Mason::Escapes::basic_html_escape"
+
+Or, in a top-level autohandler:
+
+       $m->interp->set_escape( h => \&HTML::Mason::Escapes::basic_html_escape );
+
+=head2 When using multiple component roots, is there a way to explicitly call a component in a specific root?
+
+
+Multiple component roots were designed to work just like Perl's @INC.  A given component path matches exactly one file, the first file found in an ordered search through the roots. There is no way to explicitly ask for a file in a specific root.
+
+People sometimes ask for the ability to do this. We feel it's a bad idea because it would endanger the cleanliness of multiple component roots in both behavior and implementation. As it stands now, the rules are very easy to understand and the implementation is very clean and isolated; only the resolver really needs know about multiple component roots.
+
+If you want to be able to explicitly refer to components in a given root, put an extra subdirectory between the root and the components.  e.g. put your components in
+
+    /usr/local/htdocs/global/global/...
+
+then add the root as
+
+    ['global', '/usr/local/htdocs/global']
+
+Now you can prefix a path with /global to refer to any component in that root.
+
+Alternatively, [http://search.cpan.org/dist/MasonX-Request-ExtendedCompRoot MasonX::Request::ExtendedCompRoot] is a subclass of Mason that does allow you to call components in a specific component root.
+
+=head2 Is there a syntax checker like perl -c for components?
+
+
+It is impossible to write a truly generic standalone script to syntax check components, because components rely on certain globals and modules to be present in their environment. Mason may report compile errors from such a script even though they would not occur in your normal web environment.
+
+The best you can do is write a standalone script that mimics your web environment as much as possible - in particular, declaring the same globals and loading the same modules. Instead of actually executing components, your script need only load them with $interp->load(). This method will throw a fatal error if a component fails to load.
+
+=head1 HTTP AND HTML
+
+=head2 How do I access GET or POST arguments?
+
+GET and POST arguments are automatically parsed and placed into named component arguments just as if you had called the component with <& &> or $m->comp. So you can get at GET/POST data by pre-declaring argument names and/or using the %ARGS hash which is always available. 
+
+=head2 How can I access the raw content of a POST in a Mason component?
+
+It depends on your environment as to what you can do.
+
+Apache/mod_perl has an easier way of doing it than CGI/FCGi, which uses
+FakeApache. As you can see from the comment, since FakeApache implements read, I couldn't get it to be completely dynamic:
+
+        my $inputText;
+        # FakeApache implements read, so we can't automatically tell 
+        # if we're in mod_perl or FCGI
+        if (0 && $r->can('read')){ 
+                $r->read( $inputText, $r->headers_in->{'Content-length'} );
+                } 
+        else {
+                my %params = $r->params;
+                my $posted_content = $params{POSTDATA} || $params{keywords};
+                $posted_content ||= join '', %params if ($r->method eq 'POST');
+                $posted_content = join '', @$posted_content if (ref $posted_content eq 'ARRAY');
+                $inputText = $posted_content
+        }
+
+-- Gareth Kirwan
+
+Probably $r->params does not work. there is no such method
+in 'man Apache'
+
+-- Rajesh Kumar Mallah.
+
+=head2 What happens if I include query args in a POST?
+
+As of Mason 1.01, query string and POST arguments are always combined.
+
+=head2 Should I use CGI.pm to read GET/POST arguments?
+
+No! HTML::Mason automatically parses GET/POST arguments and places them in declared component arguments and %ARGS (see previous question). If you create a CGI object in the usual way for a POST request, it will hang the process trying to read $r->content a second time.
+
+=head2 Can I use CGI.pm to output HTML constructs?
+
+Yes. To get a new CGI object, use
+
+      my $query = new CGI('');
+
+You have to give the empty string argument or CGI will try to read GET/POST arguments.
+
+To print HTML constructs returned by CGI functions, just enclose them in <%%>, e.g.
+
+      <% $query->radio_group(...) %>
+
+=head2 How do I modify the outgoing HTTP headers?
+
+Use the usual Apache.pm functions, such as $r->header_out. See the "Sending HTTP Headers" section in the Component Developer's Guide.
+
+=head2 How do I do an external redirect?
+
+In Mason 1.0x, use code like this:
+
+        $m->clear_buffer;
+        # The next two lines are necessary to stop Apache from re-reading
+        # POSTed data.
+        $r->method('GET');
+        $r->headers_in->unset('Content-length');
+        $r->content_type('text/html');
+        $r->header_out('Location' => $location);
+        $m->abort(301);
+
+In Mason 1.1x, use the [=$m->redirect] method.
+
+See the next question if your redirect isn't producing the right status code.
+
+=head2 When trying to use $m->redirect I get 'Can't locate object method "redirect" via package "HTML::Mason::!ApacheHandler"'.
+
+$m->redirect is supported only in Mason 1.1x and on. Check your Mason version by putting
+
+       Version = <% $HTML::Mason::VERSION %>
+
+in a component.
+
+=head2 Why isn't my status code reaching users' browsers?
+
+If you are using a handler.pl, your handler() routine should always return the error code that handle_request($r) produces. Otherwise, things like $m->abort() will not work correctly. So a very, very simple handler() routine would look like this:
+
+      sub handler {
+        my $r = shift;
+        $ah->handle_request($r);
+      }
+
+If you are using $m->abort or $m->redirect and there is an eval() wrapped directly or indirectly around the call, you must take care to propagate abort exceptions after the eval(). This looks like:
+
+       eval { $m->comp('...') };
+       if ($@) {
+          if ($m->aborted) {
+              die $@;
+          } else {
+              # deal with non-abort exceptions
+          }
+       }
+
+=head2 How can I handle file uploads under Mason?
+
+The basic HTML for an upload form looks like:
+
+       <form action="..." method="post" enctype="multipart/form-data">
+       Upload new file:
+       <input name="userfile" type="file" class="button">
+       <input type="submit" value="Upload">
+
+The way you handle the submission depends on which args method you chose for the !ApacheHandler class.
+
+Under the 'CGI' method (default for 1.0x), you can use the [=$m->cgi_object] method to retrieve a CGI.pm object which can be used to retrieve the uploaded file. Here is an example using the 'CGI' method:
+
+  <%init>
+  my $query = $m->cgi_object;
+
+  # get a filehandle for the uploaded file
+  my $fh = $query->upload('userfile');
+
+  # print out the contents of the uploaded file
+  while (<$fh>) {
+        print;
+  }
+  close($fh);
+  </%init>
+
+Please see the [CGI.pm http://search.cpan.org/~lds/CGI.pm-3.05/CGI.pm#CREATING_A_FILE_UPLOAD_FIELD documentation] for more details.
+
+Under the 'mod_perl' method (default for 1.1x), the request object available as [=$r] in your components will be an object in the Apache::Request class (as opposed to the Apache class). This object is capable of returning Apache::Upload objects for parameters which were file uploads. Please see the [Apache::Request http://search.cpan.org/~joesuf/libapreq-1.3/Request/Request.pm#Apache%3A%3AUpload_METHODS documentation] for more details.  Here is an example using the 'mod_perl' method:
+
+  <%init>
+
+   # NOTE: If you are using libapreq2 + mod_perl2 + Apache 2,
+   # you will need to uncomment the following line:
+   # use Apache::Upload;
+
+   # you can store the file's contents in a scalar
+   my $file_contents;
+
+   # create an Apache::Upload object
+   my $upload = $r->upload;
+
+   # get a filehandle for the uploaded file
+   my $upload_fh = $upload->fh;
+
+   while(<$upload_fh>) {
+       # loop through the file and copy each line to $file_contents
+       $file_contents .= $_;
+   }
+   close($upload_fh);
+  </%init>
+
+
+
+For more information on how to manually set the args method, see the !ApacheHandler documentation.
+
+If you are using CGI.pm, there are some configuration issues to be aware of. CGI.pm needs a tmp directory, and you probably want to be able to specify what that directory is.
+
+Try doing this in your httpd.conf or handler.pl:
+
+      <Perl>
+      use CGI qw(-private_tempfiles);
+      </Perl>
+
+You must do this _before_ you load either the HTML::Mason or HTML::Mason::!ApacheHandler modules.
+
+That may change which directories CGI tries to use.
+
+You could also try
+
+      $CGI::TempFile::TMPDIRECTORY = '/tmp';
+
+during startup, either in your httpd.conf or handler.pl
+
+The root of the problem is probably that the temp directory is being chosen when the module loads uring server startup while its still root. It sees it can write to /usr/tmp and is happy. Then when actually running as nobody it dies.
+
+I bet Lincoln would welcome a patch (hint, hint). One solution would be to check if you're running under mod_perl and you're root. If so, then check Apache->server->uid and see if that id can write to the temp directory too.
+
+=head2 How can I redirect the current request to be a file download?
+
+A detailed explanation is provided in ForceFileDownload.
+
+=head2 How can I manipulate cookies?
+
+You can use the helpful modules Apache::Cookie and CGI::Cookie. It's also fairly easy to roll your own cookie-manipulation functions, using the methods provided by the $r global.
+
+One thing to avoid: the combination of CGI::Cookie, Apache::Request, and POST requests has caused people problems. It seems that Apache::Cookie and Apache::Request make a better pair.
+
+=head2 How can I populate form values automatically?
+
+Several CPAN modules provide form-filling capabilities. HTML::!FillInForm is one good choice and works well with Mason. Here's a sample code snippet:
+
+     <%filter>
+     $_ = HTML::FillInForm->new->fill(scalarref => \$_, fdat => \%ARGS );
+     </%filter>
+
+This will work for any component that contains a complete form in its output.
+
+If you are using Apache::Request to process incoming arguments under mod_perl (the default as of 1.10), then you can also do this:
+
+     <%filter>
+     use HTML::FillInForm;
+     $_ = HTML::FillInForm->new->fill(scalarref => \$_, fobject => $r );
+     </%filter>
+
+These two examples are slightly different from each other, in that each makes a different set of parameters available to HTML::!FillInForm. In the first example, the arguments used are those that were explicitly passed to the component. In the second example, the arguments are those that were passed in the initial HTTP request. Of course, variations on this are possible by mixing and matching %ARGS, $m->request_args, $m->caller_args, and so on.
+
+=head1 INSTALLATION
+
+=head2 What else do I need to use Mason?
+
+If you are planning on using Mason in a web environment with the Apache webserver, you'll need a working copy of Apache and mod_perl installed. Make sure that your mod_perl installation works correctly before trying to get Mason working. Also, if you are running RedHat Linux, beware the mod_perl RPMs that ship with RedHat. They were unreliable for a very long time, and their current state is still murky.
+
+
+=head2 What platforms does Mason run on?
+
+Because Mason consists of only Perl code, it should work anywhere Perl runs (including most Unix and Win32 variants). If it doesn't work on your operating system, let us know.
+
+=head2 Can I run Mason outside a web server?
+
+Yes, in fact Mason can be useful for generating a set of web pages offline, as a general templating tool, or even as a code generator for another language. See the "Standalone Mode" section of the Interpreter manual.
+
+=head2 Can I run Mason via CGI?
+
+Yes. See "Using Mason from a CGI script" in the Interpreter manual.
+
+The examples in the docs requires that you have Mason 1.10+ installed.
+
+Note that running Mason under CGI (or other non-persistent environments) will entail a substantial performance hit, since the perl interpreter will have to load, load up Mason and its supporting modules for every CGI execution. Using mod_perl or similar persistent environments (SpeedyCGI, FastCGI, etc.) avoids this performance bottleneck.
+
+=head2 Can I use Mason with Apache/mod_perl 2.0?
+
+Yes, as of Mason 1.27 (released 10/28/2004), there is support for Apache/mod_perl 2.0 in the core Mason code. You may find other hints at ApacheModPerl2.
+
+=head2 Where can I find a web host supporting Mason?
+
+Please check the [Hosting] page for a list of hosting providers supporting HTML::Mason.  You may also be interested in the list of [http://perl.apache.org/help/isps.html ISPs supporting mod_perl], however, there are reports that this document has not been maintained in several years.
+
+=head2 What does the error "Can't locate object method 'TIEHASH' via package 'Apache::Table'" mean?
+
+It means that Mason is trying to use some of mod_perl's "table" interface methods, like $r->dir_config->get('key') or the like. It's failing because your mod_perl server wasn't compiled with support for Apache's Table API.
+
+To fix the problem, you'll have to recompile your server, adding the PERL_TABLE_API=1 flag (or EVERYTHING=1).
+
+If you can't recompile your server, you can edit the Mason source code. Find a line in ApacheHandler.pm that looks like this (it's line 365 in Mason 1.04):
+
+      my @val = $mod_perl::VERSION < 1.24 ? $c->dir_config($p) : 
+         $c->dir_config->get($p);
+
+and change it to:
+
+      my @val = Apache::perl_hook('TableApi') ? $c->dir_config->get($p) : 
+         $c->dir_config($p);
+
+Recent versions of Mason use that, or a variant of it.
+
+=head2 What does the error "Can't locate Apache/Request.pm in @INC" m
+
+You are using the default !ApacheHandler args_method ('mod_perl'), which requires that you have installed the Apache::Request package (libapreq).
+
+You can either install libapreq, or change args_method to 'CGI'. The latter is a bit slower and uses more memory.
+
+=head2 Why am I getting segmentation faults (or silently failing on startup)?
+
+There are a few known mod_perl issues that cause segmentation faults or a silent failure on the part of Apache to start itself up. Though not specific to Mason, they are worth keeping in mind:
+
+* Are you using a dynamically-linked mod_perl? DSO mod_perl builds were unstable for a long time, although they might finally be getting better. Rebuild Apache with mod_perl linked statically and see if the problem goes away. Also see http://perl.apache.org/docs/1.0/guide/install.html#When_DSO_can_be_Used.
+
+* Earlier versions of XML::Parser and Apache could conflict, because both  would statically compile in expat for XML parsing. This was fixed as of Apache version 1.3.20 and XML::Parser 2.30, both of which can be compiled against the same shared libexpat. You can also build Apache with '--disable-rule=EXPAT'. Matthew Kennedy points out that 'If "strings `which httpd` | grep -i xml" returns anything, you have this problem.'
+
+* Are you using Perl 5.6.0? Though not widespread, Perl 5.6.0 can generate sporadic segmentation faults at runtime for some Perl code. Specifically, evals of moderate complexity appear problematic. And, since Mason uses lots of evals of moderate complexity, you can't avoid them. If the two suggestions above don't solve your segfault problem and you are running Perl 5.6.0, try upgrading to Perl 5.6.1.
+
+
+MISCELLANEOUS
+
+=head2 Where did the name come from?
+
+It was inspired by a recent reading of Ken Follett's "The Pillars Of The Earth." The book centered around the life of a mason, a builder of great churches and buildings.
+
+PERFORMANCE
+
+=head2 Is Mason fast?
+
+It is typically more than fast enough. 50-100 requests per second for a simple component is typical for a reasonably modern Linux system. Some simple benchmarking indicates that a Mason component is typically about two to three times slower than an equivalent, hand-coded mod_perl module.
+
+Although benchmarks on [http://chamas.com/bench/ Apache Hello World! benchmarks] site shows that Mason code is five (simple Hello World page, [=hello.mas]) to ten (heavyweight template, [=h2000.mas]) times slower than mod_perl solution.
+
+Beware of "Hello World!" and other simple benchmarks. While these benchmarks do a good job of measuring the setup and initialization time for a package, they are typically not good measures of how a package will perform in a complex, real-world application. As with any program, the only way to know if it meets your requirements is to test it yourself.
+
+In general, however, if your application is fast enough in pure mod_perl, it will most likely be fast enough under HTML::Mason as well.
+
+=head2 How can I make my Mason application run faster?
+
+The first thing you can do to optimize Mason performance is to optimize your mod_perl installation. Consider implementing some of the tuning tips recommended in mod_perl_tuning, which ships with every copy of mod_perl.
+
+If your application still needs to run faster, consider using Mason's caching methods ($m->cache and $m->cache_self) to avoid regenerating dynamic content unnecessarily.
+
+=head2 Does Mason leak memory?
+
+Mason 1.10 and 1.11 do have a memory leak. This is fixed with 1.12. Earlier versions of Mason may leak some memory when using the "mod_perl" args_method, due to what is arguably a bug in Apache::Request.
+
+If you do find other memory leaks that are traceable to Mason, please check the known bugs list to make sure it hasn't already been reported. If it hasn't, simplify your handler.pl (if you have one) and the offending component as much as possible, and post your findings to the mason-users mailing list.
+
+Of course it is always possible for your own component code to leak, e.g. by creating and not cleaning up global variables. And mod_perl processes do tend to grow as they run because of "copy-on-write" shared-memory management. The mod_perl documentation and performance faq make good bedtime reading.
+
+If you are using RedHat's mod_perl RPM, or another DSO mod_perl installation, you will leak memory and should switch to a statically compiled mod_perl.
+
+SERVER CONFIGURATION
+
+=head2 Why are my config file changes not taking effect?
+
+1. After changing an httpd.conf or handler.pl or other server configuration file, make sure to do a FULL stop and start of the server. By default, the server will not reread Perl scripts or configuration when using "apachectl restart" or when sending a HUP or USR1 signal to the server.
+
+For more details see "Server Stopping and Restarting" in the mod_perl guide.
+
+2. Note that you cannot use Mason httpd parameters (MasonCompRoot, MasonErrorMode, etc.) and a handler.pl script that creates an ApacheHandler object at the same time. Depending on how you declare your PerlHandler, one or the other will always take precedence and the other will be ignored. For more details see "Site Configuration Methods" in the Admin manual.
+
+=head2 What filename extensions should I use for Mason components?
+
+
+Unlike many templating systems, Mason comes with no obvious filenaming standards. While this flexibility was initially considered an advantage, in retrospect it has led to the proliferation of a million different component extensions (.m, .mc, .mhtml, .mcomp, ...) and has made it more difficult for users to share components and configuration.
+
+The Mason team now recommends a filenaming scheme with extensions like .html, .txt, .pl for top-level components, and .mhtml, .mtxt, .mpl for internal (non-top-level) components.
+
+Whatever naming scheme you choose should ideally accomplish three things:
+
+* Distinguish top-level from internal components. This is obviously crucial for security.
+
+* Distinguish output components from those that compute and return values. This improves clarity, and forces the component writer to decide between outputting and returning, as it is bad style to do both. 
+
+* Indicate the type of output of a component: text, html, xml, etc. This improves clarity, and helps browsers that ignore content-type headers (such as IE) process non-HTML pages correctly. 
+
+=head2 Can I serve images through a HTML::Mason server?
+
+If you put images in the same directories as components, you need to make sure that the images don't get handled through HTML::Mason. The reason is that HTML::Mason will try to parse the images and may inadvertently find HTML::Mason syntax (e.g. "<%"). Most images will probably pass through successfully but a few will cause HTML::Mason errors.
+
+The simplest remedy is to have HTML::Mason decline image and other non-HTML requests, thus letting Apache serve them in the normal way.
+
+Another solution is to put all images in a separate directory; it is then easier to tell Apache to serve them in the normal way. See the next question.
+
+For performance reasons you should consider serving images from a completely separate (non-HTML::Mason) server. This will save a lot of memory as most requests will go to a thin image server instead of a large mod_perl server. See Stas Bekman's mod_perl guide and Vivek Khera's performance FAQ for a more detailed explanation. Both are available at http://perl.apache.org/
+
+=head2 How can I prevent a particular subdirectory from being handled by HTML::Mason?
+
+Suppose you have a directory under your document root, "/plain", and you would like to serve these files normally instead of using the HTML::Mason handler. Use a Location directive like:
+
+      <Location /plain>
+        SetHandler default-handler
+      </Location>
+
+Or suppose you have a "/cgi-bin" that you want to process via CGI:
+
+      <Location /cgi-bin>
+        SetHandler cgi-script
+      </Location>
+
+When you have multiple Location directives, the latest ones in the configuration have the highest precedence. So to combine the previous directive with a typical Mason directive:
+
+      <Location />
+        SetHandler perl-script
+        PerlHandler HTML::Mason
+      </Location>
+
+      <Location /cgi-bin>
+        SetHandler cgi-script
+      </Location>
+
+More generally, you can use various Apache configuration methods to control which handlers are called for a given request. Ken Williams uses a FilesMatch directive to invoke Mason only on requests for ".html" files:
+
+       <FilesMatch  "\.html$">
+         SetHandler perl-script
+         PerlHandler HTML::Mason
+       </FilesMatch>
+
+Or you could reverse this logic, and write FilesMatch directives just for gifs and jpegs, or whatever.
+
+If you are using a handler.pl, you can put the abort decision in your handler() routine. For example, a line like the following will produce the same end result as the <Location /plain> directive, above.
+
+      return -1 if $r->uri() =~ m|^/plain|;
+
+However, performance will not be as good as the all-Apache configuration.
+
+=head2 Why am I getting 404 errors for pages that clearly exist?
+
+The filename that Apache has resolved to may not fall underneath the component root you specified when you created the interpreter in handler.pl. HTML::Mason requires the file to fall under the component root so that it can call it as a top-level component. (For various reasons, such as object file creation, HTML::Mason cannot treat files outside the component root as a component.)
+
+If you believe the file is in fact inside the component root and HTML::Mason is in error, it may be because you're referring to the Apache document root or the HTML::Mason component root through a symbolic link. The symbolic link may confuse HTML::Mason into thinking that two directories are different when they are in fact the same. This is a known "bug", but there is no obvious fix at this time. For now, you must refrain from using symbolic links in either of these configuration items.
+
+The same thing could also happen in any context with more than one way to specify a canonical filename. For example, on Windows, if your document root starts with "C:" and your component root starts with "c:", you might have this problem even though both paths should resolve to the same file.
+
+With Mason 0.895 and above, if you set Apache's LogLevel to warn, you will get appropriate warnings for these Mason-related 404s.
+
+=head2 Some of my pages are being served with a content type other than text/html.  How do I get HTML::Mason to properly set the content type?
+
+HTML::Mason doesn't actually touch the content type -- it relies on Apache to set it correctly. You can affect how Apache sets your content type in the configuration files (e.g. srm.conf). The most common change you'll want to make is to add the line
+
+      DefaultType text/html
+
+This indicates that files with no extension and files with an unknown extension should be treated as text/html. By default, Apache would treat them as text/plain.
+
+=head2 Microsoft Internet Explorer displays my page just fine, but Netscape or other browsers just display the raw HTML code.
+
+The most common cause of this is an incorrect content-type. All browsers are supposed to honor content-type, but MSIE tries to be smart and assumes content-type of text/html based on filename extension or page content.
+
+The solution is to set your default content-type to text/html. See previous question.
+
+=head2 My configuration prevents HTML::Mason from processing anything but html and text extensions, but I want to generate a dynamic image using HTML::Mason.  How can I get HTML::Mason to set the correct MIME type?
+
+Use mod_perl's $r->content_type function to set the appropriate MIME type. This will allow you to output, for example, a GIF file, even if your component is called dynamicImage.html. However there's no guarantee that every browser (e.g. Internet Explorer) will respect your MIME type rather than your file extension. Make sure to test on multiple browsers.
+
+=head2 How do I bring in external modules?
+
+
+Use the PerlModule directive in your httpd.conf, or if you have a startup.pl file, put the 'use module' in there. If you want components to be able to refer to symbols exported by the module, however, you'll need to use the module inside the HTML::Mason::Commands package. See the "External modules" section of the Administrator's Guide.
+
+=head2 How do I adjust Perl's INC path so it can find my modules?
+
+
+You can do this:
+
+    <Perl>
+    use lib ...
+    </Perl>
+
+or this:
+
+    PerlSetEnv PERL5LIB /path/one:/path/two:... 
+
+=head2 How do I use Mason in conjunction with UserDir to support Mason in user's home directories?
+
+The idea is to create one ApacheHandler for each user, dynamically. You will need to use a handler.pl or other wrapper code (see "Writing a Wrapper" in the Adminstrator's Manual).
+
+Outside your handler subroutine:
+
+       # $user_regexp: a regexp that matches the root directory of Mason.
+       #               Make sure there is one arg in parens that represents
+       #               the actual username--the handler uses this.
+       my $user_regexp = qr'/Users/([^/]*)/(?:public_html|Sites)';
+       my %user_handlers;
+   
+       # Create base ApacheHandler object at startup.
+       my $base_ah = new HTML::Mason::ApacheHandler( comp_root => $comp_root,
+                                                  data_dir  => $data_dir );
+
+Inside your handler subroutine:
+
+       sub handler
+       {
+           my $r=$_[0];
+           ...
+           #
+           # Have a different handler for each home directory
+           #
+           my $curr_ah;
+           my $filename = $r->filename();
+           if($filename =~ m!$user_regexp!) {
+               my $user_name = $1;
+               $curr_ah = $user_handlers{$user_name};
+               if(!$curr_ah) {
+                   $filename =~ m!($user_regexp)!;
+                   my $user_dir = $1;
+                   $curr_ah = new HTML::Mason::ApacheHandler(comp_root=>[[$user_name => $user_dir]],
+                                                             data_dir=>$data_dir);
+                   $user_handlers{$1} = $curr_ah;
+               }
+           } else {
+               $curr_ah = $base_ah;
+           }
+           my $status = $curr_ah->handle_request($r);
+       
+           return $status;
+       }
+
+=head2 How do I connect to a database from Mason?
+
+The short answer is that most any perl code that works outside Mason, for connecting to a database, should work inside a component. I sometimes do draft development and quick debugging with something like:
+
+      <%once>
+      use DBI;
+      </%once>
+
+      <%init>
+      my $dbh = DBI->connect ( blah, blah );
+      ...
+      </%init>
+
+The long answer is, of course, longer. A good deal of thought should be put into how a web application talks to databases that it depends on, as these interconnections can easily be both performance bottlenecks and very un-robust.
+
+Most people use some sort of connection pooling -- opening and then re-using a limited number of database connections. The Apache::DBI module provides connection pooling that is reliable and nearly painless. If Apache::DBI has been use'd, DBI->connect() will transparently reuse an already open connections, if it can.
+
+The "right" place to ask Apache::DBI for database handles is often in a top level autohandler.
+
+For example:
+
+      <%init>
+      my $dbh = DBI->connect('dbi:mysq:somedb', 'user', 'pw');
+      ... # other processing
+      $m->call_next( %ARGS, dbh => $dbh );
+      </%init>
+
+Alternately, $dbh could be a global variable which you set via MasonAllowGlobals.
+
+You can use Apache::DBI in your httpd.conf file quite easily simply by adding:
+
+      PerlModule Apache::DBI
+
+If you want to do more with Apache::DBI, like call connect_on_init, you can use a <Perl> section
+
+      <Perl>
+      use Apache::DBI;
+      Apache::DBI->connect_on_init('dbi:mysql:somedb', 'user', 'pw');
+      Apache::DBI->setPingTimeOut('dbi:mysql:somedb', 0);
+      </Perl>
+
+Others may simply use a handler.pl file. Georgiou Kiriakos writes:
+
+      You can connect in the handler.pl - I find it convenient to setup a
+      global $dbh in it.  You just need to make sure you connect inside
+      the handler subroutine (using Apache::DBI of course).  This way a)
+      each httpd gets it's own connection and b) each httpd reconnects if
+      the database is recycled.
+
+Regardless of whether you set up global $dbh variables in handler.pl, the static sections of handler.pl should set up Apache::DBI stuff:
+
+      # List of modules that you want to use from components (see Admin
+      # manual for details)
+      {
+         package HTML::Mason::Commands;
+         use Apache::DBI;
+         # use'ing Apache::DBI here lets us connect from inside components
+         # if we need to.
+         # --
+         # declare global variables, like $dbh, here as well.
+       }
+
+      # Configure database connection stuff
+      my $datasource = "DBI:blah:blah";
+      my $username = "user";
+      my $password = "pass";
+      my $attr = { RaiseError=>1 ,AutoCommit=>1 }; 
+      Apache::DBI->connect_on_init($datasource, $username, $password, $attr);
+      Apache::DBI->setPingTimeOut($datasource, 0);
+
+=head2 How come a certain piece of Perl code runs fine under "regular" perl, but fails under Mason?
+
+Mason is usually a red herring in this situation. Mason IS "regular" perl, with a very simple system to translate Mason component syntax to Perl code.  You can look at the object files Mason creates for your components (in the obj/ subdirectory of the Mason data directory) to see the actual Perl code Mason generates.
+
+If something suddenly stops working when you place it in a Mason environment, the problem is far more likely to rest with the following environmental changes than with Mason itself:
+
+* With mod_perl, the server is running under a different user/group and thus has different permissions for the resource you're trying to access
+
+* With mod_perl, code can stay resident in the perl interpreter for a long time.
+
+* Your headers may be sent differently under mod_perl than under your previous CGI situation (or whatever it was)
+
+Mason does not have anything to do with sending mail, or accessing a database, or maintaining user accounts, or server authentication, so if your problems are in areas like these, your time will be better spent looking at other environmental changes like the ones mentioned above.
+
+=head2 I'm using HTML::Mason::!ApacheHandler and I have decline_dirs disabled and am using a dhandler to handle directory requests. But when a request comes in without the final slash after the directory name, relative links are broken. What gives?
+
+
+Mason has always incorrectly handled such directory requests; this issue will be resolved in the 1.3 release. The reason it will only be fixed in the next major version is that some folks may have come to rely on this functionality. So it's considered breaking backwards compatibility. But if you need it to do the right thing now, fear not! There are a number of workarounds to ensure that Apache adds a slash and redirects the browser to the appropriate URL. See HandlingDirectoriesWithDhandlers for all the juicy details.
+
+
+
+UPGRADING TO 1.1x
+
+=head2 After upgrading, I see this error whenever I load a page: "The following parameter was passed in the call to HTML::Mason::Component::FileBased->new() but was not listed in the validation options: create_time"
+
+Delete all of your object files.
+
+=head2 When I try to start my server I see an error like: "The resolver class your Interp object uses does not implement the apache_request_to_comp_path' method.
+
+This means that ApacheHandler cannot resolve requests.
+
+Are you using a handler.pl file created before version 1.10?  Please see the handler.pl sample that comes with the latest version of Mason.
+
+You are explicitly creating an Interp object in your handler.pl and then passing that to ApacheHandler->new. 
+
+Instead, simply pass all of your Interp parameters to ApacheHandler->new directly. The parameters will end up going where they belong.
+
+=head2 When I start Apache (or try to use Mason) I get an error like this: "The Parser module is no longer a part of HTML::Mason.  Please see the Lexer and Compiler modules, its replacements."
+
+The Parser module is no longer used.
+
+=head2 I get an error like: "The following parameters were passed in the call to HTML::Mason::Container::new but were not listed in the validation options: error_format error_mode request_class resolver_class" when using ApacheHandler
+
+Do you have PerlFreshRestart turned on? Turn it off.
+
+See http://perl.apache.org/docs/1.0/guide/troubleshooting.html - "Evil things might happen when using PerlFreshRestart".
+
+=head2 I get an error like this: 'Can't locate object method "make_ah"
+
+package "Apache"' ===
+We're not kidding. PerlFreshRestart is evil. Turn it off. See question above.
+
+=head2 I get: "Unknown config item 'comp_root'" or "Unknown config item 'comp_root'" or something similar with ApacheHandler.
+
+Turn PerlFreshRestart off. Really.
+
+=head2 I get this with a custom handler.pl: 'Can't call method "handle_request" on an undefined value at ...'
+
+Just in case you weren't convinced that PerlFreshRestart is a bad idea, this should help convince you.
+
+=head2 After upgrading, I get this error for all my components: '<%' without matching '%>' ...
+
+The "perl_' prefix for Mason tags, like <%perl_args>, is no longer supported. Remove this prefix.
+
+=head1 WHERE TO FIND INFORMATION
+
+=head2 Where do I obtain HTML::Mason?
+
+HTML::Mason is available from CPAN (the Comprehensive Perl Archive Network). Details about CPAN are available at http://www.perl.com/. See the [FAQ:Installation] section of this document for tips on obtaining and installing Mason.
+
+=head2 Where can I ask questions about HTML::Mason?
+
+See ContactUs and MailingLists.

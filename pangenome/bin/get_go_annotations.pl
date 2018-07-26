@@ -307,7 +307,7 @@ sub run_aro_searches {
     copy_aro_files( "$RGI_DIR/_db", $aro_dir );
 
     # Run rgi.
-    my @cmd = ( '/usr/bin/env', 'python', $RGI_EXEC, '-t', 'protein', '-i', $input_fasta, '-o', $output_json );
+    my @cmd = ( 'python', $RGI_EXEC, '-t', 'protein', '-i', $input_fasta, '-o', $output_json );
     my $base = (fileparse($RGI_EXEC, qr/\.[^.]*/ ))[0];
     my $lf = "$log_dir/$base.log";
     my $ef = "$log_dir/$base.err";
@@ -694,6 +694,7 @@ sub check_params {
     }
 
     $working_dir = $opts{ working_dir } // getcwd();
+    chdir $working_dir;
     $log_dir     = $opts{ log_dir } // "$working_dir/logs";
     unless ( -d $log_dir ) {
         mkdir($log_dir);

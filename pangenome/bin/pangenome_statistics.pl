@@ -94,7 +94,6 @@ program also generates output files listing the core, shared and unique clusters
 use Getopt::Long qw(:config no_ignore_case no_auto_abbrev);
 use Pod::Usage;
 use Cwd;
-use DBI;
 use Cwd 'abs_path';
 use feature qw(switch);
 use File::Basename;
@@ -197,7 +196,7 @@ sub print_role_id{
         map{print $fh "$_\t"} sort(@{$groups});
         print $fh "\n";
 
-        foreach my $mainrole(sort{$a cmp $b} keys $SUBROLE_LOOKUP){
+        foreach my $mainrole(sort{$a cmp $b} keys %$SUBROLE_LOOKUP){
             my @subroles = keys %{$SUBROLE_LOOKUP->{$mainrole}};
 
             foreach my $role(sort @subroles){
