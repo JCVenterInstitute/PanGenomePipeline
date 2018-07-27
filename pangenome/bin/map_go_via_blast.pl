@@ -109,8 +109,8 @@ use lib "$FindBin::Bin/../lib";
 use grid_tasks;
 
 my $BIN_DIR     = $FindBin::Bin;
-my $BLASTN_EXEC = '/usr/local/packages/ncbi-blast+/bin/blastn';
-my $BLASTP_EXEC = '/usr/local/packages/ncbi-blast+/bin/blastp';
+my $BLASTN_EXEC = 'blastn';
+my $BLASTP_EXEC = 'blastp';
 my $BLASTDB_DIR = "$BIN_DIR/BLAST2GO";
 my $BLASTN_DB   = "$BLASTDB_DIR/plasmid_finder_rep.seq";
 my $BLASTP_DB   = "$BLASTDB_DIR/plasmid_finder_rep.pep";
