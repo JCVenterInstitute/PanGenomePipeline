@@ -13,7 +13,6 @@
 
 #You should have received a copy of the GNU General Public License
 #along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#!/usr/bin/env perl
 
 use warnings;
 use strict;
@@ -47,15 +46,11 @@ B<--help|h>        : Prints help
 
 use Getopt::Long qw(:config no_ignore_case no_auto_abbrev);
 use Pod::Usage;
-use File::Slurp;
-use Data::Dumper;
 use File::Path;
-use File::Copy;
 use Cwd;
 use FindBin qw($Bin);
 use lib "$Bin";
 use lib "$Bin/../lib";
-use File::Touch;
 
 my %opts;
 
@@ -66,6 +61,8 @@ GetOptions( \%opts,
 	    'both',
 	    'output|o=s',
 	    'help|h');
+
+pod2usage( { -exitval => 1, -verbose => 2 } ) if $opts{help};
 
 my $OUTPUT = &check_params;
 

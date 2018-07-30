@@ -54,11 +54,7 @@ B<--help|h>        : Prints help
     
 use Getopt::Long qw(:config no_ignore_case no_auto_abbrev);
 use Pod::Usage;
-use File::Slurp;
-use Data::Dumper;
 use File::Path;
-use File::Copy;
-use File::Touch;
 use Cwd;
 
 my %opts;
@@ -72,6 +68,8 @@ GetOptions( \%opts, 'mapping_file|m=s',
 	    'matched_hmm|t=s',
 	    'output|o=s',
 	    'help|h');
+
+pod2usage( { -exitval => 1, -verbose => 2 } ) if $opts{help};
 	    
 $OUTPUT = &check_params;
 
