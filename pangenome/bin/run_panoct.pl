@@ -289,7 +289,6 @@ use grid_tasks;
 
 # Executables
 my $BIN_DIR = $FindBin::Bin;
-my $BLAST_BIN_DIR           = '/usr/local/packages/ncbi-blast+/bin'; #JCVI SPECIFIC
 my $MAKEBLASTDB_EXEC        = "makeblastdb";
 my $BLASTP_EXEC             = "blastp";
 my $BLASTN_EXEC             = "blastn";

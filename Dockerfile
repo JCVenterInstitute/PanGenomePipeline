@@ -1,41 +1,41 @@
-# Start from ubuntu
-FROM ubuntu
+# Start from centos
+FROM centos
 
-# Set up apt-get and install a few things we need to install other things
-ENV DEBIAN_FRONTEND=noninteractive LANG=en_US.UTF-8 LC_ALL=C.UTF-8 LANGUAGE=en_US.UTF-8
-RUN [ "apt-get", "-q", "update" ]
-RUN [ "apt-get", "-qy", "--force-yes", "upgrade" ]
-RUN [ "apt-get", "-qy", "--force-yes", "dist-upgrade" ]
-RUN [ "apt-get", "install", "-qy", "--force-yes", \
-      "perl", \
-      "build-essential", \
-      "cpanminus", \
-      "wget", \
-      "r-base", \
-      "libxml2-dev", \
-      "hmmer", \
-      "python2.7", \
-      "python-pip" ]
-RUN [ "apt-get", "clean" ]
-RUN [ "rm", "-rf", "/var/lib/apt/lists/*", "/tmp/*", "/var/tmp/*" ]
+# Set up yum and install a few things we need to install other things
+RUN yum update -y; 
+RUN yum groupinstall -y 'Development Tools'
+RUN yum install -y perl cpanminus
+RUN yum install -y wget 
+RUN yum install -y libcurl-devel openssl-devel libxml2-devel
+RUN yum install -y epel-release
+RUN yum install -y R
+RUN yum install -y centos-release-scl
+RUN yum install -y python27 
+RUN yum install -y python-pip 
+RUN yum install -y ruby
+RUN yum clean all
 
 # Of course, python isn't that simple to install :/
 RUN echo 'alias python="python2.7"' >> ~/.bashrc
 RUN pip install biopython
-#RUN pip install --upgrade pip
-#RUN pip install Bio
+
+# Install blast
+RUN wget ftp://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/2.2.31/ncbi-blast-2.2.31+-x64-linux.tar.gz && \
+    tar -xzf ncbi-blast-2.2.31+-x64-linux.tar.gz; rm /ncbi-blast-2.2.31+-x64-linux.tar.gz
+ENV PATH=".:/ncbi-blast-2.2.31+/bin:${PATH}"
+
+# Install hmmer.  Wish yum install -y hmmer would work for centos, not just fedora :/
+RUN wget http://eddylab.org/software/hmmer/hmmer.tar.gz; tar xzf hmmer.tar.gz; cd hmmer-3.2.1; ./configure; make; make install; rm /hmmer.tar.gz
 
 # Install R packages needed
 RUN R -e "install.packages('getopt', repos = 'http://cran.us.r-project.org')"
 
 # Install all the perl modules needed.
-RUN ["cpanm", "Capture::Tiny", "Term::ReadKey", "MLDBM", "Devel::InnerPackage", "Class::Load", "String::RewritePrefix", "XML::LibXML", "HTML::TableExtract" ]
-
-# Install blast
-RUN wget ftp://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/2.2.31/ncbi-blast-2.2.31+-x64-linux.tar.gz && \
-    tar -xzf ncbi-blast-2.2.31+-x64-linux.tar.gz
-RUN rm /ncbi-blast-2.2.31+-x64-linux.tar.gz
-ENV PATH=".:/ncbi-blast-2.2.31+/bin:${PATH}"
+RUN ["cpanm", "Capture::Tiny", "Term::ReadKey", "DB_File", "MLDBM", "Devel::InnerPackage", "Class::Load", "String::RewritePrefix", "Fatal", "XML::LibXML", "HTML::TableExtract", "LWP::UserAgent", "File::Fetch", "File::Slurp", "Bio::SeqIO" ]
 
 # Install the pipeline.
-COPY ./pangenome /pangenome
+RUN wget https://github.com/JCVenterInstitute/PanGenomePipeline/archive/master.zip && unzip /master.zip; ln -s /PanGenomePipeline-master/pangenome /pangenome; rm /master.zip
+
+# Retrieve the data directory
+RUN wget https://sandbox.zenodo.org/record/237583/files/HMMER2GO_data.tgz?download=1 -O /HMMER2GO_data.tgz && tar -zxf /HMMER2GO_data.tgz -C /pangenome/bin/HMMER2GO/ ; rm /HMMER2GO_data.tgz
+
