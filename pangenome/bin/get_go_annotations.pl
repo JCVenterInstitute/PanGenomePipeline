@@ -91,11 +91,6 @@ use File::Path qw(mkpath remove_tree);
 use File::Glob qw(glob);
 use grid_tasks;
 
-#TODO: Move these declarations out of the script and into a config file readable across the whole pipeline.
-use Env qw(@PATH @LD_LIBRARY_PATH);
-unshift @PATH, '/usr/local/packages/ncbi-blast+/bin/';
-unshift @LD_LIBRARY_PATH, '/usr/local/packages/python/lib/';
-
 my $BIN_DIR = $FindBin::Bin;
 my $FIX_HEADERS_EXEC = "$BIN_DIR/clean_multifasta.pl";
 my $TRANSLATE_ORFS_EXEC = 'transeq';
