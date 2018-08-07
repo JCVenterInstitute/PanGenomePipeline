@@ -1,0 +1,17 @@
+1. Get the Dockerfile from the github repository at:
+wget https://raw.githubusercontent.com/JCVenterInstitute/PanGenomePipeline/master/Dockerfile
+
+2. Build the docker image:
+docker build -t jcvipangenome .
+
+3. Attach your working directory while starting a container based on the image:
+(Note: Windows users may have to enable sharing on the drive containing their data. From the Docker whale icon, click on "Settings", then "shared Drives", then make sure the box next to the drive is checked, and click "Apply", if necessary.)
+docker run -it --name mypangenome --mount type=bind,source={path to workingdir},target=/myData jcvipangenome bash
+
+4. Run the pipeline from within the container:
+(For more info about the input requirements for the pipeline, see the user manual or --help info for the various scripts)
+cd /myData
+/pangenome/bin/run_pangenome.pl --no_grid [and whatever options are needed]
+
+5. Before exiting the machine, it may be a good idea to open permissions on the newly written output files:
+chmod -R 777 *
