@@ -13,6 +13,9 @@ RUN yum install -y centos-release-scl
 RUN yum install -y python27 
 RUN yum install -y python-pip 
 RUN yum install -y ruby
+RUN yum install -y gd gd-devel
+RUN yum install -y libpng12.so.0
+RUN yum install -y xfig transfig
 RUN yum clean all
 
 # Of course, python isn't that simple to install :/
@@ -29,9 +32,11 @@ RUN wget http://eddylab.org/software/hmmer/hmmer.tar.gz; tar xzf hmmer.tar.gz; c
 
 # Install R packages needed
 RUN R -e "install.packages('getopt', repos = 'http://cran.us.r-project.org')"
+RUN R -e "install.packages('ape', repos = 'http://cran.us.r-project.org')"
 
 # Install all the perl modules needed.
-RUN ["cpanm", "Capture::Tiny", "Term::ReadKey", "DB_File", "MLDBM", "Devel::InnerPackage", "Class::Load", "String::RewritePrefix", "Fatal", "XML::LibXML", "HTML::TableExtract", "LWP::UserAgent", "File::Fetch", "File::Slurp", "Bio::SeqIO" ]
+RUN ["cpanm", "Capture::Tiny", "Term::ReadKey", "DB_File", "MLDBM", "Devel::InnerPackage", "Class::Load", "String::RewritePrefix", "Fatal", "XML::LibXML", "HTML::TableExtract", "LWP::UserAgent", "File::Fetch", "File::Slurp", "Bio::SeqIO", "DBI", "GD" ]
+RUN ["cpanm", "Getopt::Long::Descriptive" ]
 
 # Install the pipeline.
 RUN wget https://github.com/JCVenterInstitute/PanGenomePipeline/archive/master.zip && unzip /master.zip; ln -s /PanGenomePipeline-master/pangenome /pangenome; rm /master.zip
@@ -39,3 +44,5 @@ RUN wget https://github.com/JCVenterInstitute/PanGenomePipeline/archive/master.z
 # Retrieve the data directory
 RUN wget https://sandbox.zenodo.org/record/237583/files/HMMER2GO_data.tgz?download=1 -O /HMMER2GO_data.tgz && tar -zxf /HMMER2GO_data.tgz -C /pangenome/bin/HMMER2GO/ ; rm /HMMER2GO_data.tgz
 
+# Installing fig2dev for pan_chromosome images
+#RUN wget https://sourceforge.net/projects/mcj/files/fig2dev-3.2.6a.tar.xz && tar xJf /fig2dev-3.2.6a.tar.xz; cd /fig2dev-3.2.6a; ./configure; make -j; make install-strip
