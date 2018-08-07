@@ -77,6 +77,8 @@ and sorted by the same.
 =cut
 
 use Getopt::Long qw( :config no_auto_abbrev no_ignore_case );
+use FindBin;
+use lib File::Spec->catdir( $FindBin::Bin, '..', 'lib' );
 use Path::Tiny;
 use Pod::Usage;
 
