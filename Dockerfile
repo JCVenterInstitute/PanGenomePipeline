@@ -33,5 +33,5 @@ RUN wget https://github.com/JCVenterInstitute/PanGenomePipeline/archive/master.z
 # Retrieve the data directory
 RUN wget https://sandbox.zenodo.org/record/237583/files/HMMER2GO_data.tgz?download=1 -O /HMMER2GO_data.tgz && tar -zxf /HMMER2GO_data.tgz -C /pangenome/bin/HMMER2GO/ ; rm /HMMER2GO_data.tgz
 
-# Installing fig2dev for pan_chromosome images
-#RUN wget https://sourceforge.net/projects/mcj/files/fig2dev-3.2.6a.tar.xz && tar xJf /fig2dev-3.2.6a.tar.xz; cd /fig2dev-3.2.6a; ./configure; make -j; make install-strip
+# Installing EMBOSS for a few useful binaries
+RUN wget ftp://emboss.open-bio.org/pub/EMBOSS/EMBOSS-6.6.0.tar.gz && tar xf EMBOSS-6.6.0.tar.gz; cd /EMBOSS-6.6.0; ./configure; make; make install; rm /EMBOSS-6.6.0.tar.gz
