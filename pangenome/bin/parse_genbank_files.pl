@@ -92,6 +92,7 @@ genbank_printing_overview.txt - A file that lists the number of genes found for 
 use Getopt::Long qw(:config no_ignore_case no_auto_abbrev);
 use Data::Dumper;
 use File::Basename;
+use List::Util qw(min max);
 use FindBin;
 #use lib ("/usr/local/devel/ANNOTATION/jinman/lib/perl5/");
 use Bio::SeqIO;
@@ -296,7 +297,10 @@ sub parse_nuc_features {
         }
 
         # get accession
+        # Use molecule LOCUS field if ACCESSION is empty, or, as parsed by BioPerl: "unknown"
         my $accession = $seq_object->accession_number();
+        $accession = $seq_object->display_id() if $accession eq 'unknown'; 
+        $accession =~ s/([^\.]+)\..*/$1/;
 
         for my $feat_object ( $seq_object->get_SeqFeatures ) {
 
@@ -436,42 +440,59 @@ sub print_nuc_files {
     open( my $att_fh, '>>', $OUTPUT . "/$filename.$NUC_ATT_SUFFIX" ) || die "Can't open att_file: $!\n";
     my $nuc_obj = Bio::SeqIO->new(-file => '>>' . $OUTPUT . "/$filename" . '.nuc', -format => 'fasta' );
 
-    foreach my $key ( sort { $features->{ $a }->{acc}.$a cmp $features->{ $b }->{acc}.$b } keys %$features ) {
+    my %accessions;
+    my @sorted_accs;
 
-        # print Fasta
-        my ( $acc, $locus, $end5, $end3 ) = @{$features->{ $key }}{ qw(acc locus_tag end5 end3) };
-        my $seq_obj = Bio::Seq->new( -seq => $features->{ $key }->{sequence},
-                                     -display_id => $locus,
-                                     -alphabet => 'dna' );
-        $nuc_obj->write_seq( $seq_obj );
+    for my $key ( sort { $features->{ $a }->{ acc } cmp $features->{ $b }->{ acc } } keys %$features ) {
 
-        # print att_file line
-        my $product;
-        if (!($features->{$key}->{product})) {
+        $accessions{ $features->{ $key }->{ acc } }++;
 
-            if ($features->{$key}->{note}) {
-                $product = $features->{$key}->{note};
-            } elsif ($features->{$key}->{comment}) {
-                $product = $features->{$key}->{comment};
-            } elsif ($features->{$key}->{gene}) {
-                $product = $features->{$key}->{gene};
+    }
+
+    @sorted_accs = sort { $a cmp $b } keys %accessions;
+    for my $acc ( @sorted_accs ) {
+
+        my @feature_keys = grep { $features->{$_ }->{ acc } eq $acc } keys %$features;
+        @feature_keys = sort { min( split(/\.\./,$a) ) <=> min( split(/\.\./,$b) ) } @feature_keys;
+
+        for my $key ( @feature_keys ) {
+
+            # print Fasta
+            my ( $acc, $locus, $end5, $end3 ) = @{$features->{ $key }}{ qw(acc locus_tag end5 end3) };
+            my $seq_obj = Bio::Seq->new( -seq => $features->{ $key }->{sequence},
+                                         -display_id => $locus,
+                                         -alphabet => 'dna' );
+            $nuc_obj->write_seq( $seq_obj );
+
+            # print att_file line
+            my $product;
+            if (!($features->{$key}->{product})) {
+
+                if ($features->{$key}->{note}) {
+                    $product = $features->{$key}->{note};
+                } elsif ($features->{$key}->{comment}) {
+                    $product = $features->{$key}->{comment};
+                } elsif ($features->{$key}->{gene}) {
+                    $product = $features->{$key}->{gene};
+                }
+
+            } else {
+                $product = $features->{$key}->{product};
             }
 
-        } else {
-            $product = $features->{$key}->{product};
-        }
+            unless ( $product ) {
+                warn( "WARNING: Missing product name for $key from $acc\n") if $verbose;
+                $product = "[NO PRODUCT NAME]";
+            }
+            unless ( $acc ) { die "NO ACC\n" }
+            unless ( $locus ) { die "NO LOCUS, FOR $end5..$end3\n" }
+            unless ( $end5 ) { die "NO END5\n" }
+            unless ( $end3 ) { die "NO END3\n" }
+            unless ( $filename ) { die "NO FILENAME\n" }
 
-        unless ( $product ) {
-            warn( "WARNING: Missing product name for $key from $acc\n") if $verbose;
-            $product = "[NO PRODUCT NAME]";
-        }
-        unless ( $acc ) { die "NO ACC\n" }
-        unless ( $locus ) { die "NO LOCUS, FOR $end5..$end3\n" }
-        unless ( $end5 ) { die "NO END5\n" }
-        unless ( $end3 ) { die "NO END3\n" }
-        unless ( $filename ) { die "NO FILENAME\n" }
+            print $att_fh "$acc\t$locus\t$end5\t$end3\t$product\t$filename\n";
 
-        print $att_fh "$acc\t$locus\t$end5\t$end3\t$product\t$filename\n";
+        }
 
     }
 
@@ -487,7 +508,13 @@ sub print_files{
 
     my $pep_obj = Bio::SeqIO->new(-file => '>>' . $OUTPUT . "/$filename" . '.pep', -format => 'fasta' );
 
-    foreach my $key (keys %$features) {
+    if ( exists $features->{''} ) {
+        delete $features->{''};
+    }
+
+    my @feature_keys = sort { min( split(/\.\./,$a) ) <=> min( split(/\.\./,$b) ) } keys %$features;
+
+    for my $key ( @feature_keys ) {
 
         unless (exists $features->{$key}->{not_gene}) {
 
@@ -549,7 +576,6 @@ sub print_files{
 
     }
 
-
     return $feature_counts;
 	
 }
@@ -594,7 +620,7 @@ FEATURES: while( my $line = <$fh> ) {
                 #Parse end5, end3 from coordinate line
                 ($key, $e5, $e3) = &parse_coord_string( $coords );
 
-		#Store the information
+                #Store the information
                 $pre_feature->{$key}->{'end5'} = $e5;
                 $pre_feature->{$key}->{'end3'} = $e3;
                 
@@ -604,11 +630,11 @@ FEATURES: while( my $line = <$fh> ) {
 
             #This is not a gene or cds and we don't want it.
             #This is like an RNA or something
-	    #Allo for genes that take up the whole assembly
-	    unless($line =~ /(^     source|CONTIG)/ ){
-		$pre_feature->{$1}->{'not_gene'} = $1;
-		$key = "";
-	    }
+            #Allow for genes that take up the whole assembly
+            unless($line =~ /(^     source|CONTIG)/ ){
+                $pre_feature->{$1}->{'not_gene'} = $1;
+                $key = "";
+            }
 
         } elsif($line =~ /\/pseudo/){
             $pre_feature->{$key}->{pseudo} = 1 ;
@@ -618,7 +644,7 @@ FEATURES: while( my $line = <$fh> ) {
             last FEATURES;
         }
 
-	#From here and below, we only look into these if we have an active key
+        #From here and below, we only look into these if we have an active key
         #If our key is eq "", this means we don't want to parse the stuff
         next if( !defined( $key ) || $key eq "" );
 
@@ -632,7 +658,7 @@ FEATURES: while( my $line = <$fh> ) {
             } 
 
         } 
-	
+
     }
 
     
