@@ -150,7 +150,7 @@ sub create_alignments {
         # TODO: If there are more than 75000 jobs, we must divide the batch of grid jobs up.
         
         my @grid_jobs;
-        push( @grid_jobs, launch_grid_job( $project_code, $working_dir, $sh_file, 'muscle.stdout', 'muscle.stderr', '', $max_job ) );
+        push( @grid_jobs, launch_grid_job( $project_code, $working_dir, $sh_file, "$log_dir/grid_logs/muscle/", "$log_dir/grid_logs/muscle/", '', $max_job ) );
 
         wait_for_grid_jobs_arrays( \@grid_jobs, 1, $max_job ) if ( scalar @grid_jobs );
 

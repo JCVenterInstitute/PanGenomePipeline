@@ -102,6 +102,8 @@ B<--log_dir>                    :   Place to write run_panoct.log, along with a 
 
 B<--debug>                      :   Integer specifying log message levels.  Lower is more verbose.
 
+B<--leave_blast>                :   Intended for debugging: Don't remove intermediate blast files.
+
 B<--help,-h>                    :   Display this help message.
 
 =head1  DESCRIPTION
@@ -374,6 +376,7 @@ GetOptions( \%opts,
     'use_nuc',
     'lite',
     'debug=i',
+    'leave_blast',
     'help|h',
     ) || die "Error getting options! $!";
 pod2usage( { -exitval => 1, -verbose => 2 } ) if $opts{help};
@@ -1022,7 +1025,7 @@ sub call_panoct {
 
         my $panoct_script = write_grid_script( 'panoct', join( ' ', @params ) );
         _log( "Running panoct on grid.  See $panoct_script for invocation.", 0 );
-        push ( @grid_jobs, launch_grid_job( $project_code, $working_dir, $panoct_script, 'panoct.stdout', 'panoct.stderr', 'himem' ) );
+        push ( @grid_jobs, launch_grid_job( $project_code, $working_dir, $panoct_script, "$log_dir/grid_logs/panoct/", "$log_dir/grid_logs/panoct/", 'himem' ) );
 
     } else {
 
@@ -1194,7 +1197,7 @@ sub blast_genomes {
         _log( "Running blast locally:\n$blast_cmd", 0 );
 
         $lf = "$log_dir/blast.log";
-        $lh = IO::File->new( $lf, "w+" ) || _die( "Coudln't open $lf for logging: $!", __LINE__ );
+        $lh = IO::File->new( $lf, "w+" ) || _die( "Couldn't open $lf for logging: $!", __LINE__ );
 
         capture_merged{
 
@@ -1242,7 +1245,7 @@ sub blast_genomes {
         
         # Launch blast job array, wait for finish
         my @grid_jobs;
-        push( @grid_jobs, launch_grid_job( $project_code, $working_dir, $sh_file, 'blast.stdout', 'blast.stderr', "", scalar @file_list ) );
+        push( @grid_jobs, launch_grid_job( $project_code, $working_dir, $sh_file, "$log_dir/grid_logs/feat_blast/", "$log_dir/grid_logs/feat_blast/", "", scalar @file_list ) );
         wait_for_grid_jobs_arrays( \@grid_jobs,1,scalar @file_list ) if ( scalar @grid_jobs );
 
         # Cat all blast files together
@@ -1251,10 +1254,11 @@ sub blast_genomes {
 
         if ( -s "$working_dir/combined.blast" ) {
 
-            _log( "Removing intermediate blast files.", 1 );
-
             #Remove intermidiate blast directory
-            remove_tree( $blast_dir, 0, 1 );
+            unless ( $opts{ leave_blast } ) {
+                _log( "Removing intermediate blast files.", 1 );
+                remove_tree( $blast_dir, 0, 1 );
+            }
             $blast_file_name     = 'combined.blast'; 
             $blast_file_dir      = $working_dir;
             $blast_file_path     = "$working_dir/$blast_file_name";
