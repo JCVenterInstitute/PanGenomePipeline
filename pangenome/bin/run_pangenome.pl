@@ -221,6 +221,7 @@ GetOptions( \%opts,
             'rerun_groups=s',
             'use_nuc|n',
             'working_dir|w=s',
+            'leave_blast',
             'help|h',
          ) || die "Problem getting options.\n";                             
 pod2usage( { -exitval => 1, -verbose => 2 } ) if $opts{help};
@@ -1126,6 +1127,7 @@ sub run_run_panoct {
     push( @cmd, '--panoct_local' ) if ( $opts{ panoct_local } );
     push( @cmd, '--blast_local' ) if ( $opts{ blast_local } );
     push( @cmd, '--lite' ) unless ( $opts{ no_lite } );
+    push( @cmd, '--leave_blast' ) if ( $opts{ leave_blast } );
     if ( $opts{ no_blast } ) {
         my $blast_file = "$working_dir/combined.blast";
         if ( -f $blast_file ) {

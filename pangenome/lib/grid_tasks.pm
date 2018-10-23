@@ -12,12 +12,9 @@
 sub launch_grid_job {
 # Given a shell script, launch it via qsub.
 
-    my ( $project_code, $working_dir, $shell_script, $outfile, $errfile, $queue, $job_array_max ) = @_;
+    my ( $project_code, $working_dir, $shell_script, $stdoutdir, $stderrdir, $queue, $job_array_max ) = @_;
 
-    my $std_error  = "$working_dir/$errfile";
-    my $std_out    = "$working_dir/$outfile";
-
-    my $qsub_command = "qsub -P $project_code -e $std_error -o $std_out -wd $working_dir";
+    my $qsub_command = "qsub -V -P $project_code -o $stdoutdir -e $stderrdir -wd $working_dir";
     $qsub_command .= " -l $queue" if $queue;
     $qsub_command .= " -t 1-$job_array_max" if $job_array_max;
 
@@ -51,11 +48,12 @@ sub wait_for_grid_jobs {
         for my $job_id ( keys %{$lch} ) {
 
             my $response = `qacct -j $job_id 2>&1`;
-            parse_response( $response, $lch );
+            parse_response( $response, $lch, $job_id );
             sleep 1;
 
         }
     }
+
 }
 
 
@@ -63,7 +61,7 @@ sub parse_response {
 # given a qacct response, delete a job id from the loop-control-hash when
 # a statisfactory state is seen.
 
-    my ( $response, $lch ) = @_;
+    my ( $response, $lch, $job_id ) = @_;
     return if ( $response =~ /error: job id \d+ not found/ );  # hasn't hit the grid yet.
 
     my @qacct_array = split ( /=+\n/, $response );
@@ -95,6 +93,7 @@ sub parse_response {
         } else {
 
             print "Problem with one of the jobs' qacct info.\n";
+
         }
 
     }
@@ -115,18 +114,75 @@ sub wait_for_grid_jobs_arrays {
         for my $job_id ( keys %{$lch} ) {
 
             my $response = `qacct -j $job_id 2>&1`;
-            parse_response_arrays( $response, $lch, $stats_hash, $debug );
+            parse_response_arrays( $response, $lch, $stats_hash, $job_id, $debug );
             sleep 1;
 
         }
     }
+
+    #check_for_grid_errors( $job_id );  See note in subprocedure.
+
 }
+
+
+sub check_for_grid_errors {
+# Given a job_id of a supposedly finished job_array, check that
+# none of the qacct job sections have reported an error.
+
+# NOTE This currently over-reports errors: Quite often when jobs appear on qacct
+# they are filled with tasks that have error codes.  By the time someone can type
+# qacct -j <jobid> on the command line, they've cleared theymselves up, but this
+# script has a habit of catching them and throwing an error.
+# Besides which, the original problem this was trying to catch is no longer an issue.
+# Should the time arise in which this looks like a great feature to re-instate, I
+# recoommend introducing a sleep statement, of oh, 30-60 seconds to give the grid time
+# to sort itself.
+#   JMI 20181023
+
+    my ( $job_id ) = @_;
+
+    my $response = `qacct -j $job_id 2>&1`;
+
+    my @qacct_array = split( /=+\n/, $response );
+    @qacct_array = grep { /\S/ } @qacct_array; # get rid of empty recoed at beginning;
+
+    my %failures;
+
+    for my $record ( @qacct_array ) {
+
+        next if ( $record =~ /error: ignoring invalid entry in line/ );
+
+        my $task_id;
+        if ( $record =~ /taskid +(\d+)/ ) {
+            $task_id = $1;
+        } elsif ( $record =~ /taskid +undefined/ ) {
+            $task_id = "$job_id (not a job-array)";
+        }
+
+        if ( $record =~ /failed +([^\n]+)\n/ ) {
+            $excuse = $1;
+            $failures{ $task_id } = "'$excuse'" unless $excuse =~ /^0/;
+        } 
+
+    }
+
+    if ( scalar keys %failures ) {
+
+        my $message = "The following grid tasks (for job_id $job_id ) have failed.  The grid says the following reasons:\n";
+        $message .= join("\n", map {"$_\t$failures{ $_ }"} keys %failures);
+
+        die "$message\n";
+
+    }
+
+}
+
 
 sub parse_response_arrays {
 # given a qacct response, delete a job id from the loop-control-hash when
 # a satisfactory state is seen.
 
-    my ( $response, $lch, $stats_hash, $debug ) = @_;
+    my ( $response, $lch, $stats_hash, $job_id, $debug ) = @_;
     return if ( $response =~ /error: job id \d+ not found/ );  # hasn't hit the grid yet.
 
     my @qacct_array = split ( /=+\n/, $response );

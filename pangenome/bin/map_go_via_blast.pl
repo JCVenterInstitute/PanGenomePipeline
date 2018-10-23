@@ -214,7 +214,7 @@ if ( $opts{ blast_file } ) {
 
         # Launch blast job array, wait for finish
         my @grid_jobs;
-        push( @grid_jobs, launch_grid_job( $opts{ project }, $opts{ working_dir }, $sh_file, 'blast.stdout', 'blast.stderr', "", scalar @file_list ) );
+        push( @grid_jobs, launch_grid_job( $opts{ project }, $opts{ working_dir }, $sh_file, "$opts{ log_dir }/grid_logs/map_blast/", "$opts{ log_dir }/grid_logs/map_blast/", "", scalar @file_list ) );
         print "Waiting for blast jobs to finish.\n";
         wait_for_grid_jobs_arrays( \@grid_jobs, 1, scalar( @file_list ) ) if ( scalar @grid_jobs );
         print "Blast jobs finished!\n";

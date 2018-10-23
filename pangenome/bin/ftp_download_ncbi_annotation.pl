@@ -107,8 +107,8 @@ Under normal operation, the script does the following:
 
 =back
 
-In addition to the normal operational mode, the user may specify B<--no_download>, which will perform the first foure
-steps.  It will still download the assembly_summary.txt file, but will not retrieve the gb or fasta files in step 4.  
+In addition to the normal operational mode, the user may specify B<--no_download>, which will perform the first four
+steps.  It will still download the assembly_summary.txt file, but will not retrieve the gb or fasta files in step 5.  
 The user might instead specify B<--download_only>, in which case the first four steps are skipped, and the script will
 only attempt to download the files from the urls in the file specified with B<--download_file>.  If B<--cleanup_ids> is 
 used, any non-alpha-numeric characters will be stripped out of the ids in the download file.

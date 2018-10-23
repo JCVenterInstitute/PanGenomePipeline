@@ -368,7 +368,7 @@ sub run_hmmer_searches {
             # write shell script
             my $sh_file = &write_hmm_shell_script( $input_fasta, $split_dir, $hmm_dir, \@cmd, 'pfam' );
 
-            push( @grid_jobs, launch_grid_job( $project_code, $hmm_dir, $sh_file, 'pfam.hmmer2go.stdout', 'pfam.hmmer2go.stderr', "", scalar @file_list ) );
+            push( @grid_jobs, launch_grid_job( $project_code, $hmm_dir, $sh_file, "$log_dir/grid_logs/pfam_hmmer2go/", "$log_dir/grid_logs/pfam_hmmer2go/" , "", scalar @file_list ) );
 
         }
 
@@ -398,7 +398,7 @@ sub run_hmmer_searches {
             # write shell script
             my $sh_file = &write_hmm_shell_script( $input_fasta, $split_dir, $hmm_dir, \@cmd, 'tigrfams' );
 
-            push( @grid_jobs, launch_grid_job( $project_code, $hmm_dir, $sh_file, 'tigrfams.hmmer2go.stdout', 'tigrfams.hmmer2go.stderr', "", scalar @file_list ) );
+            push( @grid_jobs, launch_grid_job( $project_code, $hmm_dir, $sh_file, "$log_dir/grid_logs/tigrfam_hmmer2go/", "$log_dir/grid_logs/tigrfam_hmmer2go/", "", scalar @file_list ) );
 
         }
 
