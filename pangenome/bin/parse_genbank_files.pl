@@ -45,6 +45,8 @@ B<--nuc, n>         :   Work in nucleotide space instead of peptide space.
 
 B<--both>           :   Produce both nucleotide AND peptide files.
 
+B<--source_fasta, -f>   :   Create a .fasta file containing the source sequence for each record per file.
+
 B<--length>         :   Features this long and shorter will be excluded from output files.
 
 B<--no_check>       :   Disable the post-processing checks for duplicate loci, etc.
@@ -117,6 +119,7 @@ GetOptions (\%opts,
             'output|o=s',
             'nuc|n',
             'both',
+            'source_fasta|f',
             'length=i',
             'no_check',
             'no_dos2unix',
@@ -148,6 +151,12 @@ while( my $file = <$lfh> ) {
     unless ( $opts{ no_dos2unix } ) {
         my @cmd = ( $DOS2UNIX_EXEC, $file );
         system( @cmd ) && die "Problem running dos2unix on $file!\n";
+    }
+
+    if ( $opts{ source_fasta } ) {
+
+        print_source_fasta( $file );
+
     }
 
     if ( $opts{nuc} || $opts{both} ) { 
@@ -260,6 +269,26 @@ unless ( $opts{ no_check } ) {
 exit(0);
 
 # Subs! 
+
+
+sub print_source_fasta {
+# Print the source sequence for each record in the given file.
+# Bioperl makes this ridiculously simple.
+
+    my ( $input_file ) = @_;
+    my $output_file = "$OUTPUT/" . ( fileparse( $input_file, qr/\.[^.]*/ ) )[0] . '.fasta';
+
+    my $in_io   = Bio::SeqIO->new( -file => "<$input_file",  -format => 'genbank' );
+    my $out_io  = Bio::SeqIO->new( -file => ">$output_file", -format => 'fasta' );
+
+    while ( my $seqin = $in_io->next_seq ) {
+
+        $out_io->write_seq( $seqin );
+
+    }
+
+}
+
 
 sub parse_nuc_features {
 
