@@ -1243,9 +1243,12 @@ sub blast_genomes {
         my $sh_file = write_blast_shell_script( $combined_fasta, $split_dir, $blast_dir, $blast_cmd );
         _log( "Running blast on the grid:\n$sh_file", 0 );
         
+        my $grid_log_dir = "$log_dir/grid_logs/feat_blast/";
+        mkdir $grid_log_dir || _die( "Couldn't create the grid log dir: $!\n", __LINE__ );
+
         # Launch blast job array, wait for finish
         my @grid_jobs;
-        push( @grid_jobs, launch_grid_job( $project_code, $working_dir, $sh_file, "$log_dir/grid_logs/feat_blast/", "$log_dir/grid_logs/feat_blast/", "", scalar @file_list ) );
+        push( @grid_jobs, launch_grid_job( $project_code, $working_dir, $sh_file, $grid_log_dir, $grid_log_dir, "", scalar @file_list ) );
         wait_for_grid_jobs_arrays( \@grid_jobs,1,scalar @file_list ) if ( scalar @grid_jobs );
 
         # Cat all blast files together
