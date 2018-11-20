@@ -1026,13 +1026,6 @@ sub populate_centroid_lookup {
 }
 
 
-sub expand_frameshifts { 
-
-    my ( $step_name ) = @_;
-
-}
-
-
 sub expand_fragment_fusions {
 
     my ( $step_name ) = @_;
@@ -1051,7 +1044,6 @@ sub expand_clusters {
 
     expand_centroids_name( $last_step_name );
     expand_matchtable( $last_step_name );
-    expand_frameshifts( $last_step_name );      # Not yet implemented.
     expand_fragment_fusions( $last_step_name ); # Not yet implemented.
 
 }
