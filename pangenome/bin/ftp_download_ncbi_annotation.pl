@@ -1046,6 +1046,7 @@ sub load_input_ids {
     while ( <$ifh> ) {
 
         chomp;
+        $_ = s/(.*\S)\s+/$1/;
         push @ids, $_;
 
     }
