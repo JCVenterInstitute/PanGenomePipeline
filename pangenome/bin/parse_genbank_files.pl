@@ -49,6 +49,8 @@ B<--source_fasta, -f>   :   Create a .fasta file containing the source sequence 
 
 B<--length>         :   Features this long and shorter will be excluded from output files.
 
+B<--no_topology>    :   Disable the creation of the topology.txt file
+
 B<--no_check>       :   Disable the post-processing checks for duplicate loci, etc.
 
 B<--no_dos2unix>    :   Do not run dos2unix on the input set.
@@ -80,6 +82,12 @@ See the --help info for B<'check_att_files.pl'> for more information on the part
  .pseudo - A list of all found pseudo genes (only applies to protein-space)
 
 genbank_printing_overview.txt - A file that lists the number of genes found for each genome and prints "NO ANNOTATION" if no annotation was found on that genome
+
+topology.txt - A file listing the following per molecule:
+
+ 1. genome ID
+ 2. molecule ID
+ 3. shape (circular|linear)
 
 =head1 CONTACT
 
@@ -121,6 +129,7 @@ GetOptions (\%opts,
             'both',
             'source_fasta|f',
             'length=i',
+            'no_topology',
             'no_check',
             'no_dos2unix',
             'verbose|v',
@@ -137,6 +146,13 @@ open( my $lfh, "<", $opts{file_list}) || die "Can't open $opts{file_list}: $!\n"
 
 # create genomes.list file if we will be running the locus checks:
 my %seen_genomes;
+
+# create topology.txt file if we are storing molecule shapes:
+my $tfh;
+unless ( $opts{ no_topology } ) {
+    my $topology_file = "$OUTPUT/topology.txt";
+    open( $tfh, '>', $topology_file ) || die "Can't write to: $OUTPUT/$topology_file: $!\n";
+}
 
 # Go through each GenBank file that was passed in
 while( my $file = <$lfh> ) {
@@ -159,6 +175,8 @@ while( my $file = <$lfh> ) {
 
     }
 
+    write_topology( $file, $tfh ) unless $opts{no_topology};
+    
     if ( $opts{nuc} || $opts{both} ) { 
         parse_nuc_features( $file, \%seen_genomes ); 
     }
@@ -779,6 +797,31 @@ sub parse_coord_string {
 }
 
 
+sub write_topology {
+# Should be merged into feature-parsing loop once protein parsing is rewritten to use bioperl.
+
+    my ( $file, $tfh ) = @_;
+
+    my $genome_id = (fileparse($file))[0];
+    $genome_id =~ s/\..*//;
+
+    my $seqio = Bio::SeqIO->new( -file => $file, -format => 'genbank' );
+
+    while ( my $seq_obj = $seqio->next_seq() ) {
+
+        my $molecule_id = $seq_obj->accession_number();
+        $molecule_id    = $seq_obj->display_id() if $molecule_id eq 'unknown';
+        $molecule_id    =~ s/([^\.]+)\..*/$1/;
+
+        my $topology = ( $seq_obj->is_circular() ) ? 'circular' : 'linear';
+
+        print $tfh "$genome_id\t$molecule_id\t$topology\n";
+
+    }
+
+}
+
+
 sub check_params{
 
     my $output = $opts{output} // cwd;
@@ -810,7 +853,6 @@ sub check_params{
     return( $output );
 
 }
-
 
 sub remove_existing_files {
 
