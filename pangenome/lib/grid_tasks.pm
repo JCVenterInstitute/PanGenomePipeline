@@ -1,13 +1,80 @@
 #!/usr/bin/env perl
 
-## TODO: Create pod documentation for this module.
+###############################################################################
+#                                                                             #
+#       Copyright (C) 2016-2017 J. Craig Venter Institute (JCVI).             #
+#       All rights reserved.                                                  #
+#                                                                             #
+###############################################################################
+#                                                                             #
+#    This program is free software: you can redistribute it and/or modify     #
+#    it under the terms of the GNU General Public License as published by     #
+#    the Free Software Foundation, either version 3 of the License, or        #
+#    (at your option) any later version.                                      #
+#                                                                             #
+#    This program is distributed in the hope that it will be useful,          #
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of           #
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the            #
+#    GNU General Public License for more details.                             #
+#                                                                             #
+#    You should have received a copy of the GNU General Public License        #
+#    along with this program.  If not, see <http://www.gnu.org/licenses/>.    #
+#                                                                             #
+###############################################################################
+###############################################################################
 
-## quick how-to guide:
-# 1. create a shell script for the job.
-# 2. call launch_grid_job
-# 3. if invoked with $job_array_max defined, call wait_for_grid_jobs_arrays,
-#    otherwise, call wait_for_grid_jobs
-# control is returned upon grid job completion.
+use warnings;
+use strict;
+
+=head1 NAME
+
+grid_tasks.pm - not-so-fancy module for launching/monitoring grid jobs with a strong slant towards the JCVI grid configuration.
+
+=head1 SYNOPSIS
+
+    uae grid_tasks;
+
+    my @job_ids;
+    push @job_ids, launch_grid_job( $project_code, $working_dir, $shell_script, $stdoutdir, $stderrdir, $queue, $job_array_max );
+    # ... repeat for more jobs if you want.
+
+    wait_for_grid_jobs( \@job_ids );
+    # Or if you launched as an array-job:
+    wait_for_grid_jobs_arrays( \@job_ids );
+
+=head1 DESCRIPTION
+
+Quick start guide:
+
+ 1. Create a shell script for the job.
+ 2. Call launch_grid_job, store the returned job_id in an array
+ 3. Repeat if more jobs are to be launched.
+ 4. If invoked with $job_array_max defined, call wait_for_grid_jobs_arrays,
+    otherwise, call wait_for_grid_jobs
+
+ Control is returned upon grid job completion.
+
+There are numerous use cases unsupported by this module at the moment.  Notably:
+
+ When using jobs that wait for other jobs.
+ Using task ids that increment with an integer other than 1.
+ When resubmitting job_arrays that have errored-tasks reset by using qmod -cj
+ 
+This module will likely grow and change to support fancier submissions.
+
+=head1 Subprocedures
+
+=over 4
+
+=item C<launch_grid_job>
+
+    For array jobs:
+    my $job_id = launch_grid_job( $project_code, $working_dir, $shell_script, $stdoutdir, $stderrdir, $queue, $job_array_max );
+
+    For single task jobs:
+    my $job_id = launch_grid_job( $project_code, $working_dir, $shell_script, $stdoutdir, $stderrdir, $queue );
+
+=cut
 
 sub launch_grid_job {
 # Given a shell script, launch it via qsub.
@@ -35,9 +102,15 @@ sub launch_grid_job {
 
 }
 
+=item C<wait_for_grid_jobs>
+
+    Given an array ref of job_ids, wait until they are all done.
+
+    wait_for_grid_jobs( \@job_ids );
+
+=cut
 
 sub wait_for_grid_jobs {
-# given an array of job_ids, wait until they are all done.
 
     my $job_ids = shift;
 
@@ -58,7 +131,8 @@ sub wait_for_grid_jobs {
 
 
 sub parse_response {
-# given a qacct response, delete a job id from the loop-control-hash when
+# NOT INTENDED TO BE CALLED DIRECTLY.
+# Given a qacct response, delete a job id from the loop-control-hash when
 # a statisfactory state is seen.
 
     my ( $response, $lch, $job_id ) = @_;
@@ -100,6 +174,19 @@ sub parse_response {
 
 }
 
+
+=item C<wait_for_grid_jobs_arrays>
+
+    Given an array ref of array-job job_ids (Wow!), wait until they are all finished.
+
+    wait_for_grid_jobs_arrays( \@job_ids, $min_task_id, $max_task_id, $debug);
+
+    Note that $min_task_id and $max_task_id must be the same for all job_ids.
+    (This should change.  Hopefully sooner rather than later.)
+
+=back
+
+=cut
 
 sub wait_for_grid_jobs_arrays {
 # given an array of job_ids, wait until they are all done.
@@ -160,7 +247,7 @@ sub check_for_grid_errors {
         }
 
         if ( $record =~ /failed +([^\n]+)\n/ ) {
-            $excuse = $1;
+            my $excuse = $1;
             $failures{ $task_id } = "'$excuse'" unless $excuse =~ /^0/;
         } 
 
@@ -179,7 +266,8 @@ sub check_for_grid_errors {
 
 
 sub parse_response_arrays {
-# given a qacct response, delete a job id from the loop-control-hash when
+# NOT INTENDED TO BE CALLED DIRECTLY.
+# Given a qacct response, delete a job id from the loop-control-hash when
 # a satisfactory state is seen.
 
     my ( $response, $lch, $stats_hash, $job_id, $debug ) = @_;
@@ -235,6 +323,7 @@ sub parse_response_arrays {
 
 
 sub build_task_hash {
+# NOT INTENDED TO BE CALLED DIRECTLY.
 # create a hash representing a single task.
 
     my $job_ids = shift;
@@ -252,6 +341,7 @@ sub build_task_hash {
 
 
 sub build_task_hash_arrays {
+# NOT INTENDED TO BE CALLED DIRECTLY.
 # create an array of hashes representing the tasks in a job
 
     my ( $job_ids, $min_id, $max_id ) = @_;
