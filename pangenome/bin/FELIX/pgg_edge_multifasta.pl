@@ -23,8 +23,8 @@ $prog =~ s/.*\///;
 use strict;
 use warnings;
 use Getopt::Std;
-getopts ('RSADhb:B:m:p:a:g:t:M:s:');
-our ($opt_S,$opt_A,$opt_D,$opt_h,$opt_b,$opt_m,$opt_p,$opt_a,$opt_g,$opt_t,$opt_M,$opt_R,$opt_B,$opt_s);
+getopts ('I:RSADhb:B:m:p:a:g:t:M:s:');
+our ($opt_I,$opt_S,$opt_A,$opt_D,$opt_h,$opt_b,$opt_m,$opt_p,$opt_a,$opt_g,$opt_t,$opt_M,$opt_R,$opt_B,$opt_s);
 
 ## use boolean logic:  TRUE = 1, FALSE = 0
 
@@ -41,6 +41,8 @@ my $genome_number;
 my $compute_all = 0;
 my $suppress = 0;
 my $target_id = "";
+my $ignore_id = "";
+my $ignore_index = -1;
 my $remake_files;
 my $medoids_path;
 my $single_cores;
@@ -52,6 +54,7 @@ if ($opt_S) {$suppress = 1;} else {$suppress = 0;} # flag to suppress outputting
 if ($opt_D) {$DEBUG = 1;} else { $DEBUG = 0; } # Debug mode is off as default.
 if ($opt_h) { &option_help; } # quit with help menu
 if ($opt_t) {$target_id = $opt_t;} #set target genome id for statistics
+if ($opt_I) {$ignore_id = $opt_I;} #set a genome id to ignore for statistics (used when the target genome is one of the PGG genomes)
 if ($opt_b) {$multifastadir = $opt_b;} else { $multifastadir = $ENV{'PWD'}; } # if no value for option b (base or working directory) set it to current directory for output files
 if ($opt_B) {$basedir = $opt_B;} else { $basedir = $ENV{'PWD'}; } # if no value for option b (base or working directory) set it to current directory for output files
 if (($opt_p) && (-s "$opt_p")) {$pgg_file = $opt_p;} else { print STDERR "Error with -p $opt_p\n"; &option_help; } # if no value for option p (pan-genome graph input file), quit with help menu
@@ -59,11 +62,19 @@ if (($opt_m) && (-s "$opt_m")) {$matchtable_file = $opt_m;} else { print STDERR 
 if (($opt_a) && (-s "$opt_a")) {$att_file = $opt_a;} else { print STDERR "Error with -a $opt_a\n"; &option_help; } # if no value for option a (attribute input file), quit with help menu
 if (($opt_g) && (-s "$opt_g")) {$genomes_file_name = $opt_g;} else { print STDERR "Error with -g\n"; &option_help; } # if no value for option g (genome tags and contig file names input file), quit with help menu
 
+my %edge_hash = ();            # Key1 = edge ID Key2 = struct members with their values (5p,3p,gtag, contig)
+my %single_copy_core = ();     # key = cluster number, value is defined if single copy core otherwise undefiend
 my %is_circular = ();          # key1 = genome ID, key2 = contig_name, value = 1 if circular 0 otherwise
-my %feat_hash = ();            # Key1 = feat_name Key2 = struct members with their values (5p,3p,anno,gtag)
+my %feat_hash = ();            # Key1 = feat_name Key2 = struct members with their values (5p,3p,anno,gtag, contig)
 my %cluster_to_feat_hash = (); # Key1 = genome tag Key2 = cluster_id Value = feat_name
 my %genseq_hash = ();          # Key1 = genome tag Key2 = contig_name Value = contig sequence
 my %genseq_len = ();           # Key1 = genome tag Key2 = contig_name Value = length of contig sequence
+my %total_clus = ();           # key = genome ID, value = total number of nonsingleton clusters
+my %total_edge = ();           # key = genome ID, value = total number of nonsingleton edges
+my $total_clus_pgg = 0;        # number of nonsingleton clusters
+my $total_edge_pgg = 0;        # number of nonsingleton edges
+my $total_clus_alle_pgg = 0;   # number of alleles in nonsingleton clusters
+my $total_edge_alle_pgg = 0;   # number of alleles in nonsingleton edges
 my %uniq_clus = ();            # key = genome ID, value = number of unique/singleton clusters
 my %uniq_edge = ();            # key = genome ID, value = number of unique/singleton edges
 my %short_clus = ();           # key = genome ID, value = number of short clusters
@@ -71,6 +82,8 @@ my %short_edge = ();           # key = genome ID, value = number of short edges
 my %long_clus = ();            # key = genome ID, value = number of long clusters
 my %long_edge = ();            # key = genome ID, value = number of long edges
 my %frameshift = ();           # key = genome ID, value = number of probable frameshifts
+my %miss_sing_core = ();       # key = genome ID, value = number of clusters missing  for single copy core clusters
+my %miss_sing_edge = ();       # key = genome ID, value = number of edges missing  for edges between single copy core clusters
 my %missing_75c = ();          # key = genome ID, value = number of clusters missing  for clusters in 75-100% of genomes
 my %missing_75e = ();          # key = genome ID, value = number of edges missing  for edges in 75-100% of genomes
 my %uniq_clus_alle_75_100 = ();# key = genome ID, value = number of unique alleles for clusters in 75-100% of genomes
@@ -92,6 +105,11 @@ sub get_genomes {  # obtain list of genomes - must be in the same order as the m
 	chomp $line1;
 	(my $name, my $contig_file) = split(/\t/, $line1);  # split the scalar $line on tab
 
+	if ($ignore_id eq $name) {
+	    $ignore_index = $genome_number;
+	    print "Ignoring genome $ignore_id with index $ignore_index\n";
+	    next; #skip over the genome to be ignored
+	}
 	if (defined $genseq_hash{$name})  {
 	    die ("ERROR:  You have more than one occurance of $name in $genomes_file_name!\n");
 	} else  {
@@ -155,20 +173,24 @@ sub get_attributes {
 	chomp;
 	@att_line = split(/\t/, $_);  # split the scalar $line on tab
 	$asmbl_id = $att_line[0];
+	$feat_name = $att_line[1];
+	$end5 = $att_line[2];
+	$end3 = $att_line[3];
+	$anno = $att_line[4];
+	$tag = $att_line[5];
+	if ($ignore_id eq $tag) {
+	    #print "$ignore_id:$ignore_index:$tag:$feat_name\n";
+	    next; #skip over the genome to be ignored
+	}
 	if ($asmbl_id eq "") {
 	    print STDERR "ERROR: assembly id/contig id must not be empty/null in the gene attribute file\n$_\n";
 	    $failed = 1;
 	}
 	$asmbl_id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
-	$feat_name = $att_line[1];
 	if (defined $feat_hash{$feat_name}) {
 	    print STDERR "ERROR: $feat_name appears more than once in the gene attribute file $att_file!\n";
 	    $failed = 1;
 	}
-	$end5 = $att_line[2];
-	$end3 = $att_line[3];
-	$anno = $att_line[4];
-	$tag = $att_line[5];
 	if (!defined $genseq_hash{$tag}) {
 	    print STDERR "ERROR: $tag is a genome tag in the gene attribute file $att_file but not in the genome tag file $genomes_file_name!\n";
 	    $failed = 1;
@@ -198,7 +220,7 @@ sub process_matchtable {
 	    die ("ERROR: cannot open file $basedir/cluster_sizes.txt!\n");
 	}
     }
-    unless (open (TABLEFILE, "<$matchtable_file") )  {
+    unless (open (TABLEFILE, "<", "$matchtable_file") )  {
 	die ("ERROR: cannot open file $matchtable_file.\n");
     }
     my $cluster_num = 1;
@@ -230,7 +252,13 @@ sub process_matchtable {
 	my $sumsquared = 0;
 	my @sizes = ();
 	my $div_by_three = 0;
+	my $seen = 0;
 	foreach my $feat_name (@feat_names) {
+	    if (!$seen && ($ignore_index == $index)) {
+		#print "$ignore_id:$ignore_index:$index:$feat_name\n";
+		$seen =1;
+		next; # ignore the column corresponding to the genome to be ignored
+	    }
 	    $genome_tag = shift @tmp_array;
 	    if (($feat_name eq "----------") || ($feat_name eq "")) { #this is a placeholder and can be skipped
 		$index++;
@@ -299,6 +327,7 @@ sub process_matchtable {
 		$sequence = reverse($tmp_seq);
 		$sequence =~ tr/AGCTYRWSKMDVHBagctyrwskmdvhb/TCGARYWSMKHBDVtcgarywsmkhbdv/;
 	    }
+	    $feat_hash{$feat_name}->{'len'} = $seq_len;
 	    if ($seq_len <= 0) { #should not happen
 		die ("ERROR: coordinates on contig sequence resulted in negative seq_len $seq_len for $feat_name!\n");
 	    } else {
@@ -346,6 +375,10 @@ sub process_matchtable {
 	if (!$suppress) {
 	    close (OUTFILE);
 	}
+	if ($gene_count > 1) {
+	    $total_clus_pgg++;
+	    $total_clus_alle_pgg += $gene_count;
+	}
 	my $mean;
 	my $median;
 	my $median_25;
@@ -372,6 +405,7 @@ sub process_matchtable {
 		    if (($gene_count == 1) && ($single_genome eq $genome_tag)) {
 			$uniq_clus{$genome_tag}++;
 		    } elsif (defined $genome_seqs[$index]) {
+			my $feat_name = $cluster_to_feat_hash{$genome_tag}->{$cluster_id};
 			if ($feat_pres{$genome_seqs[$index]} == 1) {
 			    if (((100 * $gene_count) / $genome_number) >= 75) {
 				$uniq_clus_alle_75_100{$genome_tag}++;
@@ -380,21 +414,32 @@ sub process_matchtable {
 			    } else {
 				$uniq_clus_alle_25_75{$genome_tag}++;
 			    }
+			    print DIFFFILE "$genome_tag\t$feat_hash{$feat_name}->{'contig'}\tuniq_clus_allele\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\n";
+			} else {
+			    print DIFFFILE "$genome_tag\t$feat_hash{$feat_name}->{'contig'}\tidentical_clus\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\n";
 			}
 			my $seq_len = length($genome_seqs[$index]);
 			if ($seq_len < ($median_25 - (0.1 * $median))) {
 			    $short_clus{$genome_tag}++;
+			    print DIFFFILE "$genome_tag\t$feat_hash{$feat_name}->{'contig'}\tshort_clus\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\n";
 			} elsif ($seq_len > ($median_75 + (0.1 * $median))) {
 			    $long_clus{$genome_tag}++;
+			    print DIFFFILE "$genome_tag\t$feat_hash{$feat_name}->{'contig'}\tlong_clus\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\n";
 			}
 			if ($div_by_three > (0.7 * $gene_count)) { # best approximation for frameshift
 			    if (($seq_len % 3) != 0) {
 				$frameshift{$genome_tag}++;
+				print DIFFFILE "$genome_tag\t$feat_hash{$feat_name}->{'contig'}\tframeshift_clus\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\n";
 			    }
 			}
+			$total_clus{$genome_tag}++;
 		    } else {
 			if (((100 * $gene_count) / $genome_number) >= 75) {
-			    $missing_75c{$genome_tag}++;
+			    if (defined $single_copy_core{$cluster_num}) {
+				$miss_sing_core{$genome_tag}++;
+			    } else {
+				$missing_75c{$genome_tag}++;
+			    }
 			}
 		    }
 		    $index++;
@@ -403,6 +448,7 @@ sub process_matchtable {
 		if (($gene_count == 1) && ($single_genome eq $target_id)) {
 		    $uniq_clus{$target_id}++;
 		} elsif ($target_sequence ne "") {
+		    my $feat_name = $cluster_to_feat_hash{$target_id}->{$cluster_id};
 		    if ($feat_pres{$target_sequence} == 1) {
 			if (((100 * $gene_count) / $genome_number) >= 75) {
 			    $uniq_clus_alle_75_100{$target_id}++;
@@ -411,21 +457,32 @@ sub process_matchtable {
 			} else {
 			    $uniq_clus_alle_25_75{$target_id}++;
 			}
+			print DIFFFILE "$target_id\t$feat_hash{$feat_name}->{'contig'}\tuniq_clus_allele\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\n";
+		    } else {
+			print DIFFFILE "$target_id\t$feat_hash{$feat_name}->{'contig'}\tidentical_clus\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\n";
 		    }
 		    my $seq_len = length($target_sequence);
 		    if ($seq_len < ($median_25 - (0.1 * $median))) {
 			$short_clus{$target_id}++;
+			print DIFFFILE "$target_id\t$feat_hash{$feat_name}->{'contig'}\tshort_clus\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\n";
 		    } elsif ($seq_len > ($median_75 + (0.1 * $median))) {
 			$long_clus{$target_id}++;
+			print DIFFFILE "$target_id\t$feat_hash{$feat_name}->{'contig'}\tlong_clus\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\n";
 		    }
 		    if ($div_by_three > (0.7 * $gene_count)) { # best approximation for frameshift
 			if (($seq_len % 3) != 0) {
 			    $frameshift{$target_id}++;
+			    print DIFFFILE "$target_id\t$feat_hash{$feat_name}->{'contig'}\tframeshift_clus\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\n";
 			}
 		    }
+		    $total_clus{$target_id}++;
 		} else {
 		    if (((100 * $gene_count) / $genome_number) >= 75) {
-			$missing_75c{$target_id}++;
+			if (defined $single_copy_core{$cluster_num}) {
+			    $miss_sing_core{$target_id}++;
+			} else {
+			    $missing_75c{$target_id}++;
+			}
 		    }
 		}
 	    }
@@ -456,7 +513,7 @@ sub process_pgg {
 	    die ("ERROR: cannot open file $basedir/edge_sizes.txt!\n");
 	}
     }
-    unless (open (PGGFILE, "<$pgg_file") )  {
+    unless (open (PGGFILE, "<", "$pgg_file") )  {
 	die ("ERROR: cannot open file $pgg_file.\n");
     }
     while (my $line = <PGGFILE>) {
@@ -467,6 +524,7 @@ sub process_pgg {
 	my $whichend2;
 	my @edge_values = split(/\t/, $line);  # split the scalar $line on tab
 	my $edge_id = shift @edge_values;
+	my $edge_name = $edge_id;
 	my $out_line = join("\t", @edge_values);
 	my $out_cluster1;
 	my $out_cluster2;
@@ -500,7 +558,13 @@ sub process_pgg {
 	my $sum = 0;
 	my $sumsquared = 0;
 	my @sizes = ();
+	my $seen = 0;
 	foreach my $edge_value (@edge_values) {
+	    if (!$seen && ($ignore_index == $index)) {
+		#print "$ignore_id:$ignore_index:$index:$edge_value\n";
+		$seen = 1;
+		next; # ignore the column corresponding to the genome to be ignored
+	    }
 	    $genome_tag = shift @tmp_array;
 	    if ($edge_value == 0) { #this is a placeholder and can be skipped
 		$index++;
@@ -548,6 +612,9 @@ sub process_pgg {
 		print OUTFILE ">$genome_tag";
 		print OUTFILE " $contig1 $feat_name1 $start1 $end1 $feat_name2 $start2 $end2\n";
 	    }
+	    $edge_hash{$genome_tag . $edge_id} = {};
+	    $edge_hash{$genome_tag . $edge_id}->{'gtag'} = $genome_tag;
+	    $edge_hash{$genome_tag . $edge_id}->{'contig'} = $contig1;
 	    my $seq_len;
 	    my $sequence;
 	    my $contig_len = $genseq_len{$genome_tag}->{$contig1};
@@ -564,6 +631,9 @@ sub process_pgg {
 			$end_offset += ($end1 - 1);
 		    }
 		    $seq_len = ($contig_len - $start2) + ($end1 - 1);
+		    $edge_hash{$genome_tag . $edge_id}->{'len'} = $seq_len;
+		    $edge_hash{$genome_tag . $edge_id}->{'5p'} = $end1 - 1;
+		    $edge_hash{$genome_tag . $edge_id}->{'3p'} = $start2 + 1;
 		    #print "if $seq_len:$start2:$end1:$beg_offset:$end_offset\n";
 		    if ($seq_len <= 0) {
 			$seq_len = 0;
@@ -589,6 +659,9 @@ sub process_pgg {
 			$end_offset += ($start2 - 1);
 		    }
 		    $seq_len = ($contig_len - $end1) + ($start2 - 1);
+		    $edge_hash{$genome_tag . $edge_id}->{'len'} = $seq_len;
+		    $edge_hash{$genome_tag . $edge_id}->{'5p'} = $end1 + 1;
+		    $edge_hash{$genome_tag . $edge_id}->{'3p'} = $start2 - 1;
 		    #print "else $seq_len:$end1:$start2:$beg_offset:$end_offset\n";
 		    if ($seq_len <= 0) {
 			$seq_len = 0;
@@ -602,19 +675,31 @@ sub process_pgg {
 			}
 		    }
 		}
-	    }elsif ((($start1 < $end2) && (($end1 + 1) >= $start2)) || (($start1 >= $end2) && (($end1 - 1) <= $start2))) {
-		# cluster/gene features overlap or abut on contig so edge sequence is empty set length to 0 and sequence to empty string but output empty line for fasta
-		$seq_len = 0;
-		$sequence = "";
 	    } else {
 		if ($start1 < $end2) {
+		    $edge_hash{$genome_tag . $edge_id}->{'5p'} = $end1 + 1;
+		    $edge_hash{$genome_tag . $edge_id}->{'3p'} = $start2 - 1;
 		    $seq_len = ($start2 - $end1) - 1;
-		    $sequence = substr($genseq_hash{$genome_tag}->{$contig1}, $end1, $seq_len);
+		    $edge_hash{$genome_tag . $edge_id}->{'len'} = $seq_len;
+		    if ($seq_len > 0) {
+			$sequence = substr($genseq_hash{$genome_tag}->{$contig1}, $end1, $seq_len);
+		    } else {
+			$seq_len = 0;
+			$sequence = "";
+		    }
 		} else {
+		    $edge_hash{$genome_tag . $edge_id}->{'5p'} = $end1 - 1;
+		    $edge_hash{$genome_tag . $edge_id}->{'3p'} = $start2 + 1;
 		    $seq_len = ($end1 - $start2) - 1;
-		    my $tmp_seq = substr($genseq_hash{$genome_tag}->{$contig1}, $start2, $seq_len);
-		    $sequence = reverse($tmp_seq);
-		    $sequence =~ tr/AGCTYRWSKMDVHBagctyrwskmdvhb/TCGARYWSMKHBDVtcgarywsmkhbdv/;
+		    $edge_hash{$genome_tag . $edge_id}->{'len'} = $seq_len;
+		    if ($seq_len > 0) {
+			my $tmp_seq = substr($genseq_hash{$genome_tag}->{$contig1}, $start2, $seq_len);
+			$sequence = reverse($tmp_seq);
+			$sequence =~ tr/AGCTYRWSKMDVHBagctyrwskmdvhb/TCGARYWSMKHBDVtcgarywsmkhbdv/;
+		    } else {
+			$seq_len = 0;
+			$sequence = "";
+		    }
 		}
 	    }
 	    if ($remake_files || $compute_all || ($target_id ne "")) {
@@ -687,6 +772,10 @@ sub process_pgg {
 	    }
 	}
 	if ($cluster1 <= $cluster2) { # only need to do this for one orientation of the edge - not sure if the clusters can be equal or if there are two edges in this case - do a 3' 5' test?
+	    if ($gene_count > 1) {
+		$total_edge_pgg++;
+		$total_edge_alle_pgg += $gene_count;
+	    }
 	    if ($compute_all || ($target_id ne "")) {
 		if ($compute_all) {
 		    $index = 0;
@@ -694,6 +783,7 @@ sub process_pgg {
 			if (($gene_count == 1) && ($single_genome eq $genome_tag)) {
 			    $uniq_edge{$genome_tag}++;
 			} elsif (defined $genome_seqs[$index]) {
+			    my $feat_name = $genome_tag . $edge_id;
 			    if ($feat_pres{$genome_seqs[$index]} == 1) {
 				if (((100 * $gene_count) / $genome_number) >= 75) {
 				    $uniq_edge_alle_75_100{$genome_tag}++;
@@ -702,19 +792,29 @@ sub process_pgg {
 				} else {
 				    $uniq_edge_alle_25_75{$genome_tag}++;
 				}
+				print DIFFFILE "$genome_tag\t$edge_hash{$feat_name}->{'contig'}\tuniq_edge_allele\t$edge_hash{$feat_name}->{'5p'}\t$edge_hash{$feat_name}->{'3p'}\t$edge_hash{$feat_name}->{'len'}\t$edge_name\n";
+			    } else {
+				print DIFFFILE "$genome_tag\t$edge_hash{$feat_name}->{'contig'}\tidentical_edge\t$edge_hash{$feat_name}->{'5p'}\t$edge_hash{$feat_name}->{'3p'}\t$edge_hash{$feat_name}->{'len'}\t$edge_name\n";
 			    }
 			    my $seq_len = length($genome_seqs[$index]);
 			    #print "$genome_tag($mean):$median_25:$median:$median_75:$seq_len\n";
 			    if ($seq_len < ($median_25 - (0.1 * $median))) {
 				$short_edge{$genome_tag}++;
+				print DIFFFILE "$genome_tag\t$edge_hash{$feat_name}->{'contig'}\tshort_edge_allele\t$edge_hash{$feat_name}->{'5p'}\t$edge_hash{$feat_name}->{'3p'}\t$edge_hash{$feat_name}->{'len'}\t$edge_name\n";
 				#print "SHORT\n";
 			    } elsif ($seq_len > ($median_75 + (0.1 * $median))) {
 				$long_edge{$genome_tag}++;
+				print DIFFFILE "$genome_tag\t$edge_hash{$feat_name}->{'contig'}\tlong_edge_allele\t$edge_hash{$feat_name}->{'5p'}\t$edge_hash{$feat_name}->{'3p'}\t$edge_hash{$feat_name}->{'len'}\t$edge_name\n";
 				#print "LONG\n";
 			    }
+			    $total_edge{$genome_tag}++;
 			} else {
 			    if (((100 * $gene_count) / $genome_number) >= 75) {
-				$missing_75e{$genome_tag}++;
+				if ((defined $single_copy_core{$cluster1}) && (defined $single_copy_core{$cluster2})){
+				    $miss_sing_edge{$genome_tag}++;
+				} else {
+				    $missing_75e{$genome_tag}++;
+				}
 			    }
 			}
 			$index++;
@@ -723,6 +823,7 @@ sub process_pgg {
 		    if (($gene_count == 1) && ($single_genome eq $target_id)) {
 			$uniq_edge{$target_id}++;
 		    } elsif ($target_sequence ne "") {
+			my $feat_name = $target_id . $edge_id;
 			if ($feat_pres{$target_sequence} == 1) {
 			    if (((100 * $gene_count) / $genome_number) >= 75) {
 				$uniq_edge_alle_75_100{$target_id}++;
@@ -731,16 +832,26 @@ sub process_pgg {
 			    } else {
 				$uniq_edge_alle_25_75{$target_id}++;
 			    }
+			    print DIFFFILE "$target_id\t$edge_hash{$feat_name}->{'contig'}\tuniq_edge_allele\t$edge_hash{$feat_name}->{'5p'}\t$edge_hash{$feat_name}->{'3p'}\t$edge_hash{$feat_name}->{'len'}\t$edge_name\n";
+			} else {
+			    print DIFFFILE "$target_id\t$edge_hash{$feat_name}->{'contig'}\tidentical_edge\t$edge_hash{$feat_name}->{'5p'}\t$edge_hash{$feat_name}->{'3p'}\t$edge_hash{$feat_name}->{'len'}\t$edge_name\n";
 			}
 			my $seq_len = length($target_sequence);
 			if ($seq_len < ($median_25 - (0.1 * $median))) {
 			    $short_edge{$target_id}++;
+			    print DIFFFILE "$target_id\t$edge_hash{$feat_name}->{'contig'}\tshort_edge_allele\t$edge_hash{$feat_name}->{'5p'}\t$edge_hash{$feat_name}->{'3p'}\t$edge_hash{$feat_name}->{'len'}\t$edge_name\n";
 			} elsif ($seq_len > ($median_75 + (0.1 * $median))) {
 			    $long_edge{$target_id}++;
+			    print DIFFFILE "$target_id\t$edge_hash{$feat_name}->{'contig'}\tlong_edge_allele\t$edge_hash{$feat_name}->{'5p'}\t$edge_hash{$feat_name}->{'3p'}\t$edge_hash{$feat_name}->{'len'}\t$edge_name\n";
 			}
+			$total_edge{$target_id}++;
 		    } else {
 			if (((100 * $gene_count) / $genome_number) >= 75) {
-			    $missing_75e{$target_id}++;
+			    if ((defined $single_copy_core{$cluster1}) && (defined $single_copy_core{$cluster2})){
+				$miss_sing_edge{$target_id}++;
+			    } else {
+				$missing_75e{$target_id}++;
+			    }
 			}
 		    }
 		}
@@ -793,23 +904,30 @@ sub process_medoids {  # read in the medoids for the PGG
     return;
 }
 
-sub process_single_cores                                               # Read in the set of clusters which are single copy core, renumber and output
+sub read_single_cores                                               # Read in the set of clusters which are single copy core, renumber and output
 {
     unless (open(CLUSTER_CORES, "<", $single_cores)) {
 	die ("cannot open cores file: $single_cores!\n");
-    }
-    unless (open(OUT_CORES, ">", "$basedir/single_copy_clusters.txt")) {
-	die ("cannot open cores file: $basedir/single_copy_clusters.txt!\n");
     }
     while (my $line = <CLUSTER_CORES>) {
 	chomp $line;
 	$line =~ s/\s*//g; # remove all whitespace characters
 	$line =~ s/^.*_//; # remove centroid_, medoid_, cluster_ or any other verbiage before the cluster number
-	if ($renumber[$line]) {
-	    print OUT_CORES "$renumber[$line]\n";
-	}
+	$single_copy_core{$line} = 1;
+	#print "$line:$single_copy_core{$line}\n";
     }
     close(CLUSTER_CORES);
+}
+
+sub write_single_cores                                               # Read in the set of clusters which are single copy core, renumber and output
+{
+    unless (open(OUT_CORES, ">", "$basedir/single_copy_clusters.txt")) {
+	die ("cannot open cores file: $basedir/single_copy_clusters.txt!\n");
+    }
+    foreach my $clus (sort {$a <=> $b} (keys %single_copy_core)) {
+	print OUT_CORES "$renumber[$clus]\n";
+	#print "$clus:$renumber[$single_copy_core{$clus}]\n";
+    }
     close(OUT_CORES);
 }
 
@@ -884,8 +1002,12 @@ _EOB_
 ########################################  M A I N  #####################################################
 print "Getting genome names and contig sequences from $genomes_file_name\n";
 &get_genomes;
+print "Reading single copy core clusters from $single_cores\n";
+&read_single_cores;
 print "Gathering gene coordinates and attribute information from $att_file\n";
 foreach my $genome_tag (@genome_array) {
+    $total_clus{$genome_tag} = 0;           # key = genome ID, value = number of nonsingleton clusters
+    $total_edge{$genome_tag} = 0;           # key = genome ID, value = number of nonsingleton edges
     $uniq_clus{$genome_tag} = 0;            # key = genome ID, value = number of unique/singleton clusters
     $uniq_edge{$genome_tag} = 0;            # key = genome ID, value = number of unique/singleton edges
     $short_clus{$genome_tag} = 0;           # key = genome ID, value = number of short clusters
@@ -893,6 +1015,8 @@ foreach my $genome_tag (@genome_array) {
     $long_clus{$genome_tag} = 0;            # key = genome ID, value = number of long clusters
     $long_edge{$genome_tag} = 0;            # key = genome ID, value = number of long edges
     $frameshift{$genome_tag} = 0;           # key = genome ID, value = number of probable frameshifts
+    $miss_sing_core{$genome_tag} = 0;       # key = genome ID, value = number of clusters missing  for single copy core clusters
+    $miss_sing_edge{$genome_tag} = 0;       # key = genome ID, value = number of edges missing  for edges between single copy core clusters
     $missing_75c{$genome_tag} = 0;          # key = genome ID, value = number of clusters missing  for clusters in 75-100% of genomes
     $missing_75e{$genome_tag} = 0;          # key = genome ID, value = number of edges missing  for edges in 75-100% of genomes
     $uniq_clus_alle_75_100{$genome_tag} = 0;# key = genome ID, value = number of unique alleles for clusters in 75-100% of genomes
@@ -904,25 +1028,32 @@ foreach my $genome_tag (@genome_array) {
 }    
 &get_attributes;
 print "Reading matchtable from $matchtable_file and outputting cluster multifasta files to $basedir\n";
+if ($compute_all || ($target_id ne "")) {
+    unless (open (DIFFFILE, ">", "$basedir/anomalies.txt") ) {
+	die ("ERROR: cannot open file $basedir/anomalies.txt\n");
+    }
+    print DIFFFILE "Genome ID\tContig ID\tType\tStart\tEnd\tLength\tCluster-Edge ID\n";
+}
 &process_matchtable;
 print "Reading pan-genome graph from $pgg_file and outputting edge multifasta files to $basedir\n";
 &process_pgg;
 if ($compute_all || ($target_id ne "")) {
-    unless (open (STATFILE, ">$basedir/cluster_stats.txt") ) {
+    close (DIFFFILE);
+    unless (open (STATFILE, ">", "$basedir/cluster_stats.txt") ) {
 	die ("ERROR: cannot open file $basedir/cluster_stats.txt\n");
     }
-    print STATFILE "Genome\tuniq_clus\tuniq_clus_alle_0_25\tuniq_clus_alle_25_75\tuniq_clus_alle_75_100\tuniq_edge\tuniq_edge_alle_0_25\tuniq_edge_alle_25_75\tuniq_edge_alle_75_100\tshort_clus\tlong_clus\tshort_edge\tlong_edge\tframshift\tmissing_75clus\tmissing_75edge\n";
+    print STATFILE "Genome\tuniq_clus\tuniq_clus_alle_0_25\tuniq_clus_alle_25_75\tuniq_clus_alle_75_100\tuniq_edge\tuniq_edge_alle_0_25\tuniq_edge_alle_25_75\tuniq_edge_alle_75_100\tshort_clus\tlong_clus\tshort_edge\tlong_edge\tframeshift\tmissing_75clus\tmissing_75edge\tmiss_sing_core\tmiss_sing_edge\ttotal_clus($total_clus_pgg,$total_clus_alle_pgg)\ttotal_edge($total_edge_pgg,$total_edge_alle_pgg)\n";
     if ($compute_all) {
 	foreach my $genome_tag (@genome_array) {
-	    print STATFILE "$genome_tag\t$uniq_clus{$genome_tag}\t$uniq_clus_alle_0_25{$genome_tag}\t$uniq_clus_alle_25_75{$genome_tag}\t$uniq_clus_alle_75_100{$genome_tag}\t$uniq_edge{$genome_tag}\t$uniq_edge_alle_0_25{$genome_tag}\t$uniq_edge_alle_25_75{$genome_tag}\t$uniq_edge_alle_75_100{$genome_tag}\t$short_clus{$genome_tag}\t$long_clus{$genome_tag}\t$short_edge{$genome_tag}\t$long_edge{$genome_tag}\t$frameshift{$genome_tag}\t$missing_75c{$genome_tag}\t$missing_75e{$genome_tag}\n";
+	    print STATFILE "$genome_tag\t$uniq_clus{$genome_tag}\t$uniq_clus_alle_0_25{$genome_tag}\t$uniq_clus_alle_25_75{$genome_tag}\t$uniq_clus_alle_75_100{$genome_tag}\t$uniq_edge{$genome_tag}\t$uniq_edge_alle_0_25{$genome_tag}\t$uniq_edge_alle_25_75{$genome_tag}\t$uniq_edge_alle_75_100{$genome_tag}\t$short_clus{$genome_tag}\t$long_clus{$genome_tag}\t$short_edge{$genome_tag}\t$long_edge{$genome_tag}\t$frameshift{$genome_tag}\t$missing_75c{$genome_tag}\t$missing_75e{$genome_tag}\t$miss_sing_core{$genome_tag}\t$miss_sing_edge{$genome_tag}\t$total_clus{$genome_tag}\t$total_edge{$genome_tag}\n";
 	}
     } else {
-	print STATFILE "$target_id\t$uniq_clus{$target_id}\t$uniq_clus_alle_0_25{$target_id}\t$uniq_clus_alle_25_75{$target_id}\t$uniq_clus_alle_75_100{$target_id}\t$uniq_edge{$target_id}\t$uniq_edge_alle_0_25{$target_id}\t$uniq_edge_alle_25_75{$target_id}\t$uniq_edge_alle_75_100{$target_id}\t$short_clus{$target_id}\t$long_clus{$target_id}\t$short_edge{$target_id}\t$long_edge{$target_id}\t$frameshift{$target_id}\t$missing_75c{$target_id}\t$missing_75e{$target_id}\n";
+	print STATFILE "$target_id\t$uniq_clus{$target_id}\t$uniq_clus_alle_0_25{$target_id}\t$uniq_clus_alle_25_75{$target_id}\t$uniq_clus_alle_75_100{$target_id}\t$uniq_edge{$target_id}\t$uniq_edge_alle_0_25{$target_id}\t$uniq_edge_alle_25_75{$target_id}\t$uniq_edge_alle_75_100{$target_id}\t$short_clus{$target_id}\t$long_clus{$target_id}\t$short_edge{$target_id}\t$long_edge{$target_id}\t$frameshift{$target_id}\t$missing_75c{$target_id}\t$missing_75e{$target_id}\t$miss_sing_core{$target_id}\t$miss_sing_edge{$target_id}\t$total_clus{$target_id}\t$total_edge{$target_id}\n";
     }
     close (STATFILE);
 }
 if ($remake_files) {
     &process_medoids;
-    &process_single_cores;
+    &write_single_cores;
 }
 exit(0);

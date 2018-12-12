@@ -10,7 +10,6 @@
 use FileHandle;
 use Getopt::Long;
 use strict;
-#GRANGER GLOBALS
 my %pgg_core_edges = ();   # key = pgg core edge, value = 1 just a place holder
 my @edges = ();            # the identifiers from the first column of the PGG file for each edge
 my %hash_edges = ();       # store the edge identifiers for the target genome in a hash for easier lookup
@@ -52,7 +51,6 @@ my $NEAR_5 = 0;
 my $NEAR_3 = 1;
 my $CORE_5 = 2;
 my $CORE_3 = 3;
-#END GRANGER GLOBALS
 
 my $help_text = "THIS IS PLACEHOLDER TEXT\n";                             #<------------------------------------------------------------------------ TODO: write help text
 
@@ -138,13 +136,15 @@ sub read_neighbors                                  # reads in neighbors from co
 	}
 	# Core neighbors cannot be made symmetric
 	# Construct set of single copy core edges
-	foreach my $choice (keys %{ $neighbors[$cluster][$CORE_5] }) {
-	    $pgg_core_edges{"(" . $choice . "," . $cluster . "_5)"} = 1;
-	    $pgg_core_edges{"(" . $cluster . "_5" . "," . $choice . ")"} = 1;
-	}
-	foreach my $choice (keys %{ $neighbors[$cluster][$CORE_3] }) {
-	    $pgg_core_edges{"(" . $choice . "," . $cluster . "_3)"} = 1;
-	    $pgg_core_edges{"(" . $cluster . "_3" . "," . $choice . ")"} = 1;
+	if ($core_clusters[$cluster]) {
+	    foreach my $choice (keys %{ $neighbors[$cluster][$CORE_5] }) {
+		$pgg_core_edges{"(" . $choice . "," . $cluster . "_5)"} = 1;
+		$pgg_core_edges{"(" . $cluster . "_5" . "," . $choice . ")"} = 1;
+	    }
+	    foreach my $choice (keys %{ $neighbors[$cluster][$CORE_3] }) {
+		$pgg_core_edges{"(" . $choice . "," . $cluster . "_3)"} = 1;
+		$pgg_core_edges{"(" . $cluster . "_3" . "," . $choice . ")"} = 1;
+	    }
 	}
     }
     return;
@@ -1402,6 +1402,8 @@ sub score_from_neighbors
 	    my $second_score = 0;
 	    my $best_sum = 0;
 	    my $best_clus = 0;
+	    my $best_neighbor_score = 0;
+	    my $best_index = -1;
 #	    if (((scalar @choices) == 1) && (defined ($column_scores{$contig}[$count]->{$column}))) {
 #		return;
 #	    }
@@ -1422,6 +1424,8 @@ sub score_from_neighbors
 		    my $sec_best_bits = 0;                                  # store best score from within a set of ()
 		    my $sec_sum = 0;
 		    my $sec_clus = 0;
+		    my $sec_neighbor_score = 0;
+		    my $sec_index = -1;
 		    my $nearhash = {};
 		    foreach my $sec_choice (@sec_choices) 
 		    {
@@ -1442,6 +1446,8 @@ sub score_from_neighbors
 			    $sec_best_bits = $reduced_by_region[$index]->{'bits'};
 			    $sec_best = $sec_choice;
 			    $sec_clus = $clus;
+			    $sec_neighbor_score = $left + $left_core + $right + $right_core + $left_core_dist + $right_core_dist;
+			    $sec_index = $index;
 			}
 			$sec_sum += $total - $score_median;
 		    }
@@ -1453,6 +1459,8 @@ sub score_from_neighbors
 			$best = $choice;
 			$best_clus = $sec_clus;
 			$best_sum = $sec_sum;
+			$best_neighbor_score = $sec_neighbor_score;
+			$best_index = $sec_index;
 		    }
 		} else {
 		    (my $clus, my $index) = split('_', $choice);
@@ -1469,6 +1477,8 @@ sub score_from_neighbors
 			$best = $choice;
 			$best_clus = $clus;
 			$best_sum = $total - $score_median;
+			$best_neighbor_score = $left + $left_core + $right + $right_core + $left_core_dist + $right_core_dist;
+			$best_index = $index;
 		    }
 		}
 		$choice_count++;                                                  # BE SURE TO DO THIS AFTER SCORE COMPUTATION AND STORING
@@ -1504,7 +1514,11 @@ sub score_from_neighbors
 	    if ($best_score > $score_threshold) {
 		$columns_status{$contig}->[$count] = 1;
 	    } elsif ($best_score > $minimum_score) {
-		$columns_status{$contig}->[$count] = 0;
+		if ($final && ($core_clusters[$best_clus] || ($best_score > ($minimum_score + 1)) || (($best_neighbor_score >= 1) && ($reduced_by_region[$best_index]->{'pid'} >= 90)))) {
+		    $columns_status{$contig}->[$count] = 1;
+		} else {
+		    $columns_status{$contig}->[$count] = 0;
+		}
 	    } else {
 		$columns_status{$contig}->[$count] = -1;
 	    }
@@ -1906,13 +1920,23 @@ sub output_files
     unless (open ($rearrange, ">", ($rootname . "_rearrange.txt")) )  {
 	die ("cannot open rearrangementss file: $rootname'_rearrange.txt'!\n");
     }
+    my $alledgesfile;
+    if ($reannotate) {
+	unless (open ($alledgesfile, ">", ($rootname . "_alledges.txt")) )  {
+	    die ("cannot open all edges file: $rootname'_alledges.txt'!\n");
+	}
+    }
     my $attributefile;
     unless (open ($attributefile, ">", ($rootname . "_attributes.txt")) )  {
 	die ("cannot open attributes file: $rootname'_attributes.txt'!\n");
     }
     my $new_attributefile;
     unless (open ($new_attributefile, ">", ($rootname . "_attributes_new.txt")) )  {
-	die ("cannot open new attributes file: $attributes_path'_attributes_new.txt'!\n");
+	die ("cannot open new attributes file: $rootname'_attributes_new.txt'!\n");
+    }
+    my $uniqclusfile;
+    unless (open ($uniqclusfile, ">", ($rootname . "_uniq_clus.txt")) )  {
+	die ("cannot open new unique clusters file: $rootname'_uniq_clus.txt'!\n");
     }
     my $sumANI = 0;
     my $sumANIlen = 0;
@@ -1927,6 +1951,11 @@ sub output_files
 	my $core_orient = "";
 	my $prev_core_orient = "";
 	my $next_core_orient = "";
+	my $core_edge_start = 0;
+	my $core_edge_end = 0;
+	my $edge_start = 0;
+	my $edge_end = 0;
+	my $edge_all_start = 0;
 	foreach my $column (@{ $columns{$contig} }) {
 	    if ($columns_status{$contig}->[$col_index] >= 0) {
 		(my $clus, my $index) = split('_', $column);
@@ -1937,67 +1966,94 @@ sub output_files
 		if ($columns_status{$contig}->[$col_index] == 1) {
 		    my $ortholog = $target . "CL_" . $clus;
 		    $clus_orient = $clus . '_' . ($reduced_by_region[$index]->{'sinv'} ? '3' : '5');
+		    $edge_end = $beg_align - 1;
 		    $next_clus_orient = $clus . '_' . ($reduced_by_region[$index]->{'sinv'} ? '5' : '3');
 		    if ($columns_core{$contig}[$col_index]->{'is_core'}) {
 			$core_orient = $clus . '_' . ($reduced_by_region[$index]->{'sinv'} ? '3' : '5');
+			$core_edge_end = $beg_align - 1;
 			$next_core_orient = $clus . '_' . ($reduced_by_region[$index]->{'sinv'} ? '5' : '3');
-		    }
-		    if ($prev_clus_orient ne "") {
-			$hash_edges{'(' . $prev_clus_orient . ',' . $clus_orient . ')'} = 0;
-			$hash_edges{'(' . $clus_orient . ',' . $prev_clus_orient . ')'} = 0;
-			if ($columns_core{$contig}[$col_index]->{'is_core'}) {
-			    if (!defined($pgg_core_edges{'(' . $prev_clus_orient . ',' . $clus_orient . ')'})) {
-				print $rearrange ('(' . $prev_clus_orient . ',' . $clus_orient . ')'). "\n";
+			if ($prev_core_orient ne "") {
+			    if (!defined($pgg_core_edges{'(' . $prev_core_orient . ',' . $core_orient . ')'})) {
+				print $rearrange "$target\t$contig\trearrange\t$core_edge_start\t$core_edge_end\t", (($core_edge_end - $core_edge_start) + 1), "\t", ('(' . $prev_core_orient . ',' . $core_orient . ')'). "\n";
 			    }
 			}
+			$prev_core_orient = $next_core_orient;
+			$core_edge_start = $end_align + 1;
+		    }
+		    if ($prev_clus_orient ne "") {
+			my $tmp_len = ($edge_end - $edge_start) + 1;
+			$hash_edges{'(' . $prev_clus_orient . ',' . $clus_orient . ')'} = "$target\t$contig\tuniq_edge\t$edge_start\t$edge_end\t$tmp_len\t";
+			$hash_edges{'(' . $clus_orient . ',' . $prev_clus_orient . ')'} = "$target\t$contig\tuniq_edge\t$edge_end\t$edge_start\t$tmp_len\t";
+			if ($reannotate) {
+			    print $alledgesfile '(' . $prev_clus_orient . ',' . $clus_orient . ')', "\n";
+			    print $alledgesfile '(' . $clus_orient . ',' . $prev_clus_orient . ')', "\n";
+			}
+		    }
+		    if ($reannotate && ($prev_all_clus_orient ne $prev_clus_orient)) {
+			my $tmp_len = ($edge_end - $edge_all_start) + 1;
+			$hash_edges{'(' . $prev_all_clus_orient . ',' . $clus_orient . ')'} = "$target\t$contig\tuniq_edge\t$edge_all_start\t$edge_end\t$tmp_len\t";
+			$hash_edges{'(' . $clus_orient . ',' . $prev_all_clus_orient . ')'} = "$target\t$contig\tuniq_edge\t$edge_end\t$edge_all_start\t$tmp_len\t";
 		    }
 		    $prev_clus_orient = $next_clus_orient;
-		    $prev_core_orient = $next_core_orient;
+		    $edge_start = $end_align + 1;
 		    $prev_all_clus_orient = $next_clus_orient;
+		    $edge_all_start = $end_align + 1;
 		    if ($first_clus_orient eq "") {
 			$first_clus_orient = $clus_orient;
 		    }
 		    $match_table[$clus] = $ortholog;
+		    my $tmp_len = ($end_align - $beg_align) + 1;
 		    print $attributefile "$contig\t$ortholog\t";
 		    if ($reduced_by_region[$index]->{'sinv'}) {
 			print $attributefile "$end_align\t$beg_align\t";
+			if ($reduced_by_region[$index]->{'pid'} < 90) {
+			    print $geneANIfile "$target\t$contig\tgeneANI\t$end_align\t$beg_align\t$tmp_len\t$ortholog\n";
+			}
 		    } else {
 			print $attributefile "$beg_align\t$end_align\t";
+			if ($reduced_by_region[$index]->{'pid'} < 90) {
+			    print $geneANIfile "$target\t$contig\tgeneANI\t$beg_align\t$end_align\t$tmp_len\t$ortholog\n";
+			}
 		    }
 		    print $attributefile "$medoids_anno[$clus]\t$target\n";
-		    if ($reduced_by_region[$index]->{'pid'} < 90) {
-			print $geneANIfile "$ortholog\n";
-		    }
 		    my $matchlen = ($reduced_by_region[$index]->{'qend'} - $reduced_by_region[$index]->{'qbeg'}) + 1;
 		    $sumANI += $reduced_by_region[$index]->{'pid'} * $matchlen;
 		    $sumANIlen += $matchlen;
 		} else {
 		    my $paralog = $target . "PL_" . $paralog_index . "_" . $clus;
 		    $clus_orient = $paralog_index . '_' . ($reduced_by_region[$index]->{'sinv'} ? '3' : '5');
+		    $edge_end = $beg_align - 1;
 		    $next_clus_orient = $paralog_index . '_' . ($reduced_by_region[$index]->{'sinv'} ? '5' : '3');
 		    $paralog_index++;
 		    if ($reannotate) {
 			if ($prev_all_clus_orient ne "") {
-			    $hash_edges{'(' . $prev_all_clus_orient . ',' . $clus_orient . ')'} = 0;
-			    $hash_edges{'(' . $clus_orient . ',' . $prev_all_clus_orient . ')'} = 0;
+			    my $tmp_len = ($edge_end - $edge_all_start) + 1;
+			    $hash_edges{'(' . $prev_all_clus_orient . ',' . $clus_orient . ')'} = "$target\t$contig\tuniq_edge\t$edge_all_start\t$edge_end\t$tmp_len\t";
+			    $hash_edges{'(' . $clus_orient . ',' . $prev_all_clus_orient . ')'} = "$target\t$contig\tuniq_edge\t$edge_end\t$edge_all_start\t$tmp_len\t";
 			}
 			$prev_all_clus_orient = $next_clus_orient;
+			$edge_all_start = $end_align + 1;
 		    } else {
 			if ($prev_clus_orient ne "") {
-			    $hash_edges{'(' . $prev_clus_orient . ',' . $clus_orient . ')'} = 0;
-			    $hash_edges{'(' . $clus_orient . ',' . $prev_clus_orient . ')'} = 0;
+			    my $tmp_len = ($edge_end - $edge_start) + 1;
+			    $hash_edges{'(' . $prev_clus_orient . ',' . $clus_orient . ')'} = "$target\t$contig\tuniq_edge\t$edge_start\t$edge_end\t$tmp_len\t";
+			    $hash_edges{'(' . $clus_orient . ',' . $prev_clus_orient . ')'} = "$target\t$contig\tuniq_edge\t$edge_end\t$edge_start\t$tmp_len\t";
 			}
 			$prev_clus_orient = $clus_orient;
+			$edge_start = $end_align + 1;
 			if ($first_clus_orient eq "") {
 			    $first_clus_orient = $clus_orient;
 			}
 		    }
 		    push @new_match_table, $paralog;
+		    my $tmp_len = ($end_align - $beg_align) + 1;
 		    print $new_attributefile "$contig\t$paralog\t";
 		    if ($reduced_by_region[$index]->{'sinv'}) {
 			print $new_attributefile "$end_align\t$beg_align\t";
+			print $uniqclusfile "$target\t$contig\tuniq_clus\t$end_align\t$beg_align\t$tmp_len\t$paralog\n";
 		    } else {
 			print $new_attributefile "$beg_align\t$end_align\t";
+			print $uniqclusfile "$target\t$contig\tuniq_clus\t$beg_align\t$end_align\t$tmp_len\t$paralog\n";
 		    }
 		    print $new_attributefile "$medoids_anno[$clus]\t$target\n";
 		}
@@ -2014,8 +2070,12 @@ sub output_files
     close ($wgsANIfile);
     close ($geneANIfile);
     close ($rearrange);
+    if ($reannotate) {
+	close ($alledgesfile);
+    }
     close ($attributefile);
-    close ($attributefile . "_new");
+    close ($new_attributefile);
+    close ($uniqclusfile);
     my $matchfile;
     unless (open ($matchfile, ">", ($rootname . "_match.col")) )  {
 	die ("cannot open matchtable column file: $rootname'_match.col'!\n");
@@ -2041,7 +2101,7 @@ sub output_files
     }
     foreach my $edge (@edges) {
 	if (defined $hash_edges{$edge}) {
-	    $hash_edges{$edge} = 1;
+	    $hash_edges{$edge} = "NOT_UNIQUE";
 	    print $edgefile "1\n";
 	} else {
 	    print $edgefile "0\n";
@@ -2052,12 +2112,28 @@ sub output_files
     unless (open ($new_edgefile, ">", ($rootname . "_pgg_new.col")) )  {
 	die ("cannot open edges column file: $rootname'_pgg_new.col'!\n");
     }
+    my $uniqedgefile;
+    unless (open ($uniqedgefile, ">", ($rootname . "_uniq_edge.txt")) )  {
+	die ("cannot open unique edge file: $rootname'_uniq_edge.txt'!\n");
+    }
     foreach my $edge (sort (keys %hash_edges)) {
-	if ($hash_edges{$edge} == 0) {
+	if ($hash_edges{$edge} ne "NOT_UNIQUE") {
 	    print $new_edgefile "$edge\t1\n";
+	    my $cluster1;
+	    my $cluster2;
+	    if ($edge =~ /\((\d+)_([35]),(\d+)_([35])\)/) {
+		$cluster1 = $1;
+		$cluster2 = $3;
+	    } else {
+		die ("ERROR: Bad edge formatting $edge in hash_edges\n");
+	    }
+	    if ($cluster1 < $cluster2) { #only capture one representation of the symmetric edge
+		print $uniqedgefile "$hash_edges{$edge}$edge\n";
+	    }
 	}
     }
     close ($new_edgefile);
+    close ($uniqedgefile);
     return;
 }
 
