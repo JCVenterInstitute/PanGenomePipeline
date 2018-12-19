@@ -34,16 +34,17 @@ use warnings;
 use Getopt::Std;
 use Data::Dumper;
 use Scalar::Util qw(looks_like_number);
-getopts ('TdhDb:p:t:f:i:I:E:L:M:G:H:V:P:Q:N:g:A:C:F:a:s:W:S:U:B:c:e:R:');#GGS added F, a, s, options F option for frameshift and a option for amount of missing amino acids to still be full length and s option for an evidence threshold for frameshifts
-our ($opt_T,$opt_d,$opt_h,$opt_D,$opt_b,$opt_p,$opt_t,$opt_f,$opt_i,$opt_I,$opt_E,$opt_L,$opt_M,$opt_G,$opt_H,$opt_V,$opt_P,$opt_Q,$opt_N,$opt_g,$opt_A,$opt_C,$opt_F,$opt_a,$opt_s,$opt_W,$opt_S,$opt_U, $opt_B, $opt_c, $opt_e, $opt_R);
+getopts ('vTdhDb:p:t:f:i:I:E:L:M:G:H:V:P:Q:N:g:A:C:F:a:s:W:S:U:B:c:e:R:z:');#GGS added F, a, s, options F option for frameshift and a option for amount of missing amino acids to still be full length and s option for an evidence threshold for frameshifts
+our ($opt_v,$opt_T,$opt_d,$opt_h,$opt_D,$opt_b,$opt_p,$opt_t,$opt_f,$opt_i,$opt_I,$opt_E,$opt_L,$opt_M,$opt_G,$opt_H,$opt_V,$opt_P,$opt_Q,$opt_N,$opt_g,$opt_A,$opt_C,$opt_F,$opt_a,$opt_s,$opt_W,$opt_S,$opt_U, $opt_B, $opt_c, $opt_e, $opt_R, $opt_z);
 
-my ($print_cluster_numbers,$compute_centroids,$basedir,$btabpath,$pep_path,$att_file,$pep_file,$btabfile,$tagfile,$percentid,$fspercentid,$evalue,$min_hit_length,$microarray,$histogramfile,$hitsfile,$vennfile,$normalizefile,$writeparalogs,$writeclusterweights,$DEBUG,$frameshiftfile,$frameshift_length_ratio,$max_missing_aa,$frames_link_thresh,$ANCHOR_window_size,$ANCHOR_cutoff,$CGN_window_size,$strict_orthos,$fragmentfile, $pairwisefile, $compute_adjacency, $cluster_input_file, $process_clusters);#GGS added frameshift variables
+my ($verbose,$print_cluster_numbers,$compute_centroids,$basedir,$btabpath,$pep_path,$att_file,$pep_file,$btabfile,$tagfile,$percentid,$fspercentid,$evalue,$min_hit_length,$microarray,$histogramfile,$hitsfile,$vennfile,$normalizefile,$writeparalogs,$writeclusterweights,$DEBUG,$frameshiftfile,$frameshift_length_ratio,$max_missing_aa,$frames_link_thresh,$ANCHOR_window_size,$ANCHOR_cutoff,$CGN_window_size,$strict_orthos,$fragmentfile, $pairwisefile, $compute_adjacency, $cluster_input_file, $process_clusters, $circular_file);#GGS added frameshift variables
 #GGS $frameshiftfile is a boolean for detecting and outputting frameshifted or truncated protein fragments true if -F
 #GGS -F $frameshift_length_ratio is a value between 1 and 2 (default 1.33) used to determine that we are detecting adjacent protein fragments rather than adjacent paralogs
 #GGS -a $max_missing_aa is how many amino acids at either end of a blast match can be missing and still be considered full length
 #GGS -s $frames_link_thresh is a threshold for number of blast matches indicating a frameshift to believe it
 #GGS -G yes outputs a histograms file
 #set defaults
+$verbose = 0; #default to not printing a bunch of files
 $microarray = 0;
 $hitsfile = 0;
 $histogramfile = 0;
@@ -51,7 +52,7 @@ $strict_orthos = 1;
 $normalizefile = 0;
 $writeparalogs = 1;
 $fragmentfile = 1;
-$pairwisefile = 1;
+$pairwisefile = 0;
 $writeclusterweights = 1;
 $vennfile = 1;
 $compute_adjacency = 0;
@@ -59,6 +60,7 @@ $compute_centroids = 1;
 $ANCHOR_window_size = 1;
 $ANCHOR_cutoff = (2 * $ANCHOR_window_size) + 1;
 $cluster_input_file = "";
+$circular_file = "";
 $process_clusters = 0;
 
 my @cluster_levels = ();
@@ -77,6 +79,7 @@ if ($opt_T) {
 } else {
     $print_cluster_numbers = 0; #default
 }
+if ($opt_v) {$verbose = 1;} else {$verbose = 0;} # verbose is off by default
 if ($opt_D) {$DEBUG = 1;} else { $DEBUG = 0; } # Debug mode is off as default.
 #GGS process strict ortholog option
 if ($opt_S) {
@@ -131,6 +134,16 @@ if ($opt_b) {$basedir = $opt_b;} else { $basedir = $ENV{'PWD'}; } # if no value 
 if ($opt_p) {$btabpath = $opt_p;} else { $btabpath = $basedir; } # if no value given for path to btab file, make default = base directory
 if ($opt_Q) {$pep_path = $opt_Q;} else { $pep_path = $basedir; } # if no value given for path to peptide file, make default = base directory
 if (($opt_g) && (-s "$basedir/$opt_g")) {$att_file = $opt_g;} else { print STDERR "Error with -g $basedir/$opt_g\n"; &option_help; } # if no value for option g (name of gene_att file), quit with help menu
+if ($opt_z) {
+    if (-s "$basedir/$opt_z") {
+	$circular_file = $opt_z;
+    } else {
+	print STDERR "Error with -z $basedir/$opt_z\n";
+	&option_help;
+    } # if no value for option z (name of circular file), quit with help menu
+} else {
+    $circular_file = "";
+}
 if (($opt_P) && (-s "$pep_path/$opt_P")) {$pep_file = $opt_P;} else { print STDERR "Error with -P $pep_path/$opt_P\n"; &option_help; } # if no value for option P (pepfile), quit with help menu
 if (($opt_f) && (-s "$basedir/$opt_f")) {$tagfile = $opt_f;} else { print STDERR "Error with -f $basedir/$opt_f\n"; &option_help; }  # must supply the file containing the list of unique genome names to analyze
 if ($opt_R) {
@@ -187,7 +200,7 @@ if ($opt_U) {
 if ($opt_B) {
     if (($opt_B eq "Y") or ($opt_B eq "y") or ($opt_B eq "Yes") or ($opt_B eq "yes") or ($opt_B eq "YES")) {$pairwisefile = 1;}
     elsif (($opt_B eq "N") or ($opt_B eq "n") or ($opt_B eq "No") or ($opt_B eq "no") or ($opt_B eq "NO")) {$pairwisefile = 0;}
-    else { $pairwisefile = 1; } # Want to create list of pairwise similarity scores?  0 = NO, 1 = YES [DEFAULT = YES]
+    else { $pairwisefile = 0; } # Want to create list of pairwise similarity scores?  0 = NO, 1 = YES [DEFAULT = NO]
 }
 if  ( $opt_A ) { 
     if(($opt_A eq "Y") or ($opt_A eq "y") or ($opt_A eq "Yes") or ($opt_A eq "yes") or ($opt_A eq "YES")) {$writeparalogs = 1;}
@@ -231,7 +244,7 @@ if ($opt_e) {
     }
 } else {
     $BSR_cluster_levels[0] = 0;
-    $BSR_cluster_levels[1] = 90;
+    $BSR_cluster_levels[1] = 95;
     $BSR_cluster_levels[2] = 100;
 }
 
@@ -240,6 +253,7 @@ my @paralog_cutoff = ();    # Index1 = genome tag index, Index2 = genome tag ind
 my @ave_per_id = ();        # Index1 = genome tag index, Index2 = genome tag index, Value = [0,100] average percent identity for high quality orthologs between these two genomes
 my @mean_max_BSR = ();      # Index1 = genome tag index, Index2 = genome tag index, Value = [0,1] mean max BSR for high quality orthologs between these two genomes
 my %genome_hash = ();       # Key1 = genome tag, Key2 = asmbl_id, Value = array of protein ids sorted by end5 and then end3
+my %is_circular = ();       # Key1 = genome tag, Key2 = asmbl_id, Value = 1 if circular otherwise 0
 my %genome_hash_context = ();# Key1 = genome tag, Key2 = asmbl_id, Key3 = positions in genome_hash that are only for context, Value = 1 just to define the key3
 my %feat_hash = ();         # Key = feat_name Key2 = struct members with their values
 my %relationship_hash = (); # Key1 = Query protein, Key2 = Subject protein, Key3 = struct members with their values
@@ -430,6 +444,9 @@ sub get_gene_att {
 	    print STDERR "ERROR: $tag is a genome tag in the gene attribute file but not in the genome tag file!\n";
 	    $failed = 1;
 	}
+	if ($circular_file && (!defined $is_circular{$tag}{$asmbl_id})) {
+	    die ("ERROR: $tag:$asmbl_id is a genome tag contig combination in the attribute file but not seen in the circular contig file!\n");
+	}
 	$feat_hash{$feat_name}->{'full'} = 0; # initialize number of full length blast matches to 0
 	$feat_hash{$feat_name}->{'fragment'} = 0; #initialize fragment blast matches to 0
 	$feat_hash{$feat_name}->{'fusion'} = 0; #initialize fusion blast matches to 0
@@ -493,20 +510,73 @@ sub get_gene_att {
 	    };
 	    
 	    @{ $genome_hash{$tag}{$asmbl_id} } = sort $sort_by_end5_end3 ( @{ $genome_hash{$tag}{$asmbl_id} } );
-	    for my $index (0 .. $#{ $genome_hash{$tag}{$asmbl_id} }) {
-		my $feat_name = $genome_hash{$tag}{$asmbl_id}->[$index];
-		if ($feat_name =~ /^CONTEXT[0-9]+:(.*)$/) {
-		    $genome_hash{$tag}{$asmbl_id}->[$index] = $1;
+	    if ($circular_file && $is_circular{$tag}{$asmbl_id}) { # do not use circular file with a consensus attribute file from a hierarchical PanOCT run
+		my $num_context = $CGN_window_size;
+		my $num_feats = scalar @{ $genome_hash{$tag}{$asmbl_id} };
+		if ($num_context > $num_feats) {
+		    $num_context = $num_feats;
+		}
+		for my $index (0 .. $#{ $genome_hash{$tag}{$asmbl_id} }) {
+		    my $feat_name = $genome_hash{$tag}{$asmbl_id}->[$index];
+		    $TagByPointer{$feat_name} = $index + $num_context;
+		    print STDERR "circular $tag $asmbl_id $index = $feat_name\n" if ($DEBUG);
+		}
+		my @start_context = @{ $genome_hash{$tag}{$asmbl_id} }[0 .. ($num_context - 1)];
+		my @end_context = @{ $genome_hash{$tag}{$asmbl_id} }[(-1 * $num_context) .. -1];
+		push @{ $genome_hash{$tag}{$asmbl_id} }, @start_context;
+		unshift @{ $genome_hash{$tag}{$asmbl_id} }, @end_context;
+		foreach my $index (0 .. ($num_context - 1)) {
 		    $genome_hash_context{$tag}{$asmbl_id}->{$index} = 1;
-		    delete $feat_hash{$feat_name};
-		    print STDERR "CONTEXT: $tag $asmbl_id $index = $feat_name ($1)\n" if ($DEBUG);
-		} else {
-		    $TagByPointer{$feat_name} = $index;
-		    print STDERR "$tag $asmbl_id $index = $feat_name\n" if ($DEBUG);
+		}					    
+		foreach my $index (($num_feats + $num_context) .. $#{ $genome_hash{$tag}{$asmbl_id} }) {
+		    $genome_hash_context{$tag}{$asmbl_id}->{$index} = 1;
+		}					    
+	    } else {
+		for my $index (0 .. $#{ $genome_hash{$tag}{$asmbl_id} }) {
+		    my $feat_name = $genome_hash{$tag}{$asmbl_id}->[$index];
+		    if ($feat_name =~ /^CONTEXT[0-9]+:(.*)$/) {
+			$genome_hash{$tag}{$asmbl_id}->[$index] = $1;
+			$genome_hash_context{$tag}{$asmbl_id}->{$index} = 1;
+			delete $feat_hash{$feat_name};
+			print STDERR "CONTEXT: $tag $asmbl_id $index = $feat_name ($1)\n" if ($DEBUG);
+		    } else {
+			$TagByPointer{$feat_name} = $index;
+			print STDERR "$tag $asmbl_id $index = $feat_name\n" if ($DEBUG);
+		    }
 		}
 	    }
 	}
     }
+    return;
+}
+
+sub get_circular {
+
+    unless (open (CIRCFILE, "<", "$basedir/$circular_file") )  {
+	die ("ERROR: can not open file $basedir/$circular_file.\n");
+    }
+    while (<CIRCFILE>) {
+	my $tag = "";
+	my $asmbl_id = "";
+	my $type = "";
+
+	chomp;
+	($tag, $asmbl_id, $type) = split(/\t/, $_);  # split the scalar $line on tab
+	if (($tag eq "") || ($asmbl_id eq "") || ($type eq "")) {
+	    die ("ERROR: genome id, assembly id/contig id, and type  must not be empty/null in the circular contig file $basedir/$circular_file.\nLine:\n$_\n");
+	}
+	if (!defined $TagIndex{$tag}) {
+	    die ("ERROR: $tag is a genome tag in the circular contig file but not in the genome tag file!\nLine:\n$_\n");
+	}
+	if ($type eq "circular") {
+	    $is_circular{$tag}{$asmbl_id} = 1;
+	} elsif ($type eq "linear") {
+	    $is_circular{$tag}{$asmbl_id} = 0;
+	} else {
+	    die ("ERROR: type $type must be either circular or linear in the circular contig file $basedir/$circular_file.\nLine:\n$_\n");
+	}
+    }
+    close (CIRCFILE);
     return;
 }
 
@@ -1572,30 +1642,32 @@ sub calc_score_histograms  { # subroutine to calculate and output score histogra
 
     close (OUTHISTOGRAM) if ($histogramfile);
 
-    print STDERR "BSR * 100 Paralog pairwise cutoffs\n";
-    open (my $pcutofffile, ">$outprefix" . "pairwise_cutoffs_matrix.txt");
-    &print_pairwise_matrix (\@paralog_cutoff, $pcutofffile, 100, 0, 0, 0);
-    close ($pcutofffile);
-
-    print STDERR "Mean percent identity for high quality pairwise Orthologs\n";
-    open (my $pidentfile, ">$outprefix" . "pairwise_identity_matrix.txt");
-    &print_pairwise_matrix (\@ave_per_id, $pidentfile, 1, 0, 0, 0);
-    close ($pidentfile);
-
-    print STDERR "Mean maximuim BSR (norm_score) for high quality pairwise Orthologs\n";
-    open (my $pBSRfile, ">$outprefix" . "pairwise_BSR_matrix.txt");
-    &print_pairwise_matrix (\@mean_max_BSR, $pBSRfile, 100, 0, 0, 0);
-    close ($pBSRfile);
-
-    print STDERR "Mean maximuim BSR (norm_score) for high quality pairwise Orthologs Phylip format(distance)\n";
-    open (my $pBSRdistpfile, ">$outprefix" . "pairwise_BSR_distance_matrix_phylip.txt");
-    &print_pairwise_matrix (\@mean_max_BSR, $pBSRdistpfile, -100, 100, 0, 1);
-    close ($pBSRdistpfile);
-
-    print STDERR "Mean maximuim BSR (norm_score) for high quality pairwise Orthologs (distance)\n";
-    open (my $pBSRdistfile, ">$outprefix" . "pairwise_BSR_distance_matrix.txt");
-    &print_pairwise_matrix (\@mean_max_BSR, $pBSRdistfile, -100, 100, 0, 0);
-    close ($pBSRdistfile);
+    if ($verbose) {
+	print STDERR "BSR * 100 Paralog pairwise cutoffs\n";
+	open (my $pcutofffile, ">$outprefix" . "pairwise_cutoffs_matrix.txt");
+	&print_pairwise_matrix (\@paralog_cutoff, $pcutofffile, 100, 0, 0, 0);
+	close ($pcutofffile);
+	
+	print STDERR "Mean percent identity for high quality pairwise Orthologs\n";
+	open (my $pidentfile, ">$outprefix" . "pairwise_identity_matrix.txt");
+	&print_pairwise_matrix (\@ave_per_id, $pidentfile, 1, 0, 0, 0);
+	close ($pidentfile);
+	
+	print STDERR "Mean maximuim BSR (norm_score) for high quality pairwise Orthologs\n";
+	open (my $pBSRfile, ">$outprefix" . "pairwise_BSR_matrix.txt");
+	&print_pairwise_matrix (\@mean_max_BSR, $pBSRfile, 100, 0, 0, 0);
+	close ($pBSRfile);
+	
+	print STDERR "Mean maximuim BSR (norm_score) for high quality pairwise Orthologs Phylip format(distance)\n";
+	open (my $pBSRdistpfile, ">$outprefix" . "pairwise_BSR_distance_matrix_phylip.txt");
+	&print_pairwise_matrix (\@mean_max_BSR, $pBSRdistpfile, -100, 100, 0, 1);
+	close ($pBSRdistpfile);
+	
+	print STDERR "Mean maximuim BSR (norm_score) for high quality pairwise Orthologs (distance)\n";
+	open (my $pBSRdistfile, ">$outprefix" . "pairwise_BSR_distance_matrix.txt");
+	&print_pairwise_matrix (\@mean_max_BSR, $pBSRdistfile, -100, 100, 0, 0);
+	close ($pBSRdistfile);
+    }
 
 }
 
@@ -2416,7 +2488,24 @@ sub calc_adjacency_weights { # construct adjacency matrix for given level of clu
 		    }
 		    last;
 		}
-	    }   
+	    }
+	    if ((!defined $next_3) && $is_circular{$feat_tag}{$feat_asmbl_id}) {
+		for ($i = 0; $i <= $AssemblyIndex; $i++) { # iterate upward over adjacent proteins
+		    if (defined $genome_hash_context{$feat_tag}{$feat_asmbl_id}->{$i}) {
+			next; # skip CONTEXT nodes
+		    }
+		    my $tmp_feat_id = ${ $genome_hash{$feat_tag}{$feat_asmbl_id} }[$i];
+		    if ($cluster_size[$cluster_number{$tmp_feat_id}] >= $size_cutoff) {
+			$next_3 = $cluster_number{$tmp_feat_id};
+			if ($feat_hash{$tmp_feat_id}->{'orient'} == 1) {#protein is on forward strand
+			    $next_3 = $next_3 . '_5';
+			} else {
+			    $next_3 = $next_3 . '_3';
+			}
+			last;
+		    }
+		}
+	    }
 	    for ($i = $AssemblyIndex - 1; $i >= 0; $i--) { # iterate downward over adjacent proteins
 		if (defined $genome_hash_context{$feat_tag}{$feat_asmbl_id}->{$i}) {
 		    last; # stop at CONTEXT nodes
@@ -2430,6 +2519,23 @@ sub calc_adjacency_weights { # construct adjacency matrix for given level of clu
 			$next_5 = $next_5 . '_5';
 		    }
 		    last;
+		}
+	    }
+	    if ((!defined $next_5) && $is_circular{$feat_tag}{$feat_asmbl_id}) {
+		for ($i = $AssemblyIndexLast; $i >= $AssemblyIndex; $i--) { # iterate downward over adjacent proteins
+		    if (defined $genome_hash_context{$feat_tag}{$feat_asmbl_id}->{$i}) {
+			next; # skip CONTEXT nodes
+		    }
+		    my $tmp_feat_id = ${ $genome_hash{$feat_tag}{$feat_asmbl_id} }[$i];
+		    if ($cluster_size[$cluster_number{$tmp_feat_id}] >= $size_cutoff) {
+			$next_5 = $cluster_number{$tmp_feat_id};
+			if ($feat_hash{$tmp_feat_id}->{'orient'} == 1) {#protein is on forward strand
+			    $next_5 = $next_5 . '_3';
+			} else {
+			    $next_5 = $next_5 . '_5';
+			}
+			last;
+		    }
 		}
 	    }
 	    if ($feat_orient == -1) {#protein is on reverse strand so swap ends
@@ -2591,81 +2697,83 @@ sub calc_adjacency_weights { # construct adjacency matrix for given level of clu
 	close ($breaksvectorfile);
     }
 
-    open (my $adjdistpfile, ">$outprefix" . "$level" . "_core_adjacency_distance_matrix_phylip.txt");
-    &print_pairwise_matrix (\@pairwise_adj_breaks, $adjdistpfile, 0.5, 0, 0, 1); #dividing by two because each break should get counted twice above unless there is a contig break
-    close ($adjdistpfile);
-
-    open (my $adjdistfile, ">$outprefix" . "$level" . "_core_adjacency_distance_matrix.txt");
-    &print_pairwise_matrix (\@pairwise_adj_breaks, $adjdistfile, 0.5, 0, 0, 0); #dividing by two because each break should get counted twice above unless there is a contig break
-    close ($adjdistfile);
-
-    open (my $coreadjfile, ">$outprefix" . "$level" . "_core_adjacency_matrix.txt");
-    foreach my $cluster_id (1 .. $#cluster_size)  {
-	if ($cluster_size[$cluster_id] < $size_cutoff) {
-	    next; #this loop outputs the core adjacency matrix from core to core clusters based on $level parameter
-	}
-	if (defined $cluster_visited{$cluster_id}) {
-	    next; #skip this cluster - we already visited it following a previous core path
-	}
-	my $cluster_member = ${ $cluster_for_number[$cluster_id] }[0];
-	my $feat_id = $cluster_member->{'id'};
-	my $feat_orient = $feat_hash{$feat_id}->{'orient'};
-	my $cur_cluster = $cluster_id;
-	my $cur_strand = "+";
-	if ($feat_orient == -1) {#protein is on reverse strand
-	    $cur_strand = "-";
-	}
-	while (defined $cur_cluster) {
-	    if (defined $cluster_visited{$cur_cluster}) {
-		last; #stop following this path - we already visited it following a previous core path
+    if ($verbose) {
+	open (my $adjdistpfile, ">$outprefix" . "$level" . "_core_adjacency_distance_matrix_phylip.txt");
+	&print_pairwise_matrix (\@pairwise_adj_breaks, $adjdistpfile, 0.5, 0, 0, 1); #dividing by two because each break should get counted twice above unless there is a contig break
+	close ($adjdistpfile);
+	
+	open (my $adjdistfile, ">$outprefix" . "$level" . "_core_adjacency_distance_matrix.txt");
+	&print_pairwise_matrix (\@pairwise_adj_breaks, $adjdistfile, 0.5, 0, 0, 0); #dividing by two because each break should get counted twice above unless there is a contig break
+	close ($adjdistfile);
+	
+	open (my $coreadjfile, ">$outprefix" . "$level" . "_core_adjacency_matrix.txt");
+	foreach my $cluster_id (1 .. $#cluster_size)  {
+	    if ($cluster_size[$cluster_id] < $size_cutoff) {
+		next; #this loop outputs the core adjacency matrix from core to core clusters based on $level parameter
 	    }
-	    $cluster_visited{$cur_cluster} = 1;
-	    $cluster_member = ${ $cluster_for_number[$cur_cluster] }[0];
-	    $feat_id = $cluster_member->{'id'};
-	    print $coreadjfile "$cur_cluster$cur_strand:$cluster_size[$cur_cluster]\t$feat_id\t$feat_hash{$feat_id}->{'header'}\n";
+	    if (defined $cluster_visited{$cluster_id}) {
+		next; #skip this cluster - we already visited it following a previous core path
+	    }
+	    my $cluster_member = ${ $cluster_for_number[$cluster_id] }[0];
+	    my $feat_id = $cluster_member->{'id'};
+	    my $feat_orient = $feat_hash{$feat_id}->{'orient'};
+	    my $cur_cluster = $cluster_id;
+	    my $cur_strand = "+";
+	    if ($feat_orient == -1) {#protein is on reverse strand
+		$cur_strand = "-";
+	    }
+	    while (defined $cur_cluster) {
+		if (defined $cluster_visited{$cur_cluster}) {
+		    last; #stop following this path - we already visited it following a previous core path
+		}
+		$cluster_visited{$cur_cluster} = 1;
+		$cluster_member = ${ $cluster_for_number[$cur_cluster] }[0];
+		$feat_id = $cluster_member->{'id'};
+		print $coreadjfile "$cur_cluster$cur_strand:$cluster_size[$cur_cluster]\t$feat_id\t$feat_hash{$feat_id}->{'header'}\n";
+		if ($cur_strand eq "+") {
+		    &print_adjacency_matrix($coreadjfile, $cur_cluster . '_5', \%adjacency_matrix);
+		    print $coreadjfile " ||| ";
+		    ($cur_cluster, $cur_strand) = &print_adjacency_matrix($coreadjfile, $cur_cluster . '_3', \%adjacency_matrix);
+		} else {
+		    &print_adjacency_matrix($coreadjfile, $cur_cluster . '_3', \%adjacency_matrix);
+		    print $coreadjfile " ||| ";
+		    ($cur_cluster, $cur_strand) = &print_adjacency_matrix($coreadjfile, $cur_cluster . '_5', \%adjacency_matrix);
+		}
+		print $coreadjfile "\n";
+	    }
+	}
+	close ($coreadjfile);
+	
+	open (my $noncoreadjfile, ">$outprefix" . "$level" . "_noncore_adjacency_matrix.txt");
+	foreach my $cluster_id (1 .. $#cluster_size)  {
+	    if ($cluster_size[$cluster_id] >= $size_cutoff) {
+		next; #this loop outputs the noncore adjacency matrix from noncore to core clusters based on $level parameter
+	    }
+	    if (defined $cluster_visited{$cluster_id}) {
+		die ("ERROR $cluster_id : $cluster_size[$cluster_id] : noncore clusters should not be visited!\n");
+	    }
+	    my $cluster_member = ${ $cluster_for_number[$cluster_id] }[0];
+	    my $feat_id = $cluster_member->{'id'};
+	    my $feat_orient = $feat_hash{$feat_id}->{'orient'};
+	    my $cur_cluster = $cluster_id;
+	    my $cur_strand = "+";
+	    if ($feat_orient == -1) {#protein is on reverse strand
+		$cur_strand = "-";
+	    }
+	    print $noncoreadjfile "$cur_cluster$cur_strand:$cluster_size[$cur_cluster]\t$feat_id\t$feat_hash{$feat_id}->{'header'}\n";
 	    if ($cur_strand eq "+") {
-		&print_adjacency_matrix($coreadjfile, $cur_cluster . '_5', \%adjacency_matrix);
-		print $coreadjfile " ||| ";
-		($cur_cluster, $cur_strand) = &print_adjacency_matrix($coreadjfile, $cur_cluster . '_3', \%adjacency_matrix);
+		&print_adjacency_matrix($noncoreadjfile, $cur_cluster . '_5', \%adjacency_matrix);
+		print $noncoreadjfile " ||| ";
+		&print_adjacency_matrix($noncoreadjfile, $cur_cluster . '_3', \%adjacency_matrix);
 	    } else {
-		&print_adjacency_matrix($coreadjfile, $cur_cluster . '_3', \%adjacency_matrix);
-		print $coreadjfile " ||| ";
-		($cur_cluster, $cur_strand) = &print_adjacency_matrix($coreadjfile, $cur_cluster . '_5', \%adjacency_matrix);
+		&print_adjacency_matrix($noncoreadjfile, $cur_cluster . '_3', \%adjacency_matrix);
+		print $noncoreadjfile " ||| ";
+		&print_adjacency_matrix($noncoreadjfile, $cur_cluster . '_5', \%adjacency_matrix);
 	    }
-	    print $coreadjfile "\n";
+	    print $noncoreadjfile "\n";
 	}
+	close ($noncoreadjfile);
     }
-    close ($coreadjfile);
-
-    open (my $noncoreadjfile, ">$outprefix" . "$level" . "_noncore_adjacency_matrix.txt");
-    foreach my $cluster_id (1 .. $#cluster_size)  {
-	if ($cluster_size[$cluster_id] >= $size_cutoff) {
-	    next; #this loop outputs the noncore adjacency matrix from noncore to core clusters based on $level parameter
-	}
-	if (defined $cluster_visited{$cluster_id}) {
-	    die ("ERROR $cluster_id : $cluster_size[$cluster_id] : noncore clusters should not be visited!\n");
-	}
-	my $cluster_member = ${ $cluster_for_number[$cluster_id] }[0];
-	my $feat_id = $cluster_member->{'id'};
-	my $feat_orient = $feat_hash{$feat_id}->{'orient'};
-	my $cur_cluster = $cluster_id;
-	my $cur_strand = "+";
-	if ($feat_orient == -1) {#protein is on reverse strand
-	    $cur_strand = "-";
-	}
-	print $noncoreadjfile "$cur_cluster$cur_strand:$cluster_size[$cur_cluster]\t$feat_id\t$feat_hash{$feat_id}->{'header'}\n";
-	if ($cur_strand eq "+") {
-	    &print_adjacency_matrix($noncoreadjfile, $cur_cluster . '_5', \%adjacency_matrix);
-	    print $noncoreadjfile " ||| ";
-	    &print_adjacency_matrix($noncoreadjfile, $cur_cluster . '_3', \%adjacency_matrix);
-	} else {
-	    &print_adjacency_matrix($noncoreadjfile, $cur_cluster . '_3', \%adjacency_matrix);
-	    print $noncoreadjfile " ||| ";
-	    &print_adjacency_matrix($noncoreadjfile, $cur_cluster . '_5', \%adjacency_matrix);
-	}
-	print $noncoreadjfile "\n";
-    }
-    close ($noncoreadjfile);
 
 }
 
@@ -2685,7 +2793,7 @@ sub print_pairwise_cluster_matches { # print the match characteristics for match
     
     open (OUTPAIRWISEIN, ">$outprefix" . "pairwise_in_cluster.txt");
 
-    print OUTPAIRWISEIN "#clust\tqtag\tqid\tstag\tsid\t%id\tevalue\tbitscor\tnorm\tBSR\tbest\tbibest\tsynbest\tsynbibe\tCGNbibe\tfull\tanchor\textend\tcliquea\tcliquet\n";
+    print OUTPAIRWISEIN "#clust\tqtag\tqid\tstag\tsid\t%id\tevalue\tbitscor\tnorm\tBSR\tbest\tbibest\tsynbest\tsynbibe\tCGNbibe\tfull\tanchor\textend\tcliquea\tcliquet\tCGNscore\n";
     foreach my $cluster_id (1 .. $#cluster_size)  {
 	my @shift_cluster_array = @{ $cluster_for_number[$cluster_id] };
 	foreach my $cluster_member_1 ( @{ $cluster_for_number[$cluster_id] } ) {
@@ -2699,9 +2807,9 @@ sub print_pairwise_cluster_matches { # print the match characteristics for match
 		my $rh_ptr = $relationship_hash{$qid}{$sid};
 		print OUTPAIRWISEIN "$cluster_id\t$qtag\t$qid\t$stag\t$sid\t";
 		if (defined $rh_ptr) {
-		    printf OUTPAIRWISEIN "%5.2f\t%e\t%d\t%5.2f\t%5.2f\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n", $rh_ptr->{'id'}, $rh_ptr->{'eval'}, $rh_ptr->{'score'}, $rh_ptr->{'norm_score'}, $rh_ptr->{'BSR'}, $rh_ptr->{'best'}, $rh_ptr->{'bibest'}, $rh_ptr->{'synbest'}, $rh_ptr->{'synbibest'}, $rh_ptr->{'CGN_bibest'}, $rh_ptr->{'full'}, $rh_ptr->{'anchor'}, $rh_ptr->{'extend'}, $rh_ptr->{'clique_all'}, $rh_ptr->{'clique_top'};
+		    printf OUTPAIRWISEIN "%5.2f\t%e\t%d\t%5.2f\t%5.2f\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%5.2f\n", $rh_ptr->{'id'}, $rh_ptr->{'eval'}, $rh_ptr->{'score'}, $rh_ptr->{'norm_score'}, $rh_ptr->{'BSR'}, $rh_ptr->{'best'}, $rh_ptr->{'bibest'}, $rh_ptr->{'synbest'}, $rh_ptr->{'synbibest'}, $rh_ptr->{'CGN_bibest'}, $rh_ptr->{'full'}, $rh_ptr->{'anchor'}, $rh_ptr->{'extend'}, $rh_ptr->{'clique_all'}, $rh_ptr->{'clique_top'}, $rh_ptr->{'synteny'};
 		} else {
-		    printf OUTPAIRWISEIN "%5.2f\t%e\t%d\t%5.2f\t%5.2f\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0;
+		    printf OUTPAIRWISEIN "%5.2f\t%e\t%d\t%5.2f\t%5.2f\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%5.2f\n", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0;
 		}
 	    }
 	}
@@ -2711,7 +2819,7 @@ sub print_pairwise_cluster_matches { # print the match characteristics for match
     
     open (OUTPAIRWISEOUT, ">$outprefix" . "pairwise_out_cluster.txt");
 
-    print OUTPAIRWISEOUT "#clust1\tclust2\tqtag\tqid\tstag\tsid\t%id\tevalue\tbitscor\tnorm\tBSR\tbest\tbibest\tsynbest\tsynbibe\tCGNbibe\tfull\tanchor\textend\tcliquet\tcliquea\n";
+    print OUTPAIRWISEOUT "#clust1\tclust2\tqtag\tqid\tstag\tsid\t%id\tevalue\tbitscor\tnorm\tBSR\tbest\tbibest\tsynbest\tsynbibe\tCGNbibe\tfull\tanchor\textend\tcliquea\tcliquet\tCGNscore\n";
     foreach my $qid (keys %relationship_hash)  { # go through all featnames
 	my $qtag = $FeatnameLookupTag_hash{$qid};
 	my $cluster_number_qid = $cluster_number{$qid};
@@ -2738,7 +2846,7 @@ sub print_pairwise_cluster_matches { # print the match characteristics for match
 	    }
 	    my $rh_ptr = $relationship_hash{$qid}{$sid};
 	    print OUTPAIRWISEOUT "$cluster_number_qid\t$cluster_number_sid\t$qtag\t$qid\t$stag\t$sid\t";
-	    printf OUTPAIRWISEOUT "%5.2f\t%e\t%d\t%5.2f\t%5.2f\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n", $rh_ptr->{'id'}, $rh_ptr->{'eval'}, $rh_ptr->{'score'}, $rh_ptr->{'norm_score'}, $rh_ptr->{'BSR'}, $rh_ptr->{'best'}, $rh_ptr->{'bibest'}, $rh_ptr->{'synbest'}, $rh_ptr->{'synbibest'}, $rh_ptr->{'CGN_bibest'}, $rh_ptr->{'full'}, $rh_ptr->{'anchor'}, $rh_ptr->{'extend'}, $rh_ptr->{'clique_all'}, $rh_ptr->{'clique_top'};
+	    printf OUTPAIRWISEOUT "%5.2f\t%e\t%d\t%5.2f\t%5.2f\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%5.2f\n", $rh_ptr->{'id'}, $rh_ptr->{'eval'}, $rh_ptr->{'score'}, $rh_ptr->{'norm_score'}, $rh_ptr->{'BSR'}, $rh_ptr->{'best'}, $rh_ptr->{'bibest'}, $rh_ptr->{'synbest'}, $rh_ptr->{'synbibest'}, $rh_ptr->{'CGN_bibest'}, $rh_ptr->{'full'}, $rh_ptr->{'anchor'}, $rh_ptr->{'extend'}, $rh_ptr->{'clique_all'}, $rh_ptr->{'clique_top'}, $rh_ptr->{'synteny'};
 	}
     }
 
@@ -2809,17 +2917,19 @@ sub calc_BSR_distances { # determine the pairwise distances between genomes base
     &print_pairwise_matrix (\@ave_per_id, $pidentfile, 1, 0, 0, 0);
     close ($pidentfile);
 
-    open (my $pBSRfile, ">$outprefix" . "$level" . "_pairwise_BSR_matrix.txt");
-    &print_pairwise_matrix (\@mean_max_BSR, $pBSRfile, 100, 0, 0, 0);
-    close ($pBSRfile);
-
-    open (my $pBSRdistpfile, ">$outprefix" . "$level" . "_pairwise_BSR_distance_matrix_phylip.txt");
-    &print_pairwise_matrix (\@mean_max_BSR, $pBSRdistpfile, -100, 100, 0, 1);
-    close ($pBSRdistpfile);
-
-    open (my $pBSRdistfile, ">$outprefix" . "$level" . "_pairwise_BSR_distance_matrix.txt");
-    &print_pairwise_matrix (\@mean_max_BSR, $pBSRdistfile, -100, 100, 0, 0);
-    close ($pBSRdistfile);
+    if ($verbose) {
+	open (my $pBSRfile, ">$outprefix" . "$level" . "_pairwise_BSR_matrix.txt");
+	&print_pairwise_matrix (\@mean_max_BSR, $pBSRfile, 100, 0, 0, 0);
+	close ($pBSRfile);
+	
+	open (my $pBSRdistpfile, ">$outprefix" . "$level" . "_pairwise_BSR_distance_matrix_phylip.txt");
+	&print_pairwise_matrix (\@mean_max_BSR, $pBSRdistpfile, -100, 100, 0, 1);
+	close ($pBSRdistpfile);
+	
+	open (my $pBSRdistfile, ">$outprefix" . "$level" . "_pairwise_BSR_distance_matrix.txt");
+	&print_pairwise_matrix (\@mean_max_BSR, $pBSRdistfile, -100, 100, 0, 0);
+	close ($pBSRdistfile);
+    }
 
 }
 
@@ -2876,29 +2986,31 @@ sub calc_pairwise_cluster_distances { # determine the pairwise distances between
 	}
     }
 
-    open (my $Ssimfile, ">$outprefix" . "Sorenson_pairwise_cluster_similarity_matrix.txt");
-    &print_pairwise_matrix (\@Sorenson, $Ssimfile, 1, 0, 0, 0);
-    close ($Ssimfile);
-
-    open (my $Sdistpfile, ">$outprefix" . "Sorenson_pairwise_cluster_distance_matrix_phylip.txt");
-    &print_pairwise_matrix (\@Sorenson, $Sdistpfile, -1, 100, 0, 1);
-    close ($Sdistpfile);
-
-    open (my $Sdistfile, ">$outprefix" . "Sorenson_pairwise_cluster_distance_matrix.txt");
-    &print_pairwise_matrix (\@Sorenson, $Sdistfile, -1, 100, 0, 0);
-    close ($Sdistfile);
-
     open (my $Jsimfile, ">$outprefix" . "Jaccard_pairwise_cluster_similarity_matrix.txt");
     &print_pairwise_matrix (\@Jaccard, $Jsimfile, 1, 0, 0, 0);
     close ($Jsimfile);
 
-    open (my $Jdistpfile, ">$outprefix" . "Jaccard_pairwise_cluster_distance_matrix_phylip.txt");
-    &print_pairwise_matrix (\@Jaccard, $Jdistpfile, -1, 100, 0, 1);
-    close ($Jdistpfile);
-
-    open (my $Jdistfile, ">$outprefix" . "Jaccard_pairwise_cluster_distance_matrix.txt");
-    &print_pairwise_matrix (\@Jaccard, $Jdistfile, -1, 100, 0, 0);
-    close ($Jdistfile);
+    if ($verbose) {
+	open (my $Ssimfile, ">$outprefix" . "Sorenson_pairwise_cluster_similarity_matrix.txt");
+	&print_pairwise_matrix (\@Sorenson, $Ssimfile, 1, 0, 0, 0);
+	close ($Ssimfile);
+	
+	open (my $Sdistpfile, ">$outprefix" . "Sorenson_pairwise_cluster_distance_matrix_phylip.txt");
+	&print_pairwise_matrix (\@Sorenson, $Sdistpfile, -1, 100, 0, 1);
+	close ($Sdistpfile);
+	
+	open (my $Sdistfile, ">$outprefix" . "Sorenson_pairwise_cluster_distance_matrix.txt");
+	&print_pairwise_matrix (\@Sorenson, $Sdistfile, -1, 100, 0, 0);
+	close ($Sdistfile);
+	
+	open (my $Jdistpfile, ">$outprefix" . "Jaccard_pairwise_cluster_distance_matrix_phylip.txt");
+	&print_pairwise_matrix (\@Jaccard, $Jdistpfile, -1, 100, 0, 1);
+	close ($Jdistpfile);
+	
+	open (my $Jdistfile, ">$outprefix" . "Jaccard_pairwise_cluster_distance_matrix.txt");
+	&print_pairwise_matrix (\@Jaccard, $Jdistfile, -1, 100, 0, 0);
+	close ($Jdistfile);
+    }
 
 }
 
@@ -3761,7 +3873,7 @@ Options:
          clusters. The core file shows the order and orientation of core clusters with respect to each other. The noncore file shows the order and
          orientation of noncore clusters with respect to core clusters.
      -e: argument is a comma separated list of numbers between 0-100 each number represents the percent of genomes needed for a cluster to be considered
-         a core cluster. For each number BSR distance matrices are computed using only the "core" clusters. [DEFAULT = 0,100]
+         a core cluster. For each number distance matrices are computed using only the "core" clusters. [DEFAULT = 0,100]
      -d: no argument, generates a mutlifasta file of cluster centroids [on by DEFAULT]
      -T: no argument, prints cluster numbers as the first column in all table files [off by DEFAULT]
      -W: window size on either side of match to use CGN [DEFAULT = 5] must be between [1,20]
@@ -3770,6 +3882,7 @@ Options:
      -t: name of btab (wublast-style or ncbi -m8 or -m9) input file [REQUIRED]
      -f: file containing unique genome identifier tags [REQUIRED]
      -g: gene attribute file (asmbl_id<tab>protein_identifier<tab>end5<tab>end3<tab>annotation<tab>genome_tag)
+     -z: circular file (optional contigs assumed to be linear otherwise) (genome_tag<tab>asmbl_id<tab>circular/linear)
      -P: name of concatinated .pep file [REQUIRED to calc protein lengths]
      -Q: path to .pep file [DEFAULT = base directory]
      -i: aa % identity cut-off [DEFAULT = 35.0]
@@ -3785,18 +3898,19 @@ Options:
      -C: Want to create a file with the number of matches within clusters and statistics on protein length per cluster?  (y)es or (n)o [DEFAULT = YES]
      -A: Want to create a file grouping ortholog clusters which appear to be close paralogs?  (y)es or (n)o [DEFAULT = YES]
      -U: Want to create a file with ids of proteins which appear to be fragments or fusions based on clustering?  (y)es or (n)o [DEFAULT = YES]
-     -B: Want to create a file with pairwise similarity scores used for clustering?  (y)es or (n)o [DEFAULT = YES]
-     -S: Want to use strict criteria for ortholog determination?  (y)es, (m)intermediate or (n)o [DEFAULT = YES]
+     -B: Want to create a file with pairwise similarity scores used for clustering?  (y)es or (n)o [DEFAULT = NO]
+     -S: Want to use strict criteria for ortholog determination?  (y)es, (m)ore or (n)o [DEFAULT = YES]
      -F: Deprecate shorter protein fragments when protein is split due to frameshift or other reason
          Takes an argument between 1.0 and 2.0 as a length ratio test - recommended value is 1.33 [DEFAULT = off]
      -a: Number of amino acids at the beginning or end of a match that can be missing and still be
          considerd a full length match - must be between 0 and 100 - [DEFAULT = 20]
      -s: Number of blast matches needed to confirm a protein fragment/frameshift [DEFAULT = 1]
      -R: argument is a file name for clusters generated by PanOCT or some othr program in PanOCT format, PanOCT will not recluster but simply generate some of its output files
-     -D: DEBUG MODE (DEFAULT = off)
+     -D: no argument, DEBUG MODE (DEFAULT = off)
+     -v: no argument, verbose mode - prints a lot more files (DEFAULT = off)
 
  Authors: Derrick E. Fouts, Ph.D. and Granger Sutton, Ph.D.
- Date: December 21, 2004; last revised August 18, 2015
+ Date: December 21, 2004; last revised December 1, 2018
  Note: For detailed descriptions of input and output files, please read the README.txt file found in this distribution
 
 _EOB_
@@ -3809,6 +3923,10 @@ open (my $parameterfile, ">$outprefix" . "parameters.txt");
 close ($parameterfile);
 print STDERR "fetching tags to search\n";
 &get_tags;
+if ($circular_file) {
+    print STDERR "reading in circularity information for contigs\n";
+    &get_circular;
+}
 print STDERR "Gathering protein sequence information from $pep_file\n";
 &get_protein_info;
 print STDERR "gathering gene attributes\n";
