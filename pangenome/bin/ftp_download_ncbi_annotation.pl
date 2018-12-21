@@ -68,13 +68,15 @@ B<--output_prefix>              :   Use the supplied term as the prefix for all 
 
 B<--kingdom>                    :   Choose a kingdom within refseq from which to work in.  [Default is 'bacteria']
 
-B<--section>                    :   Choose a section of the ftp site to download from.  Can be: 'refseq' [Default] or 'genbank'
+B<--section>                    :   Choose a section of the ftp site to download from.  Can be: 'refseq' [Default] or 'genbank', or 'both'.
 
 B<--preserve_assembly_summary>  :   Save a copy of the retrieved assembly_summary.txt file
 
 B<--assembly_summary_file>      :   Path to a previously saved assembly_summary.txt file.
 
 B<--id_length>                  :   Max length of newly generated ids. [Default is 10]
+
+B<--id_type>                    :   Used like "B<--id_type> biosample" to use bioample IDs instead of automatically generated IDs.
 
 B<--min_N50>                    :   Minimum N50 for download. [ Not used by default ]
 
@@ -113,6 +115,14 @@ The user might instead specify B<--download_only>, in which case the first four 
 only attempt to download the files from the urls in the file specified with B<--download_file>.  If B<--cleanup_ids> is 
 used, any non-alpha-numeric characters will be stripped out of the ids in the download file.
 
+By default, only sequences from RefSeq will be downloaded.  This can be changed to GenBank by using B<--section genbank>,
+which will instead download from the GenBank section of the NCBI FTP site.  When using a pre-defined list of assemblies to
+download, that is, B<--biosample_list> or B<--accession_list>, a third option is available, called 'both', which will direct
+the script to look in RefSeq first, and Genbank second, avoiding duplicates (based on the master wgs accession).
+
+It is possible to save a local copy of the assembly_summary.txt file downloaded by using the B<--preserve_assembly_summary> flag,
+and to use a specific local copy of an assembly_summary.txt file using B<--assembly_summary_file>.
+
 =head1 INPUTS
 
 The B<--organism_search_term> provides a string that will be interpreted as a regular expression used against the
@@ -126,7 +136,7 @@ As an alternative to B<--organism_search_term>, the user may provide a list of B
 list of assembly accession IDs with B<--accession_list>, or a list of 'infraspecific species names' with B<--name_list>.
 For any ID in those files, the script will find matches in the 'biosample', 'assembly accession', or 'infraspecific species'
 columns of assembly_summary.txt and use matching rows to create the download file.  Note that unlike B<--organism_search_term>,
-items in these alternative lists must match exactly to the respective fields in assembly_summary.txt to be considered for download.
+items in these alternative lists must match EXACTLY to the respective fields in assembly_summary.txt to be considered for download.
 
 If B<--min_N50> is used to supply a minimum value for N50, the script will compare it with each non-complete genome's
 contig-N50 value from its _assembly_stats.txt file, and omit assemblies that do not equal or exceed the given value.
@@ -164,6 +174,8 @@ There are three files produced under normal operation and when run in B<--no_dow
 
 contig_n50 and contig_count will contain 'complete' if the assembly is listed as a 'Complete Genome' in the assembly_sumamry.txt file, as those assemblies do not have those columns in _assembly_stats.txt
 
+The auto-generated ID length can be changed from the default of 10 using the B<--id_length> option.
+Alternatively, the script can produce output using Biosample IDs instead of the auto-generated IDs by specifying "B<--id_type> biosample" on the command line.
 
 =item 2. B<Download File> - by default, named the same as mapping file, but ending in .download instead of .mapping (or whataver .extention might be present on the end of the B<--mapping_file> value); the name may also be supplied as B<--download_file>; two columns: id and the ftp_url.  Used as the list provided by B<--download_file> when B<--download_only> is invoked.
 
@@ -205,6 +217,7 @@ my $TODAY = get_date();
 my @DEFAULT_DOWNLOAD_LIST = qw( );
 my $DEFAULT_LOG_LEVEL = 0;
 my $DEFAULT_ID_LENGTH = 10;
+my $DEFAULT_ID_TYPE   = 'normal';
 my $working_dir = getcwd();
 
 my $MAX_DOWNLOAD_ATTEMPTS = 3;
@@ -223,6 +236,7 @@ GetOptions( \%opts,
             'fasta',
             'gb',
             'id_length=i',
+            'id_type=s',
             'kingdom|k=s',
             'log_file|l=s',
             'loglevel=i',
@@ -263,16 +277,26 @@ my $data;
 if ( $opts{ assembly_summary_file } ) {
     $data = read_file( $opts{ assembly_summary_file } );
 } else {
+
     # ... or get the summary file via ftp.
-    my $summary_url = 'ftp://ftp.ncbi.nlm.nih.gov/genomes/'. $opts{section} . '/'. $opts{ kingdom } . '/assembly_summary.txt';
-    _log("Retrieving assembly_summary.txt\n", 1);
-    my $response = $ua->get( $summary_url );
-    if ( $response->is_success ) {
-        $data = $response->decoded_content;
-        write_assembly_summary( $data ) if $opts{ preserve_assembly_summary };
-    } else {
-        die "ERROR getting assembly_sumamry.txt: " . $response->status_line;
+    my @sections;
+    push @sections, 'refseq'  if ( $opts{ section } eq 'both' || $opts{ section } eq 'refseq'  );
+    push @sections, 'genbank' if ( $opts{ section } eq 'both' || $opts{ section } eq 'genbank' );
+
+    for my $section ( @sections ) {
+
+        my $summary_url = 'ftp://ftp.ncbi.nlm.nih.gov/genomes/'. $section . '/'. $opts{ kingdom } . '/assembly_summary.txt';
+        _log("Retrieving assembly_summary.txt for $section\n", 1);
+        my $response = $ua->get( $summary_url );
+        if ( $response->is_success ) {
+            $data .= $response->decoded_content;
+        } else {
+            die "ERROR getting assembly_sumamry.txt for $section: " . $response->status_line;
+        }
+
     }
+    write_assembly_summary( $data ) if $opts{ preserve_assembly_summary };
+
 }
 
 parse_data( $data ) unless ( $opts{ download_only } );
@@ -286,7 +310,7 @@ sub write_assembly_summary {
 
     my ( $data ) = @_;
 
-    my $assembly_summary_file = "$opts{ output_prefix }.assembly_summary.txt";
+    my $assembly_summary_file = "$opts{ output_prefix }.assembly_summary.$opts{section}.txt";
 
     open( my $afh, '>', $assembly_summary_file ) || die "Can't write to $assembly_summary_file: $!\n";
 
@@ -330,7 +354,7 @@ sub parse_data {
         $names = load_input_ids( $opts{ name_list } );
     }
 
-
+    my %matched_assemblies;
     my %candidates;
     my @field_list = qw/biosample infraspecific_name isolate version_status assembly_level ftp_link type_strain/;
     for my $line ( split( "\n", $data ) ) {
@@ -342,6 +366,7 @@ sub parse_data {
         # Need columns 1, 3, 8, 9, 11, 12 (index 0, 2, 7, 8, 10, 11)
         my $assembly_accession  = $line_array[0];
         my $biosample           = $line_array[2];
+        my $wgs_master          = $line_array[3];
         my $infraspecific_name  = $line_array[7];
         my $isolate             = $line_array[8];
         my $version_status      = $line_array[10];
@@ -351,7 +376,10 @@ sub parse_data {
 
         # check if it matches organism_search_term or our other search criteria
         if ( $opts{ organism_search_term } ) {
-            unless ( $infraspecific_name =~ qr($opts{ organism_search_term }) ) {
+            if ( $infraspecific_name =~ qr($opts{ organism_search_term }) ) {
+                next if exists $matched_assemblies{ $wgs_master };
+                $matched_assemblies{ $wgs_master }++;
+            } else {
                 next;
             }
         } elsif ( $opts{ biosample_list } ) {
@@ -401,11 +429,19 @@ sub parse_data {
     }
 
     if ( $opts{ biosample_list } && scalar( keys %still_unseen ) )  {
+
         _warn( "The following biosamples were not found in assembly_summary.txt.  These links may help determine why:\n", 0 );
         for my $biosample ( keys %still_unseen ) {
             _warn( "$biosample\thttps://www.ncbi.nlm.nih.gov/assembly/?term=$biosample\n", 0 );
         }
+
     } 
+
+    # Error if no candidates at this point.
+    unless ( scalar %candidates ) {
+        _warn( "No candidates for download found... please check inputs and try again.\n");
+        exit(1);
+    }
 
     filter_on_assembly_data( \%candidates, \@field_list, \%mapping, \%download );
     print_files( \%mapping, \%download );
@@ -536,6 +572,8 @@ sub check_row {
     if ( $biosample =~ /^$/ ) {
         # log missing biosample
         _log( "Missing biosample from line for $new_id, $infraspecific_name.\n", 0 );
+    } elsif ( $opts{ id_type } eq 'biosample' ) {
+        $new_id = $biosample;
     }
 
     return $new_id;
@@ -1046,7 +1084,7 @@ sub load_input_ids {
     while ( <$ifh> ) {
 
         chomp;
-        $_ = s/(.*\S)\s+/$1/;
+        $_ =~ s/(.*\S)\s+/$1/;
         push @ids, $_;
 
     }
@@ -1134,9 +1172,13 @@ sub check_options {
         $errors .= "--kingdom MUST be one of the following:\n\tbacteria (default)\n\tarchaea\n\tfungi\n\tplant\n\tprotozoa\n\tvertebrate_mammalian\n\tvertebrate_other\n\tviral\n";
     } 
     $opts{ section }        = $opts{ section }          // $DEFAULT_SECTION;
-    unless ( $opts{ section } =~ /^(refseq|genbank)$/ ) {
-        $errors .= "--section MUST be either 'refseq' or 'genbank'\n";
+    unless ( $opts{ section } =~ /^(refseq|genbank|both)$/ ) {
+        $errors .= "--section MUST be either 'refseq' or 'genbank' or 'both'\n";
     } 
+    $opts{ id_type }        = $opts{ id_type }          // $DEFAULT_ID_TYPE;
+    unless ( $opts{ id_type } =~ /^(normal|biosample)/ ) {
+        $errors .= "--id_type MUST be either 'normal' or 'biosample'\n";
+    }
     $opts{ output_prefix }  = $opts{ output_prefix }    // "$opts{ section }_$DEFAULT_OUTPUT_BASENAME.$TODAY";
 
 
