@@ -39,7 +39,8 @@ run_pangenome.pl - run the pangenome pipeline
                           [ --genome_list_file <genomes.list> | --gb_list_file <gb.list> | --gb_dir <gb_dir> ]
                           [ --working_dir /path/to/working_dir
                             --combined_fasta <combined.fasta>
-                            --combined_att <combined.att> ]
+                            --combined_att <combined.att> 
+                            --topology_file <topology.txt> ]
                           [ --use_nuc ]
                           [ --att_suffix .att ]
                           [ --grouping_file <groups.list> ]
@@ -62,6 +63,8 @@ B<--working_dir, -w>        :   Path in which multiple directories are to be cre
 B<--combined_fasta, -f>     :   Path to fasta file containing all features from all genomes.  (Not required for iterative runs. ) [DEFAULT: <working_dir>/fasta_dir/combined.fasta ]
 
 B<--combined_att, -a>       :   Path to gene attribute file containing all features from all genoems.  (Not required for iterative runs. ) [DEFAULT: <working_dir>/combined.att]
+
+B<--topology_file, -t>      :   Path to optional topology file.  (DEFAULT: <working_dir>/topology.txt
 
 B<--use_nuc, -n>            :   Use nucleotide versions of blast programs and input files
 
@@ -93,6 +96,8 @@ B<--no_lite>                :   Run full-fledged run_panoct.pl for sub-groups.
 PANOCT OPTIONS:
 
 B<--less_strict_panoct> :   Use panoct's "-S N" flag to reduce strictness of clustering
+
+B<--panoct_verbose>     :   Have panoct run in verbose mode.
 
 =head1 DESCRIPTION
 
@@ -197,8 +202,9 @@ my $att_suffix          = '.patt';
 my $working_dir         = '';
 my $combined_att        = '';
 my $combined_fasta      = '';
-my $hierarchy_file        = '';
+my $hierarchy_file      = '';
 my $grouping_file       = '';
+my $topology_file       = '';
 my $lfh                 = undef;
 my $debug               = 0;
 
@@ -213,6 +219,7 @@ GetOptions( \%opts,
             'gb_dir=s',
             'grouping_file=s',
             'less_strict_panoct',
+            'panoct_verbose',
             'no_blast',
             'no_grid',
             'no_lite',
@@ -247,7 +254,7 @@ unless ( $hierarchy_file ) {
     _log( "No hierarchy_file found.  This is ok.\nProceeding with non-iterative pangenome.", 0 );
 
     # Run single pangenome.  Then exit.
-    run_run_panoct( $working_dir, $combined_fasta, $combined_att, $genome_list_file, $grouping_file );
+    run_run_panoct( $working_dir, $combined_fasta, $combined_att, $genome_list_file, $topology_file, $grouping_file );
 
     exit(0);
 
@@ -393,6 +400,14 @@ sub parse_gb_list_file{
 
     _log( "Running core_hmm_pre:\n" . join( ' ', @cmd ) . "\n", 0 );       
     system( @cmd ) == 0 || _die( "Error running core_hmm_prep.pl command!", __LINE__);
+
+    my $temp_topology = "$fasta_dir/" . ( $opts{ use_nuc } ? 'nuc' : 'pep' ) . '/topology.txt';
+    if ( -s $temp_topology ) {
+        _log( "Copying $temp_topology to $working_dir", 0 );
+        system("cp $temp_topology $working_dir") && _die( "Error copying $temp_topology to $working_dir: $!", __LINE__ );
+    } else {
+        _log( "$temp_topology not found... proceeding without.", 0 );
+    }
 
 }
 
@@ -556,7 +571,6 @@ sub final_panoct_run {
 
     my @cmd = ( $PANOCT_EXEC, '-R', 'matchtable.txt.expanded', '-f', $tagfile, '-g',  'combined.att_file', 
                 '-P', 'combined.fasta', '-b', $final_dir, '-c', '0,95' );
-    #push( @cmd, '-S', 'N' ) if $opts{less_strict_panoct};
 
     _log( "Running final panoct command in $final_dir:\n" . join( ' ', @cmd ) . "\n", 0 );
 
@@ -1106,15 +1120,17 @@ sub create_pseudo_genome_files {
 
 sub run_run_panoct {
 
-    my ( $working_dir, $combined_fasta, $combined_att, $genome_list, $grouping_file ) =@_;
+    my ( $working_dir, $combined_fasta, $combined_att, $genome_list, $topology_file, $grouping_file ) =@_;
 
     my @cmd = ( $RUNPANOCT_EXEC, '-w', $working_dir);
     push( @cmd, '-P', $opts{ project_code } ) if $opts{ project_code };
     push( @cmd, '-g', $genome_list ) if $genome_list;
     push( @cmd, '-a', $combined_att ) if $combined_att;
     push( @cmd, '-f', $combined_fasta ) if $combined_fasta;
+    push( @cmd, '--topology_file', $topology_file ) if $topology_file;
     push( @cmd, '--use_nuc' ) if ( $opts{ use_nuc } );
     push( @cmd, '--strict', 'low' ) if ( $opts{ less_strict_panoct } );
+    push( @cmd, '--panoct_verbose' ) if $opts{ panoct_verbose };
     push( @cmd, '--no_grid' ) if ( $opts{ no_grid } );
     push( @cmd, '--panoct_local' ) if ( $opts{ panoct_local } );
     push( @cmd, '--blast_local' ) if ( $opts{ blast_local } );

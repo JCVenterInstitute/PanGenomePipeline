@@ -42,6 +42,8 @@ run_panoct.pl - utility for running the pangenome pipeline
                             --blast_file /path/to/blast/output/file || --blast_local
                             --panoct_local
                             --lite
+                            --panoct_verbose
+                            --topology_file
                             --no_stats
                             --no_trees
                             --no_graphics
@@ -79,6 +81,10 @@ B<--blast_file,-b>              :   Path to a file of all-vs-all BLAST results. 
 B<--panoct_local>               :   Runs PanOCT locally.
 
 B<--lite>                       :   Don't run anything after panoct.  Intended for use by run_pangnome.pl in hierarchical mode.
+
+B<--panoct_verbose, -V>         :   Run panoct with the -V flag, creating many more output files than the default mode.
+
+B<--topology_file>              :   Provide an optional topology file for panoct.
 
 B<--no_stats>                   :   Flag to not run statistics program. 
 
@@ -226,6 +232,9 @@ TIGR00435
 
 =head1  OUTPUT
 
+panoct.pl is capable of creating many output files, but within this script it runs in the default, less verbose mode.
+The B<--panoct_verbose, -V> flag will turn on the more voluminous output mode.
+
 =head2 Log File
 
 A log file is produced containing various messages, by default this is found at
@@ -340,6 +349,7 @@ my $att_dir             = '';
 my $combined_fasta      = '';
 my $fasta_dir           = '';
 my $role_lookup_file    = '';
+my $topology_file       = '';
 my $asmbl_ids           = '';
 my $strict              = '';
 my $att_suffix          = 'patt';
@@ -375,6 +385,8 @@ GetOptions( \%opts,
     'project_code|P=s',
     'use_nuc',
     'lite',
+    'panoct_verbose|V',
+    'topology_file=s',
     'debug=i',
     'leave_blast',
     'help|h',
@@ -406,7 +418,6 @@ if ( $opts{ no_panoct } ) {
     
 } else {
     
-    #TODO: replace with direct call to panoct
     call_panoct()
 
 }
@@ -1013,11 +1024,22 @@ sub call_panoct {
         copy( $blast_file_path, $target ) || _die( "Couldn't copy $blast_file_path to $results_dir!", __LINE__ );
     }
 
+    # Likewise with the topology.txt file, should it exist:
+    if ( -s $topology_file ) {
+        $target = "$results_dir/topology.txt";
+        unless ( abs_path( $topology_file ) eq abs_path( $target ) || -e $target ) {
+            _log( "Copying topology.txt from $topology_file to $target", 0 );
+            copy( $topology_file, $target ) || _die( "Couldn't copy $topology_file to $results_dir!", __LINE__ );
+        }
+    }
+
     @params = ('-b', $results_dir, '-t', 'combined.blast', '-f', 'genomes.list',
             '-g', 'combined.att', '-P', 'combined.fasta' ); 
+    push( @params, '-z', 'topology.txt' ) if ( $topology_file );
     push( @params, '-i', $opts{ percent_id } ) if $opts{ percent_id };
     push( @params, '-S', $strict ) if $strict;
     push( @params, '-L', '1', '-M', 'Y', '-H', 'Y', '-V', 'Y', '-N', 'Y', '-F', '1.33', '-G', 'y', '-c', '0,50,95,100', '-T' );
+    push( @params, '-v' ) if $opts{ panoct_verbose };
 
     my @grid_jobs;
 
@@ -1479,6 +1501,14 @@ sub check_params {
 
     } else {
         $strict = "yes";
+    }
+
+    $topology_file = $opts{ topology_file } // "$working_dir/topology.txt";
+    if ( ! -s $topology_file ) {
+
+        $errors .= "--topology_file $topology_file does not exist or is empty\n" if ( $opts{ topology_file } );
+        undef $topology_file;
+
     }
 
     if ( $opts{ role_lookup } ) {
