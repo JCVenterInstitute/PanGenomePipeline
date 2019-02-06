@@ -137,7 +137,7 @@ sub get_genomes {  # obtain list of genomes - must be in the same order as the m
 	    $sequence =~ s/[^a-zA-Z]//g; # remove any non-alphabet characters
 	    $genseq_hash{$name}->{$id} = $sequence;
 	    $genseq_len{$name}->{$id} = length($sequence);
-	    if ($fields[1] eq "circular") {
+	    if (($#fields > 0) && ($fields[1] eq "circular")) {
 		$is_circular{$name}->{$id} = 1;
 	    } else {
 		$is_circular{$name}->{$id} = 0;
@@ -418,7 +418,7 @@ sub process_matchtable {
 			} else {
 			    print DIFFFILE "$genome_tag\t$feat_hash{$feat_name}->{'contig'}\tidentical_clus\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\n";
 			}
-			my $seq_len = length($genome_seqs[$index]);
+			my $seq_len = $feat_hash{$feat_name}->{'len'};
 			if ($seq_len < ($median_25 - (0.1 * $median))) {
 			    $short_clus{$genome_tag}++;
 			    print DIFFFILE "$genome_tag\t$feat_hash{$feat_name}->{'contig'}\tshort_clus\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\n";
@@ -461,7 +461,7 @@ sub process_matchtable {
 		    } else {
 			print DIFFFILE "$target_id\t$feat_hash{$feat_name}->{'contig'}\tidentical_clus\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\n";
 		    }
-		    my $seq_len = length($target_sequence);
+		    my $seq_len = $feat_hash{$feat_name}->{'len'};
 		    if ($seq_len < ($median_25 - (0.1 * $median))) {
 			$short_clus{$target_id}++;
 			print DIFFFILE "$target_id\t$feat_hash{$feat_name}->{'contig'}\tshort_clus\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\n";
@@ -735,6 +735,9 @@ sub process_pgg {
 		    if (!$gene_count) {
 			$single_genome = $genome_tag;
 		    }
+		    if ($sequence eq "") {
+			$sequence = "EMPTY";
+		    }
 		    $genome_seqs[$index] = $sequence;
 		    if ($genome_tag eq $target_id) {
 			$target_sequence = $sequence;
@@ -796,7 +799,10 @@ sub process_pgg {
 			    } else {
 				print DIFFFILE "$genome_tag\t$edge_hash{$feat_name}->{'contig'}\tidentical_edge\t$edge_hash{$feat_name}->{'5p'}\t$edge_hash{$feat_name}->{'3p'}\t$edge_hash{$feat_name}->{'len'}\t$edge_name\n";
 			    }
-			    my $seq_len = length($genome_seqs[$index]);
+			    my $seq_len = $edge_hash{$feat_name}->{'len'};
+			    if ($seq_len < 0) {
+				$seq_len = 0;
+			    }
 			    #print "$genome_tag($mean):$median_25:$median:$median_75:$seq_len\n";
 			    if ($seq_len < ($median_25 - (0.1 * $median))) {
 				$short_edge{$genome_tag}++;
@@ -836,7 +842,10 @@ sub process_pgg {
 			} else {
 			    print DIFFFILE "$target_id\t$edge_hash{$feat_name}->{'contig'}\tidentical_edge\t$edge_hash{$feat_name}->{'5p'}\t$edge_hash{$feat_name}->{'3p'}\t$edge_hash{$feat_name}->{'len'}\t$edge_name\n";
 			}
-			my $seq_len = length($target_sequence);
+			my $seq_len = $edge_hash{$feat_name}->{'len'};
+			if ($seq_len < 0) {
+			    $seq_len = 0;
+			}
 			if ($seq_len < ($median_25 - (0.1 * $median))) {
 			    $short_edge{$target_id}++;
 			    print DIFFFILE "$target_id\t$edge_hash{$feat_name}->{'contig'}\tshort_edge_allele\t$edge_hash{$feat_name}->{'5p'}\t$edge_hash{$feat_name}->{'3p'}\t$edge_hash{$feat_name}->{'len'}\t$edge_name\n";
