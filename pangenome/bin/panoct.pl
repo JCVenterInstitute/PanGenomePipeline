@@ -566,7 +566,7 @@ sub get_circular {
 	    die ("ERROR: genome id, assembly id/contig id, and type  must not be empty/null in the circular contig file $basedir/$circular_file.\nLine:\n$_\n");
 	}
 	if (!defined $TagIndex{$tag}) {
-	    die ("ERROR: $tag is a genome tag in the circular contig file but not in the genome tag file!\nLine:\n$_\n");
+	    warn ("ERROR: $tag is a genome tag in the circular contig file but not in the genome tag file!\nLine:\n$_\n");
 	}
 	if ($type eq "circular") {
 	    $is_circular{$tag}{$asmbl_id} = 1;

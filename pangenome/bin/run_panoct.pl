@@ -1025,7 +1025,7 @@ sub call_panoct {
     }
 
     # Likewise with the topology.txt file, should it exist:
-    if ( -s $topology_file ) {
+    if ( $topology_file && -s $topology_file ) {
         $target = "$results_dir/topology.txt";
         unless ( abs_path( $topology_file ) eq abs_path( $target ) || -e $target ) {
             _log( "Copying topology.txt from $topology_file to $target", 0 );

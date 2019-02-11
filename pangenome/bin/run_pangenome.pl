@@ -324,7 +324,7 @@ unless ( $opts{ backend_only } ) {
         my $genome_list_file = create_genome_list_file( $step_dir, $parts );
 
         # Call run_panoct.pl
-        run_run_panoct( $step_dir, $combined_fasta, $combined_att, $genome_list_file );
+        run_run_panoct( $step_dir, $combined_fasta, $combined_att, $genome_list_file, $topology_file );
 
         # copy centroid files into the fasta_dir and att_dir
         create_pseudo_genome_files( $step_dir, $step_name );
@@ -403,8 +403,11 @@ sub parse_gb_list_file{
 
     my $temp_topology = "$fasta_dir/" . ( $opts{ use_nuc } ? 'nuc' : 'pep' ) . '/topology.txt';
     if ( -s $temp_topology ) {
+
         _log( "Copying $temp_topology to $working_dir", 0 );
         system("cp $temp_topology $working_dir") && _die( "Error copying $temp_topology to $working_dir: $!", __LINE__ );
+        $topology_file = "$working_dir/topology.txt";
+
     } else {
         _log( "$temp_topology not found... proceeding without.", 0 );
     }
@@ -571,6 +574,15 @@ sub final_panoct_run {
 
     my @cmd = ( $PANOCT_EXEC, '-R', 'matchtable.txt.expanded', '-f', $tagfile, '-g',  'combined.att_file', 
                 '-P', 'combined.fasta', '-b', $final_dir, '-c', '0,95' );
+
+    if ( $topology_file ) {
+
+        symlink "$topology_file", "./topology.txt"
+            || _die("Can't create symlink for $topology_file: $!", __LINE__ );
+
+        push( @cmd, '-z', 'topology.txt' );
+
+    }
 
     _log( "Running final panoct command in $final_dir:\n" . join( ' ', @cmd ) . "\n", 0 );
 
@@ -1127,7 +1139,7 @@ sub run_run_panoct {
     push( @cmd, '-g', $genome_list ) if $genome_list;
     push( @cmd, '-a', $combined_att ) if $combined_att;
     push( @cmd, '-f', $combined_fasta ) if $combined_fasta;
-    push( @cmd, '--topology_file', $topology_file ) if $topology_file;
+    push( @cmd, '--topology_file', $topology_file ) if ( $topology_file && $working_dir =~ /L1B\d+/ );
     push( @cmd, '--use_nuc' ) if ( $opts{ use_nuc } );
     push( @cmd, '--strict', 'low' ) if ( $opts{ less_strict_panoct } );
     push( @cmd, '--panoct_verbose' ) if $opts{ panoct_verbose };
@@ -1335,8 +1347,16 @@ sub check_options {
 
     $working_dir = $opts{ working_dir } // $DEFAULT_WORKING_DIR;
     $errors .= "Can't find working directory $working_dir\n" unless ( -d $working_dir );
-    $att_suffix = $opts{ use_nuc } ? '.natt' : 'patt';
+    $att_suffix = $opts{ use_nuc } ? '.natt' : '.patt';
     $att_suffix = $opts{ att_suffix } // $att_suffix;
+
+    if ( $opts{ topology_file } ) {
+
+        $topology_file = $opts{ topology_file };
+        $errors .= "Can't find topology_file $topology_file" unless ( -s $topology_file );
+
+    }
+    
 
     unless ( $opts{no_grid} || ( $opts{ panoct_local } && ( $opts{ blast_local } || $opts{ no_blast } ) ) ) {
 
