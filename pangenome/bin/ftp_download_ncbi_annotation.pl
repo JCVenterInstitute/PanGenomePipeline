@@ -128,7 +128,10 @@ and to use a specific local copy of an assembly_summary.txt file using B<--assem
 =head1 INPUTS
 
 The B<--organism_search_term> provides a string that will be interpreted as a regular expression used against the
-fields in the assembly_summary.txt file that hold organism name information.  If more advanced regex are supplied,
+fields in the assembly_summary.txt file that hold organism name information.  If the term supplied is of the form:
+ "word word" (for example, "Ruminococcus gnavus")
+the term will be modifed to allow for the very few cases where the organism_name field of assembly_summary.txt includes
+square brackets around the genus name.  (For example, "[Ruminococcus] gnavus". )  If more advanced regex are supplied,
 or if a regex was used that required fancy shell-escaping to get passed in, it might be useful to run this script in
 B<--no_download mode>, examine the resulting .mapping and/or .download files, and once deemed satisfactory, proceed with
 operation in B<--download_only> mode (or simply rerun without B<--no_download>, as the script doesn't mind writing over 
@@ -391,7 +394,7 @@ sub parse_data {
 
         my @line_array = split( "\t", $line );
 
-        # Need columns 1-4, 8, 9, 11, 12, 20, 21 (index 0-3, 7, 8, 10, 11, 19, 21)
+        # Need columns 1-4, 8, 9, 11, 12, 20, 22 (index 0-3, 7, 8, 10, 11, 19, 21)
         my $assembly_accession  = $line_array[0];
         my $bioproject          = $line_array[1];
         my $biosample           = $line_array[2];
@@ -405,6 +408,13 @@ sub parse_data {
 
         # check if it matches organism_search_term or our other search criteria
         if ( $opts{ organism_search_term } ) {
+
+            # This hack is needed for the few unfortunate souls attempting to retrieve
+            # genomes that have somehow made it into assembly_summary.txt with BRACKETS IN THE NAME.  Sheesh.
+            if ( $opts{ organism_search_term } =~ /^([[:alpha:]]+)(\s+)([[:alpha:]]+)$/ ) { # Only do this when the search term is like "word word" to avoid gunking up other cases.
+                $opts{ organism_search_term } = "([\\\[]?)$1([\\\]]?) $3";              # Surround the first word in the term with brackets that may or may not be there.
+            }
+
             if ( $infraspecific_name =~ qr($opts{ organism_search_term }) ) {
                 next if exists $matched_assemblies{ $wgs_master };
                 $matched_assemblies{ $wgs_master }++;
