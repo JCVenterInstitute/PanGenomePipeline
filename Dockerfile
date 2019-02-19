@@ -25,7 +25,7 @@ RUN R -e "install.packages('getopt', repos = 'http://cran.us.r-project.org')"
 RUN R -e "install.packages('ape', repos = 'http://cran.us.r-project.org')"
 
 # Install all the perl modules needed.
-RUN ["cpanm", "Capture::Tiny", "Term::ReadKey", "DB_File", "MLDBM", "Devel::InnerPackage", "Class::Load", "String::RewritePrefix", "Fatal", "XML::LibXML", "HTML::TableExtract", "LWP::UserAgent", "File::Fetch", "File::Slurp@9999.19"", "Bio::SeqIO", "DBI", "GD", "Getopt::Long::Descriptive" ]
+RUN ["cpanm", "Capture::Tiny", "Term::ReadKey", "DB_File", "MLDBM", "Devel::InnerPackage", "Class::Load", "String::RewritePrefix", "Fatal", "XML::LibXML", "HTML::TableExtract", "LWP::UserAgent", "File::Fetch", "File::Slurp", "Bio::SeqIO", "DBI", "GD", "Getopt::Long::Descriptive" ]
 
 # Install the pipeline.
 RUN wget https://github.com/JCVenterInstitute/PanGenomePipeline/archive/master.zip && unzip /master.zip; ln -s /PanGenomePipeline-master/pangenome /pangenome; rm /master.zip
