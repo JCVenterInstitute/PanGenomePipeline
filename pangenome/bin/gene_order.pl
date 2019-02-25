@@ -1696,8 +1696,8 @@ sub print_insertions {
 	    }
 	}
 	my $fGI_type = "";
-	if (((100 * $islands{$core_end}{'size'}) / $num_genomes) >= 95) {
-	    $fGI_type = "fGI_95";
+	if (((100 * $islands{$core_end}{'size'}) / $num_genomes) >= 75) {
+	    $fGI_type = "fGI_75";
 	} elsif (((100 * $islands{$core_end}{'size'}) / $num_genomes) >= 50) {
 	    $fGI_type = "fGI_50";
 	} elsif (((100 * $islands{$core_end}{'size'}) / $num_genomes) >= 25) {
@@ -1959,7 +1959,7 @@ sub dfs_fgi_ins {
 	    print STDERR "return2a\n" if ($DEBUG);
 	    return $number;
 	}
-    } elsif ($high_clus_present[$clus] && ($clus ne $start_clus)) { # we have reached an unexpected "core" node indicating a rearrangement so stop
+    } elsif ($high_clus_present[$clus] && (($clus ne $start_clus) || (($clus eq $start_clus) && ($length > 1)))) { # we have reached an unexpected "core" node indicating a rearrangement so stop - could also be looping around a circular contig to the start cluster
 	$clusters = $clusters . ":U_CORE" . $clus;
 	if ($end_type eq "3") {
 	    $clusters = $clusters . "+";
