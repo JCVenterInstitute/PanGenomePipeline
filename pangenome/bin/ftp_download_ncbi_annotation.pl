@@ -416,8 +416,8 @@ sub parse_data {
             }
 
             if ( $infraspecific_name =~ qr($opts{ organism_search_term }) ) {
-                next if exists $matched_assemblies{ $wgs_master };
-                $matched_assemblies{ $wgs_master }++;
+                next if exists $matched_assemblies{ $assembly_accession };
+                $matched_assemblies{ $assembly_accession }++;
             } else {
                 next;
             }
