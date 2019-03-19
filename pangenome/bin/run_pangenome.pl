@@ -49,6 +49,8 @@ run_pangenome.pl - run the pangenome pipeline
                           [ --backend_only ]
                           [ --no_lite ]
                           [ --less_strict_panoct ]
+                          [ --no_frameshift ]
+                          [ --panoct_args <panoct arguments> ]
 
 =head1 OPTIONS
 
@@ -97,6 +99,10 @@ PANOCT OPTIONS:
 
 B<--less_strict_panoct> :   Use panoct's "-S N" flag to reduce strictness of clustering
 
+B<--panoct_args>        :   Provides a 'passthrough' for supplying panoct with arguments to replace the default arguments.
+
+B<--no_frameshift>      :   Tell panoct to disable frameshift detection.
+
 B<--panoct_verbose>     :   Have panoct run in verbose mode.
 
 =head1 DESCRIPTION
@@ -121,11 +127,11 @@ When used with a --hierarchy_file, will run the iterative JCVI panoct/pangenome 
 
     1. matchtable.txt
     2. centroids.fasta
+    3. frameshifts.txt
 
 Modified files are recreated as <filename>.expanded, leaving the originals in place.  The following files are planned to have expansion in later versions of this script:
 
-    1. frameshifts.txt
-    2. fragment_fusions.txt
+    1. fragment_fusions.txt
 
 4. A final panoct run is executed after the last step in the itinerary.
 
@@ -219,8 +225,10 @@ GetOptions( \%opts,
             'gb_dir=s',
             'grouping_file=s',
             'less_strict_panoct',
+            'panoct_args=s',
             'panoct_verbose',
             'no_blast',
+            'no_frameshift',
             'no_grid',
             'no_lite',
             'panoct_local',
@@ -336,7 +344,7 @@ _log( "Time to expand clusters!", 0 );
 
 fill_locus2genome( $genome_list_file, \%locus2genome );
 expand_clusters( $itinerary );
-resolve_frameshift_loci( $itinerary );
+resolve_frameshift_loci( $itinerary ) unless $opts{ no_frameshift };
 my $combined_stuff = run_statistics( abs_path( $genome_list_file ) );
 final_panoct_run( $combined_stuff );
 
@@ -1060,7 +1068,7 @@ sub expand_fragment_fusions {
 
 
 sub expand_clusters {
-# Need to 'expand' psuedo-names in matchtable.txt, cat the frameshift files, and perhaps the fragment_fusions.
+# Need to 'expand' psuedo-names in matchtable.txt, centroids.fasta, and perhaps the fragment_fusions.
 # Maybe the paralogs file.
 
     my ( $itinerary ) = @_;
@@ -1136,18 +1144,19 @@ sub run_run_panoct {
 
     my @cmd = ( $RUNPANOCT_EXEC, '-w', $working_dir);
     push( @cmd, '-P', $opts{ project_code } ) if $opts{ project_code };
-    push( @cmd, '-g', $genome_list ) if $genome_list;
-    push( @cmd, '-a', $combined_att ) if $combined_att;
+    push( @cmd, '-g', $genome_list )    if $genome_list;
+    push( @cmd, '-a', $combined_att )   if $combined_att;
     push( @cmd, '-f', $combined_fasta ) if $combined_fasta;
     push( @cmd, '--topology_file', $topology_file ) if ( $topology_file && $working_dir =~ /L1B\d+/ );
-    push( @cmd, '--use_nuc' ) if ( $opts{ use_nuc } );
-    push( @cmd, '--strict', 'low' ) if ( $opts{ less_strict_panoct } );
-    push( @cmd, '--panoct_verbose' ) if $opts{ panoct_verbose };
-    push( @cmd, '--no_grid' ) if ( $opts{ no_grid } );
-    push( @cmd, '--panoct_local' ) if ( $opts{ panoct_local } );
-    push( @cmd, '--blast_local' ) if ( $opts{ blast_local } );
-    push( @cmd, '--lite' ) unless ( $opts{ no_lite } );
-    push( @cmd, '--leave_blast' ) if ( $opts{ leave_blast } );
+    push( @cmd, '--use_nuc' )           if $opts{ use_nuc };
+    push( @cmd, '--strict', 'low' )     if $opts{ less_strict_panoct };
+    push( @cmd, '--panoct_verbose' )    if $opts{ panoct_verbose };
+    push( @cmd, '--no_grid' )           if $opts{ no_grid };
+    push( @cmd, '--panoct_local' )      if $opts{ panoct_local };
+    push( @cmd, '--blast_local' )       if $opts{ blast_local };
+    push( @cmd, '--lite' )          unless $opts{ no_lite };
+    push( @cmd, '--leave_blast' )       if $opts{ leave_blast };
+    push( @cmd, '--no_frameshift' )     if $opts{ no_frameshift };
     if ( $opts{ no_blast } ) {
         my $blast_file = "$working_dir/combined.blast";
         if ( -f $blast_file ) {
@@ -1156,6 +1165,7 @@ sub run_run_panoct {
             _die( "--no_blast used, but I can't find combined.blast in $working_dir!", __LINE__ );
         }
     }
+    push( @cmd, '--panoct_args', $opts{ panoct_args } ) if $opts{ panoct_args };
 
     _log( "Running run_panoct.pl:\n" . join( ' ', @cmd ), 0 );
 

@@ -55,6 +55,8 @@ run_panoct.pl - utility for running the pangenome pipeline
                             --strict
                             --hmm_file
                             --role_lookup
+                            --panoct_args
+                            --no_frameshift
                           ]
 
 
@@ -83,6 +85,10 @@ B<--panoct_local>               :   Runs PanOCT locally.
 B<--lite>                       :   Don't run anything after panoct.  Intended for use by run_pangnome.pl in hierarchical mode.
 
 B<--panoct_verbose, -V>         :   Run panoct with the -V flag, creating many more output files than the default mode.
+
+B<--no_frameshift>              :   Turn off panoct's frameshift detection.
+
+B<--panoct_args>                :   Provides a 'passthrough' for panoct arguments to be used instead of the default args used by this script.
 
 B<--topology_file>              :   Provide an optional topology file for panoct.
 
@@ -127,6 +133,10 @@ step can be passed by supplying a B<--blast_file> of previously run NCBI BLAST+ 
 Produce clusters using panoct.pl with the follwoing parameters:
 
  panoct.pl -b ./results -t combined.blast -f genomes.list -g combined.att -P combined.fasta -L 1 -M Y -H Y -V Y -N Y -F 1.33 -G y -c '0,50,95,100' -T
+
+If B<--panoct_args> is supplied it will be used in lieu of the arguments above starting with the -L option shown above.
+
+If B<--no_frameshift> is supplied panoct will run without the -F param, shutting off frameshift detection.
 
 See the panoct.pl help info for more information.
 
@@ -354,6 +364,7 @@ my $asmbl_ids           = '';
 my $strict              = '';
 my $att_suffix          = 'patt';
 my $use_nuc             = '';
+my @panoct_args;
 
 my %opts;
 GetOptions( \%opts,
@@ -367,6 +378,7 @@ GetOptions( \%opts,
     'combined_fasta|f=s',
     'fasta_dir|F=s',
     'log_dir=s',
+    'no_frameshift',
     'no_grid',
     'no_stats',
     'no_new_plot',
@@ -379,6 +391,7 @@ GetOptions( \%opts,
     'role_ids|i=s',
     'terms|t=s',
     'strict|s=s',
+    'panoct_args=s',
     'percent_id=i',
     'hmm_file=s',
     'role_lookup=s',
@@ -1036,10 +1049,15 @@ sub call_panoct {
     @params = ('-b', $results_dir, '-t', 'combined.blast', '-f', 'genomes.list',
             '-g', 'combined.att', '-P', 'combined.fasta' ); 
     push( @params, '-z', 'topology.txt' ) if ( $topology_file );
-    push( @params, '-i', $opts{ percent_id } ) if $opts{ percent_id };
-    push( @params, '-S', $strict ) if $strict;
-    push( @params, '-L', '1', '-M', 'Y', '-H', 'Y', '-V', 'Y', '-N', 'Y', '-F', '1.33', '-G', 'y', '-c', '0,50,95,100', '-T' );
-    push( @params, '-v' ) if $opts{ panoct_verbose };
+    if ( $opts{ panoct_args } ) {
+        push( @params, @panoct_args );
+    } else {
+        push( @params, '-i', $opts{ percent_id } ) if $opts{ percent_id };
+        push( @params, '-S', $strict ) if $strict;
+        push( @params, '-F', '1.33' ) unless $opts{ no_frameshift };
+        push( @params, '-L', '1', '-M', 'Y', '-H', 'Y', '-V', 'Y', '-N', 'Y', '-G', 'y', '-c', '0,50,95,100', '-T' );
+        push( @params, '-v' ) if $opts{ panoct_verbose };
+    }
 
     my @grid_jobs;
 
@@ -1519,6 +1537,12 @@ sub check_params {
     }
 
     $errors .= "File is size zero or does not exist: $opts{ hmm_file }\n" if ( $opts{ hmm_file } && !( -s $opts{ hmm_file } ) );
+
+    if ( $opts{ panoct_args } ) {
+
+        @panoct_args = split( /\s+/, $opts{ panoct_args } );
+
+    }
     
     die $errors if $errors;
  
