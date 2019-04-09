@@ -1087,7 +1087,9 @@ sub run_meta_grouping_analysis {
 
     my ( $working_dir, $gene_att_file, $centroids_fasta, $panoct_result, $grouping_file, $output_dir, $log_dir ) = @_;
 
-    my @cmd = ( $GROUPING_EXEC, '-a', $gene_att_file, '-c', $centroids_fasta, '-m', $panoct_result, '-f', $grouping_file, '-o', $output_dir, '-g', $genome_list_file );
+    my $fgi_index = "$working_dir/results/fGIs/fGI_report.txt.index";
+
+    my @cmd = ( $GROUPING_EXEC, '-a', $gene_att_file, '-c', $centroids_fasta, '-m', $panoct_result, '-f', $grouping_file, '-o', $output_dir, '-g', $genome_list_file, '--index', $fgi_index );
 
     _log( "Running grouping analysis:\n" . join( ' ', @cmd ) . "\n", 0 );
 
