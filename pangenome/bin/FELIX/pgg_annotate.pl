@@ -10,12 +10,14 @@
 use FileHandle;
 use Getopt::Long;
 use strict;
-my %pgg_core_edges = ();   # key = pgg core edge, value = 1 just a place holder
+my %pgg_core_edges = ();   # key = pgg core edge, value = 1 just a place holder, these are edges between core clusters
 my @edges = ();            # the identifiers from the first column of the PGG file for each edge
+my %core_edges = ();       # key is from the first column of the PGG file for each edge, value = 1 just placeholder for being a core edge, these are edges with occurence >= core_thresh
 my %hash_edges = ();       # store the edge identifiers for the target genome in a hash for easier lookup
 my @cluster_scores = ();   # the best score for the cluster
 my @cluster_bits = ();     # the best bitscore for the cluster to break ties when the score is the same
 my @cluster_colindex = (); # the contig and column index of the best score for the cluster to break ties when the score and bitscore are the same
+my @cluster_locs = ();     # array of arrays of the contig_column for all columns scoring above threshold for this cluster
 my @neighbors = ();        # array indexed by cluster number of array for NEAR_5, NEAR_3, CORE_5, CORE_3 which each have a hash of cluster_end where end is 5 or 3
 my %is_circular = ();      # key = contig id, value = 1 if circular 0 otherwise
 my @blast_matches_raw = ();# contains all of the blast_matches input to the program via the -blast input file
@@ -45,7 +47,7 @@ my $score_median = 6;      # this is the median score for best scores in a colum
 my $score_threshold = 4;   # this is the equal distance between the best score third quartile and second best first quartile - place holder until then
 my $minimum_score = 3;     # this is the minmum score needed to keep a column around for further consideration
 my $align_anchor_len = 25; # this is the amount of sequence from the Blast match to include as an anchor for the Needleman-Wunsch alignment
-my $overlap_threshold = 0.75; # this is the fractional amount two matches need to overlap to be considerd overlapping in the reduced by region Blast processing
+my $overlap_threshold = 0.90; # this is the fractional amount two matches need to overlap to be considerd overlapping in the reduced by region Blast processing
 # indices for neighbors in %neighbors{$cluster}[$index]{$cluster_end} data structure and %nearest{cluster id}[column][index]{cluster_inv}
 my $NEAR_5 = 0;
 my $NEAR_3 = 1;
@@ -60,6 +62,7 @@ GetOptions('neighbors=s' => \my $adjacency_file_path,                           
 			'help' => \my $help,
 			'reannotate' => \my $reannotate,
 			'core=s' => \my $core_list,
+			'cutoff=f' => \my $core_thresh,
 			'genome=s' => \my $genome,
 	                'medoids=s' => \my $medoids_path,
 	                'target=s' => \my $target,
@@ -67,11 +70,11 @@ GetOptions('neighbors=s' => \my $adjacency_file_path,                           
 	                'pgg=s' => \my $pgg,
 			'clusters=s' => \my $cluster_weights_path);
 
-			#NOTE: This program currently knows nothing about the genomes nor about the full set of edges. We think this is fine.
-			#NOTE: We also are assuming 1) BLAST results are in a specific format 2) This format involves a custom midpoint field, and results sorted by coordinates           <------ IMPORTANT
 			#NOTE: We also are assuming 3) CGN data is filtered in descending order of frequency
 			
-			
+if (!(defined $core_thresh)) {
+    $core_thresh = 95;
+}
 if (!$blast_file_path || !$cluster_weights_path || !$genome) 
 {
     print ("This program requires gene neighborhood information, BLAST results, and list of core clusters as input\n$help_text\n");   #<----- update to include new mandatory input
@@ -255,6 +258,15 @@ sub read_pgg                                               # Read in and store t
 	} else {
 	    die ("ERROR: Bad edge formatting $edge_id in file $pgg.\n");
 	}
+	my $count = 0;
+	foreach my $bool (@edge_values) {
+	    if ($bool == 1) {
+		$count++;
+	    }
+	}
+	if ((($count * 100) / $num_genomes) >= $core_thresh) {
+	    $core_edges{$edge_id} = 1;
+	}
     }
     close(PGG);
 }
@@ -404,16 +416,19 @@ sub process_blast_by_cluster
 
     my $cur_cluster = -1; # cluster numbers are assumed to start at 1 so set to impossible value
     my $best_bitscore = -1; # likewise for bitscore
-
+    my $num_cur_matches = 0;
+    
     foreach my $i (0 .. $#matches_by_cluster) {
 	my $match = $matches_by_cluster[$i];
+	$num_cur_matches++;
 	if ($cur_cluster != $match->{'clus'}) {
+	    $num_cur_matches = 1;
 	    $cur_cluster = $match->{'clus'};
 	    $best_bitscore = $match->{'bits'};
 	    $match->{'keepclus'} = 1;
 	    $cluster_matches[$cur_cluster]->{'best'} = $i;
 	    $cluster_matches[$cur_cluster]->{'last_best'} = $i;
-	} elsif ($match->{'bits'} > (0.9 * $best_bitscore)) {
+	} elsif (($match->{'bits'} == $best_bitscore) || (($num_cur_matches <= 10) && ($match->{'bits'} > (0.9 * $best_bitscore))) || (($num_cur_matches <= 15) && ($match->{'bits'} > (0.95 * $best_bitscore))) || (($num_cur_matches <= 20) && ($match->{'bits'} > (0.98 * $best_bitscore))) || (($num_cur_matches <= 25) && ($match->{'bits'} > (0.99 * $best_bitscore)))) {
 	    $match->{'keepclus'} = 1;
 	    $cluster_matches[$cur_cluster]->{'last_best'} = $i;
 	} else { # ignore blast matches which are not within some threshold of the best match
@@ -421,6 +436,288 @@ sub process_blast_by_cluster
 	}
 	$cluster_matches[$cur_cluster]->{'last'} = $i;
     }
+}
+
+###################################################################################################
+sub process_blast_by_region
+# process the blast matches to ignore inferior matches for a region
+{
+    my $sort_by_contig_start = sub { # sort by contig, then start coordinate, then stop coordinate
+	my $contig_test = $a->{'ctg'} cmp $b->{'ctg'};
+	
+	if ($contig_test) {
+	    return ($contig_test);
+	} elsif ($a->{'sbeg'} <=> $b->{'sbeg'}) {
+	    return ($a->{'sbeg'} <=> $b->{'sbeg'});
+	} else {
+	    return (($b->{'send'} - $b->{'sbeg'}) <=> ($a->{'send'} - $a->{'sbeg'}));
+	}
+    };
+    
+    @matches_by_region = sort $sort_by_contig_start (@matches_by_cluster);
+
+    print "Sorted by region - now mark weak matches\n";
+    foreach my $i (0 .. $#matches_by_region) {
+	my $ctg1 = $matches_by_region[$i]->{'ctg'};
+	my $beg1 = $matches_by_region[$i]->{'sbeg'};
+	my $end1 = $matches_by_region[$i]->{'send'};
+	my $len1 = ($end1 - $beg1) + 1;
+	foreach my $j (($i + 1) .. $#matches_by_region) {
+	    my $ctg2 = $matches_by_region[$j]->{'ctg'};
+	    my $beg2 = $matches_by_region[$j]->{'sbeg'};
+	    my $end2 = $matches_by_region[$j]->{'send'};
+	    my $len2 = ($end2 - $beg2) + 1;
+	    my $overlap;
+	    if (($ctg1 ne $ctg2) || ($beg2 >= $end1)){
+		last;
+	    }
+	    if ($end2 < $end1) {
+		$overlap = $len2;
+	    } else {
+		$overlap = ($end1 - $beg2) + 1;
+	    }
+	    my $cov1 = $overlap / $len1;
+	    my $cov2 = $overlap / $len2;
+	    my $maxcov = $cov1 > $cov2 ? $cov1 : $cov2;
+	    if ($maxcov > ($overlap_threshold / 3)) {
+		my $clus1 = $matches_by_region[$i]->{'clus'};
+		my $clus2 = $matches_by_region[$j]->{'clus'};
+		my $pid1 = $matches_by_region[$i]->{'pid'};
+		my $pid2 = $matches_by_region[$j]->{'pid'};
+		my $score1 = $matches_by_region[$i]->{'bits'};
+		my $score2 = $matches_by_region[$j]->{'bits'};
+		my $frac1 = ($matches_by_region[$i]->{'qend'} - $matches_by_region[$i]->{'qbeg'}) / $matches_by_region[$i]->{'qlen'};
+		my $frac2 = ($matches_by_region[$j]->{'qend'} - $matches_by_region[$j]->{'qbeg'}) / $matches_by_region[$j]->{'qlen'};
+		my $size1 = $cluster_size[$clus1];
+		my $size2 = $cluster_size[$clus2];
+		if ($clus1 == $clus2) {
+		    if ($score1 < $score2) {
+			$matches_by_region[$i]->{'keepctg'} = 0;
+			$matches_by_region[$i]->{'weak'} = 1;
+		    } else {
+			$matches_by_region[$j]->{'keepctg'} = 0;
+			$matches_by_region[$j]->{'weak'} = 1;
+		    }
+		}
+		if ($maxcov > ($overlap_threshold / 2)) {
+		    if ($score1 <= 0.98 * $score2) {
+			$matches_by_region[$i]->{'keepctg'} = 0;
+			if (($size1 == 1) || ($size1 <= ($size2 / 10)) || (($frac1 < 0.7) && ($frac2 >= 0.9)) || ($pid1 < ($pid2 - 5)) || (($frac1 < 0.9) && ($pid1 < 95.0) && ($pid2 >= 98.0) && ($frac2 >= 0.9))) {
+			    # ignore some matches from singleton or small size clusters and partial low percent identity matches
+			    $matches_by_region[$i]->{'weak'} = 1;
+			}
+		    } elsif ($score2 <= 0.98 * $score1) {
+			$matches_by_region[$j]->{'keepctg'} = 0;
+			if (($size2 == 1) || ($size2 <= ($size1 / 10)) || (($frac2 < 0.7) && ($frac1 >= 0.9)) || ($pid2 < ($pid1 - 5)) || (($frac2 < 0.9) && ($pid2 < 95.0) && ($pid1 >= 98.0) && ($frac1 >= 0.9))) {
+			    # ignore some matches from singleton or small size clusters and partial low percent identity matches
+			    $matches_by_region[$j]->{'weak'} = 1;
+			}
+		    }
+		}
+	    }
+	}
+    }
+    foreach my $cluster (1 .. $num_clusters) {
+	$cluster_hits[$cluster] = 0; #initialize all clusters as having 0 blast matches in reduced set
+	$cluster_scores[$cluster] = 0; #initialize all clusters as having 0 for best score
+	$cluster_bits[$cluster] = 0; #initialize all clusters as having 0 for bitsscore
+	$cluster_colindex[$cluster] = -1; #initialize all clusters as having colindex -1
+	$cluster_locs[$cluster] = []; #initialize to empty array
+    }
+    my $index = 0;
+    print "Sorted by region - now eliminate weak matches\n";
+    foreach my $match (@matches_by_region) {
+	if ($match->{'keepctg'} || ($match->{'keepclus'} && !$match->{'weak'})) {
+	    #print "PASS($index):$match->{'clus'}($cluster_size[$match->{'clus'}]):$match->{'ctg'}:$match->{'pid'}:$match->{'qbeg'}:$match->{'qend'}:$match->{'qlen'}:$match->{'sbeg'}:$match->{'send'}:$match->{'sinv'}:$match->{'ctglen'}:$match->{'bits'}:$match->{'keepclus'}:$match->{'keepctg'}:$match->{'weak'}\n";
+	    push @reduced_by_region, $match;
+	    $cluster_hits[$match->{'clus'}]++;
+	    $index++;
+	} else {
+	    #print "FAIL:$match->{'clus'}($cluster_size[$match->{'clus'}]):$match->{'ctg'}:$match->{'pid'}:$match->{'qbeg'}:$match->{'qend'}:$match->{'qlen'}:$match->{'sbeg'}:$match->{'send'}:$match->{'sinv'}:$match->{'ctglen'}:$match->{'bits'}:$match->{'keepclus'}:$match->{'keepctg'}:$match->{'weak'}\n";
+	}
+    }
+    my $first_overlap = 0;
+    my $last_overlap = 0;
+    my @num_overlaps = ();     # number of overlaps for a given match
+    my @tmp_columns = ();      # current columns array to be added to the hash
+    my $cur_ctg = "";
+    my @tmp_cores = ();        # parallel array to tmp_columns to deisgnate if the current column contains a single copy core cluster
+    my @tmp_scores = ();        # parallel array to tmp_columns to store scores for the matches in the column
+    my @tmp_status = ();        # parallel array to tmp_columns to deisgnate if the current column contains a single copy core cluster
+    print "Sorted by region building columns\n";
+    foreach my $i (0 .. $#reduced_by_region) {
+	my $ctg1 = $reduced_by_region[$i]->{'ctg'};
+	my $beg1 = $reduced_by_region[$i]->{'sbeg'};
+	my $end1 = $reduced_by_region[$i]->{'send'};
+	my $score1 = $reduced_by_region[$i]->{'bits'};
+	my $len1 = ($end1 - $beg1) + 1;
+	if ($i > $last_overlap) {
+	    my $column = "";
+	    my $core = {'is_core' => 0}; # initialize to not containing a core
+	    my $score = {'best_score' => 0}; #initialize to being empty
+	    my $status = 0;
+	    #print "FL:$first_overlap:$last_overlap\n";
+	    if ($first_overlap == $last_overlap) {
+		$column = $reduced_by_region[$first_overlap]->{'clus'} . "_" . $first_overlap;
+		if ($core_clusters[$reduced_by_region[$first_overlap]->{'clus'}]) {
+		    $core->{'is_core'} = 1;
+		    $core->{$reduced_by_region[$first_overlap]->{'clus'} . "_" . $reduced_by_region[$first_overlap]->{'sinv'}} = 1;
+		} else {
+		    $core->{$reduced_by_region[$first_overlap]->{'clus'} . "_" . $reduced_by_region[$first_overlap]->{'sinv'}} = 0;
+		}
+	    } elsif ($first_overlap == ($last_overlap - 1)) {
+		$column = $reduced_by_region[$first_overlap]->{'clus'} . "_" . $first_overlap . ";" . $reduced_by_region[$last_overlap]->{'clus'} . "_" . $last_overlap;
+		if ($core_clusters[$reduced_by_region[$first_overlap]->{'clus'}]) {
+		    $core->{'is_core'} = 1;
+		    $core->{$reduced_by_region[$first_overlap]->{'clus'} . "_" . $reduced_by_region[$first_overlap]->{'sinv'}} = 1;
+		} else {
+		    $core->{$reduced_by_region[$first_overlap]->{'clus'} . "_" . $reduced_by_region[$first_overlap]->{'sinv'}} = 0;
+		}
+		if ($core_clusters[$reduced_by_region[$last_overlap]->{'clus'}]) {
+		    $core->{'is_core'} = 1;
+		    $core->{$reduced_by_region[$last_overlap]->{'clus'} . "_" . $reduced_by_region[$last_overlap]->{'sinv'}} = 1;
+		} else {
+		    $core->{$reduced_by_region[$last_overlap]->{'clus'} . "_" . $reduced_by_region[$last_overlap]->{'sinv'}} = 0;
+		}
+	    } else {
+		my %used = (); #indicate if an index has already been used in a column
+		my $notfirst = 0;
+		foreach my $over_index ($first_overlap .. $last_overlap) {
+		    if (defined $used{$over_index}) {
+			next;
+		    }
+		    $used{$over_index} = 1;
+		    if ($notfirst) {
+			#print "THIS ACTUALLY HAPPENED!\n";
+			push @tmp_columns, $column;
+			push @tmp_cores, $core;
+			push @tmp_scores, $score;
+			push @tmp_status, $status;
+			$column = "";
+			$core = {'is_core' => 0}; # initialize to not containing a core
+			$score = {'best_score' => 0}; #initialize to being empty
+			$status = 0;
+		    }
+		    $notfirst = 1;
+		    $column .= $reduced_by_region[$over_index]->{'clus'} . "_" . $over_index . ";";
+		    if ($core_clusters[$reduced_by_region[$over_index]->{'clus'}]) {
+			$core->{'is_core'} = 1;
+			$core->{$reduced_by_region[$over_index]->{'clus'} . "_" . $reduced_by_region[$over_index]->{'sinv'}} = 1;
+		    } else {
+			$core->{$reduced_by_region[$over_index]->{'clus'} . "_" . $reduced_by_region[$over_index]->{'sinv'}} = 0;
+		    }
+		    foreach my $index_overlap (keys %{ $overlaps{$over_index} }) {
+			if (defined $used{$index_overlap}) {
+			    next;
+			}
+			$used{$index_overlap} = 1;
+			$column .= $reduced_by_region[$index_overlap]->{'clus'} . "_" . $index_overlap . ";";
+			if ($core_clusters[$reduced_by_region[$index_overlap]->{'clus'}]) {
+			    $core->{'is_core'} = 1;
+			    $core->{$reduced_by_region[$index_overlap]->{'clus'} . "_" . $reduced_by_region[$index_overlap]->{'sinv'}} = 1;
+			} else {
+			    $core->{$reduced_by_region[$index_overlap]->{'clus'} . "_" . $reduced_by_region[$index_overlap]->{'sinv'}} = 0;
+			}
+		    }
+		    #remove the trailing ";"
+		    my $last_char = chop $column;
+		    if ($last_char ne ";") {
+			die "ERROR last character of $column was not a ; but a $last_char\n";
+		    }
+		}
+	    }
+#	    } else {
+#		my $first_hier = -1; #index of first match which doesn't overlap everything so need hierarchical matches
+#		foreach my $over_index ($first_overlap .. $last_overlap) {
+#		    $num_overlaps[$over_index] = scalar keys %{ $overlaps{$over_index} };
+#		    if ($num_overlaps[$over_index] == ($last_overlap - $first_overlap)) {
+#			# this match overlaps all overlaps in the set so output singly
+#			$column .= $reduced_by_region[$over_index]->{'clus'} . "_" . $over_index . ";";
+#			if ($core_clusters[$reduced_by_region[$over_index]->{'clus'}]) {
+#			    $core->{'is_core'} = 1;
+#			    $core->{$reduced_by_region[$over_index]->{'clus'} . "_" . $reduced_by_region[$over_index]->{'sinv'}} = 1;
+#			} else {
+#			    $core->{$reduced_by_region[$over_index]->{'clus'} . "_" . $reduced_by_region[$over_index]->{'sinv'}} = 0;
+#			}
+#			#print "BA$column\n";
+#		    } else {
+#			if ($first_hier < 0) {
+#			    $first_hier = $over_index;
+#			}
+#			if (($over_index == $first_hier) || (defined $overlaps{$first_hier}{$over_index})) {
+#			    # only proceed if match overlaps the first hierarchical match otherwise accounted for downstream
+#			    if ($core_clusters[$reduced_by_region[$over_index]->{'clus'}]) {
+#				$core->{'is_core'} = 1;
+#				$core->{$reduced_by_region[$over_index]->{'clus'} . "_" . $reduced_by_region[$over_index]->{'sinv'}} = 1;
+#			    } else {
+#				$core->{$reduced_by_region[$over_index]->{'clus'} . "_" . $reduced_by_region[$over_index]->{'sinv'}} = 0;
+#			    }
+#			    $column .= &calc_column (("(" . $reduced_by_region[$over_index]->{'clus'} . "_" . $over_index . ","), $over_index, $last_overlap, $core) . ";";
+#			    #print "BB$column\n";
+#			}
+#		    }
+#		}
+#		#remove the trailing ";"
+#		my $last_char = chop $column;
+#		if ($last_char ne ";") {
+#		    die "ERROR last character of $column was not a ; but a $last_char\n";
+#		}
+#	    }
+	    #print "BC$column\n";
+	    $first_overlap = $last_overlap = $i;
+	    push @tmp_columns, $column;
+	    push @tmp_cores, $core;
+	    push @tmp_scores, $score;
+	    push @tmp_status, $status;
+	    if (($cur_ctg ne $ctg1) && ($cur_ctg ne "")) {
+		$columns{$cur_ctg} = [ @tmp_columns ];
+		@tmp_columns = ();
+		$columns_core{$cur_ctg} = [ @tmp_cores ];
+		@tmp_cores = ();
+		$column_scores{$cur_ctg} = [ @tmp_scores ];
+		@tmp_scores = ();
+		$columns_status{$cur_ctg} = [ @tmp_status ];
+		@tmp_status = ();
+	    }
+	}
+	$cur_ctg = $ctg1;
+	foreach my $j (($i + 1) .. $#reduced_by_region) {
+	    my $ctg2 = $reduced_by_region[$j]->{'ctg'};
+	    my $beg2 = $reduced_by_region[$j]->{'sbeg'};
+	    my $end2 = $reduced_by_region[$j]->{'send'};
+	    my $score2 = $reduced_by_region[$j]->{'bits'};
+	    my $len2 = ($end2 - $beg2) + 1;
+	    my $overlap;
+	    if (($ctg1 ne $ctg2) || ($beg2 >= $end1)){
+		last;
+	    }
+	    if ($end2 < $end1) {
+		$overlap = $len2;
+	    } else {
+		$overlap = ($end1 - $beg2) + 1;
+	    }
+	    my $cov1 = $overlap / $len1;
+	    my $cov2 = $overlap / $len2;
+	    my $mincov = $cov1 < $cov2 ? $cov1 : $cov2; # this used to be maxcov but could lead to combinatorial explosion so instead resolve with check_overlaps later
+	    if ($mincov > $overlap_threshold) {
+		#print "OVER:$i:$j\n";
+		$overlaps{$i}{$j} = $overlaps{$j}{$i} = $mincov;
+		if ($j > $last_overlap) {
+		    $last_overlap = $j;
+		}
+	    }
+	}
+    }
+    $columns{$cur_ctg} = [ @tmp_columns ];
+    $columns_core{$cur_ctg} = [ @tmp_cores ];
+    $columns_status{$cur_ctg} = [ @tmp_status ];
+    $column_scores{$cur_ctg} = [ @tmp_scores ];
+    #foreach my $contig (keys %columns) {
+	#foreach my $i (0 .. $#{ $columns{$contig} }) {
+	    #print "COL$i:$columns{$contig}[$i]:$columns_status{$contig}->[$i]:$column_scores{$contig}[$i]->{'best_score'}\n";
+	#}
+    #}
+    return;
 }
 
 ###################################################################################################
@@ -477,232 +774,6 @@ sub calc_column
     }
     #print "AC$concols\n";
     return ($concols);
-}
-
-###################################################################################################
-sub process_blast_by_region
-# process the blast matches to ignore inferior matches for a region
-{
-    my $sort_by_contig_start = sub { # sort by cluster number then bit score
-	my $contig_test = $a->{'ctg'} cmp $b->{'ctg'};
-	
-	if ($contig_test) {
-	    return ($contig_test);
-	} elsif ($a->{'sbeg'} <=> $b->{'sbeg'}) {
-	    return ($a->{'sbeg'} <=> $b->{'sbeg'});
-	} else {
-	    return (($b->{'send'} - $b->{'sbeg'}) <=> ($a->{'send'} - $a->{'sbeg'}));
-	}
-    };
-    
-    @matches_by_region = sort $sort_by_contig_start (@blast_matches_raw);
-
-    foreach my $i (0 .. $#matches_by_region) {
-	my $ctg1 = $matches_by_region[$i]->{'ctg'};
-	my $beg1 = $matches_by_region[$i]->{'sbeg'};
-	my $end1 = $matches_by_region[$i]->{'send'};
-	my $len1 = ($end1 - $beg1) + 1;
-	foreach my $j (($i + 1) .. $#matches_by_region) {
-	    my $ctg2 = $matches_by_region[$j]->{'ctg'};
-	    my $beg2 = $matches_by_region[$j]->{'sbeg'};
-	    my $end2 = $matches_by_region[$j]->{'send'};
-	    my $len2 = ($end2 - $beg2) + 1;
-	    my $overlap;
-	    if (($ctg1 ne $ctg2) || ($beg2 >= $end1)){
-		last;
-	    }
-	    if ($end2 < $end1) {
-		$overlap = $len2;
-	    } else {
-		$overlap = ($end1 - $beg2) + 1;
-	    }
-	    my $cov1 = $overlap / $len1;
-	    my $cov2 = $overlap / $len2;
-	    my $maxcov = $cov1 > $cov2 ? $cov1 : $cov2;
-	    if ($maxcov > ($overlap_threshold / 2)) {
-		my $clus1 = $matches_by_region[$i]->{'clus'};
-		my $clus2 = $matches_by_region[$j]->{'clus'};
-		my $pid1 = $matches_by_region[$i]->{'pid'};
-		my $pid2 = $matches_by_region[$j]->{'pid'};
-		my $score1 = $matches_by_region[$i]->{'bits'};
-		my $score2 = $matches_by_region[$j]->{'bits'};
-		my $frac1 = ($matches_by_region[$i]->{'qend'} - $matches_by_region[$i]->{'qbeg'}) / $matches_by_region[$i]->{'qlen'};
-		my $frac2 = ($matches_by_region[$j]->{'qend'} - $matches_by_region[$j]->{'qbeg'}) / $matches_by_region[$j]->{'qlen'};
-		my $size1 = $cluster_size[$clus1];
-		my $size2 = $cluster_size[$clus2];
-		if ($clus1 == $clus2) {
-		    if ($score1 < $score2) {
-			$matches_by_region[$i]->{'keepctg'} = 0;
-			$matches_by_region[$i]->{'weak'} = 1;
-		    } else {
-			$matches_by_region[$j]->{'keepctg'} = 0;
-			$matches_by_region[$j]->{'weak'} = 1;
-		    }
-		}
-		if ($maxcov > $overlap_threshold) {
-		    if ($score1 <= 0.9 * $score2) {
-			$matches_by_region[$i]->{'keepctg'} = 0;
-			if (($size1 == 1) || ($size1 <= ($size2 / 10)) || (($frac1 < 0.5) && ($frac2 >= 0.9)) || ($pid1 < ($pid2 - 10)) || (($frac1 < 0.9) && ($pid1 < 90.0) && ($pid2 >= 95.0) && ($frac2 >= 0.9))) {
-			    # ignore some matches from singleton or small size clusters and partial low percent identity matches
-			    $matches_by_region[$i]->{'weak'} = 1;
-			}
-		    } elsif ($score2 <= 0.9 * $score1) {
-			$matches_by_region[$j]->{'keepctg'} = 0;
-			if (($size2 == 1) || ($size2 <= ($size1 / 10)) || (($frac2 < 0.5) && ($frac1 >= 0.9)) || ($pid2 < ($pid1 - 10)) || (($frac2 < 0.9) && ($pid2 < 90.0) && ($pid1 >= 95.0) && ($frac1 >= 0.9))) {
-			    # ignore some matches from singleton or small size clusters and partial low percent identity matches
-			    $matches_by_region[$j]->{'weak'} = 1;
-			}
-		    }
-		}
-	    }
-	}
-    }
-    foreach my $cluster (1 .. $num_clusters) {
-	$cluster_hits[$cluster] = 0; #initialize all clusters as having 0 blast matches in reduced set
-	$cluster_scores[$cluster] = 0; #initialize all clusters as having 0 for best score
-	$cluster_bits[$cluster] = 0; #initialize all clusters as having 0 for bitsscore
-	$cluster_colindex[$cluster] = -1; #initialize all clusters as having colindex -1
-    }
-    my $index = 0;
-    foreach my $match (@matches_by_region) {
-	if ($match->{'keepctg'} || ($match->{'keepclus'} && !$match->{'weak'})) {
-	    #print "PASS($index):$match->{'clus'}($cluster_size[$match->{'clus'}]):$match->{'ctg'}:$match->{'pid'}:$match->{'qbeg'}:$match->{'qend'}:$match->{'qlen'}:$match->{'sbeg'}:$match->{'send'}:$match->{'sinv'}:$match->{'ctglen'}:$match->{'bits'}:$match->{'keepclus'}:$match->{'keepctg'}:$match->{'weak'}\n";
-	    push @reduced_by_region, $match;
-	    $cluster_hits[$match->{'clus'}]++;
-	    $index++;
-	} else {
-	    #print "FAIL:$match->{'clus'}($cluster_size[$match->{'clus'}]):$match->{'ctg'}:$match->{'pid'}:$match->{'qbeg'}:$match->{'qend'}:$match->{'qlen'}:$match->{'sbeg'}:$match->{'send'}:$match->{'sinv'}:$match->{'ctglen'}:$match->{'bits'}:$match->{'keepclus'}:$match->{'keepctg'}:$match->{'weak'}\n";
-	}
-    }
-    my $first_overlap = 0;
-    my $last_overlap = 0;
-    my @num_overlaps = ();     # number of overlaps for a given match
-    my @tmp_columns = ();      # current columns array to be added to the hash
-    my $cur_ctg = "";
-    my @tmp_cores = ();        # parallel array to tmp_columns to deisgnate if the current column contains a single copy core cluster
-    my @tmp_scores = ();        # parallel array to tmp_columns to store scores for the matches in the column
-    my @tmp_status = ();        # parallel array to tmp_columns to deisgnate if the current column contains a single copy core cluster
-    foreach my $i (0 .. $#reduced_by_region) {
-	my $ctg1 = $reduced_by_region[$i]->{'ctg'};
-	my $beg1 = $reduced_by_region[$i]->{'sbeg'};
-	my $end1 = $reduced_by_region[$i]->{'send'};
-	my $score1 = $reduced_by_region[$i]->{'bits'};
-	my $len1 = ($end1 - $beg1) + 1;
-	if ($i > $last_overlap) {
-	    my $column = "";
-	    my $core = {'is_core' => 0}; # initialize to not containing a core
-	    my $score = {'best_score' => 0}; #initialize to being empty
-	    my $status = 0;
-	    #print "FL:$first_overlap:$last_overlap\n";
-	    if ($first_overlap == $last_overlap) {
-		$column = $reduced_by_region[$first_overlap]->{'clus'} . "_" . $first_overlap;
-		if ($core_clusters[$reduced_by_region[$first_overlap]->{'clus'}]) {
-		    $core->{'is_core'} = 1;
-		    $core->{$reduced_by_region[$first_overlap]->{'clus'} . "_" . $reduced_by_region[$first_overlap]->{'sinv'}} = 1;
-		} else {
-		    $core->{$reduced_by_region[$first_overlap]->{'clus'} . "_" . $reduced_by_region[$first_overlap]->{'sinv'}} = 0;
-		}
-	    } elsif ($first_overlap == ($last_overlap - 1)) {
-		$column = $reduced_by_region[$first_overlap]->{'clus'} . "_" . $first_overlap . ";" . $reduced_by_region[$last_overlap]->{'clus'} . "_" . $last_overlap;
-		if ($core_clusters[$reduced_by_region[$first_overlap]->{'clus'}]) {
-		    $core->{'is_core'} = 1;
-		    $core->{$reduced_by_region[$first_overlap]->{'clus'} . "_" . $reduced_by_region[$first_overlap]->{'sinv'}} = 1;
-		} else {
-		    $core->{$reduced_by_region[$first_overlap]->{'clus'} . "_" . $reduced_by_region[$first_overlap]->{'sinv'}} = 0;
-		}
-		if ($core_clusters[$reduced_by_region[$last_overlap]->{'clus'}]) {
-		    $core->{'is_core'} = 1;
-		    $core->{$reduced_by_region[$last_overlap]->{'clus'} . "_" . $reduced_by_region[$last_overlap]->{'sinv'}} = 1;
-		} else {
-		    $core->{$reduced_by_region[$last_overlap]->{'clus'} . "_" . $reduced_by_region[$last_overlap]->{'sinv'}} = 0;
-		}
-	    } else {
-		my $first_hier = -1; #index of first match which doesn't overlap everything so need hierarchical matches
-		foreach my $over_index ($first_overlap .. $last_overlap) {
-		    $num_overlaps[$over_index] = scalar keys %{ $overlaps{$over_index} };
-		    if ($num_overlaps[$over_index] == ($last_overlap - $first_overlap)) {
-			# this match overlaps all overlaps in the set so output singly
-			$column .= $reduced_by_region[$over_index]->{'clus'} . "_" . $over_index . ";";
-			if ($core_clusters[$reduced_by_region[$over_index]->{'clus'}]) {
-			    $core->{'is_core'} = 1;
-			    $core->{$reduced_by_region[$over_index]->{'clus'} . "_" . $reduced_by_region[$over_index]->{'sinv'}} = 1;
-			} else {
-			    $core->{$reduced_by_region[$over_index]->{'clus'} . "_" . $reduced_by_region[$over_index]->{'sinv'}} = 0;
-			}
-			#print "BA$column\n";
-		    } else {
-			if ($first_hier < 0) {
-			    $first_hier = $over_index;
-			}
-			if (($over_index == $first_hier) || (defined $overlaps{$first_hier}{$over_index})) {
-			    # only proceed if match overlaps the first hierarchical match otherwise accounted for downstream
-			    if ($core_clusters[$reduced_by_region[$over_index]->{'clus'}]) {
-				$core->{'is_core'} = 1;
-				$core->{$reduced_by_region[$over_index]->{'clus'} . "_" . $reduced_by_region[$over_index]->{'sinv'}} = 1;
-			    } else {
-				$core->{$reduced_by_region[$over_index]->{'clus'} . "_" . $reduced_by_region[$over_index]->{'sinv'}} = 0;
-			    }
-			    $column .= &calc_column (("(" . $reduced_by_region[$over_index]->{'clus'} . "_" . $over_index . ","), $over_index, $last_overlap, $core) . ";";
-			    #print "BB$column\n";
-			}
-		    }
-		}
-		#remove the trailing ";"
-		my $last_char = chop $column;
-		if ($last_char ne ";") {
-		    die "ERROR last character of $column was not a ; but a $last_char\n";
-		}
-	    }
-	    #print "BC$column\n";
-	    $first_overlap = $last_overlap = $i;
-	    push @tmp_columns, $column;
-	    push @tmp_cores, $core;
-	    push @tmp_scores, $score;
-	    push @tmp_status, $status;
-	    if (($cur_ctg ne $ctg1) && ($cur_ctg ne "")) {
-		$columns{$cur_ctg} = [ @tmp_columns ];
-		@tmp_columns = ();
-		$columns_core{$cur_ctg} = [ @tmp_cores ];
-		@tmp_cores = ();
-		$column_scores{$cur_ctg} = [ @tmp_scores ];
-		@tmp_scores = ();
-		$columns_status{$cur_ctg} = [ @tmp_status ];
-		@tmp_status = ();
-	    }
-	}
-	$cur_ctg = $ctg1;
-	foreach my $j (($i + 1) .. $#reduced_by_region) {
-	    my $ctg2 = $reduced_by_region[$j]->{'ctg'};
-	    my $beg2 = $reduced_by_region[$j]->{'sbeg'};
-	    my $end2 = $reduced_by_region[$j]->{'send'};
-	    my $score2 = $reduced_by_region[$j]->{'bits'};
-	    my $len2 = ($end2 - $beg2) + 1;
-	    my $overlap;
-	    if (($ctg1 ne $ctg2) || ($beg2 >= $end1)){
-		last;
-	    }
-	    if ($end2 < $end1) {
-		$overlap = $len2;
-	    } else {
-		$overlap = ($end1 - $beg2) + 1;
-	    }
-	    my $cov1 = $overlap / $len1;
-	    my $cov2 = $overlap / $len2;
-	    my $maxcov = $cov1 > $cov2 ? $cov1 : $cov2;
-	    if ($maxcov > $overlap_threshold) {
-		#print "OVER:$i:$j\n";
-		$overlaps{$i}{$j} = $overlaps{$j}{$i} = $maxcov;
-		if ($j > $last_overlap) {
-		    $last_overlap = $j;
-		}
-	    }
-	}
-    }
-    $columns{$cur_ctg} = [ @tmp_columns ];
-    $columns_core{$cur_ctg} = [ @tmp_cores ];
-    $columns_status{$cur_ctg} = [ @tmp_status ];
-    $column_scores{$cur_ctg} = [ @tmp_scores ];
-    return;
 }
 
 ###################################################################################################
@@ -1298,6 +1369,7 @@ sub reset_columns # reset the columns data structures flattening out hierarchica
 	$cluster_scores[$cluster] = 0; #initialize all clusters as having 0 for best score
 	$cluster_bits[$cluster] = 0; #initialize all clusters as having 0 for bitsscore
 	$cluster_colindex[$cluster] = -1; #initialize all clusters as having colindex -1
+	$cluster_locs[$cluster] = []; #initialize to empty array
     }
     foreach my $contig (keys	%columns)                                     # Go through each contig
     {
@@ -1393,7 +1465,7 @@ sub score_from_neighbors
 	my $count = 0;
 	foreach my $column (@{ $columns{$contig} })                           # Go through each column of each contig
 	{
-	    #print "Column $column: $columns{$contig}[$count]\n"; 
+	    #print "Column $column\n"; 
 	    my @choices = split(';', $column);
 	    my $choice_count = 0;
 	    my $best = "";
@@ -1510,9 +1582,9 @@ sub score_from_neighbors
 		    }
 		}
 	    }
-	    #print "$columns{$contig}[$count]\n";
 	    if ($best_score > $score_threshold) {
 		$columns_status{$contig}->[$count] = 1;
+		push @{ $cluster_locs[$best_clus] }, $contig . "_" . $count;
 	    } elsif ($best_score > $minimum_score) {
 		if ($final && ($core_clusters[$best_clus] || ($best_score > ($minimum_score + 1)) || (($best_neighbor_score >= 1) && ($reduced_by_region[$best_index]->{'pid'} >= 90)))) {
 		    $columns_status{$contig}->[$count] = 1;
@@ -1522,6 +1594,7 @@ sub score_from_neighbors
 	    } else {
 		$columns_status{$contig}->[$count] = -1;
 	    }
+	    #print "SCOL$count:$columns{$contig}[$count]:$columns_status{$contig}->[$count]:$column_scores{$contig}[$count]{'best_score'}\n";
 	    $count++;
 	}
     }
@@ -1910,33 +1983,37 @@ sub output_files
     }
     my $wgsANIfile;
     unless (open ($wgsANIfile, ">", ($rootname . "_wgsANI.txt")) )  {
-	die ("cannot open whole genome ANI file: $rootname'_wgsANI.txt'!\n");
+	die ("cannot open whole genome ANI file: $rootname" . "_wgsANI.txt!\n");
     }
     my $geneANIfile;
     unless (open ($geneANIfile, ">", ($rootname . "_geneANI.txt")) )  {
-	die ("cannot open whole genome ANI file: $rootname'_geneANI.txt'!\n");
+	die ("cannot open whole genome ANI file: $rootname" . "_geneANI.txt!\n");
     }
     my $rearrange;
     unless (open ($rearrange, ">", ($rootname . "_rearrange.txt")) )  {
-	die ("cannot open rearrangementss file: $rootname'_rearrange.txt'!\n");
+	die ("cannot open rearrangementss file: $rootname" . "_rearrange.txt!\n");
     }
     my $alledgesfile;
     if ($reannotate) {
 	unless (open ($alledgesfile, ">", ($rootname . "_alledges.txt")) )  {
-	    die ("cannot open all edges file: $rootname'_alledges.txt'!\n");
+	    die ("cannot open all edges file: $rootname" . "_alledges.txt!\n");
 	}
     }
     my $attributefile;
     unless (open ($attributefile, ">", ($rootname . "_attributes.txt")) )  {
-	die ("cannot open attributes file: $rootname'_attributes.txt'!\n");
+	die ("cannot open attributes file: $rootname" . "_attributes.txt!\n");
     }
     my $new_attributefile;
     unless (open ($new_attributefile, ">", ($rootname . "_attributes_new.txt")) )  {
-	die ("cannot open new attributes file: $rootname'_attributes_new.txt'!\n");
+	die ("cannot open new attributes file: $rootname" . "_attributes_new.txt!\n");
     }
     my $uniqclusfile;
     unless (open ($uniqclusfile, ">", ($rootname . "_uniq_clus.txt")) )  {
-	die ("cannot open new unique clusters file: $rootname'_uniq_clus.txt'!\n");
+	die ("cannot open new unique clusters file: $rootname" . "_uniq_clus.txt!\n");
+    }
+    my $coreclusfile;
+    unless (open ($coreclusfile, ">", ($rootname . "_core_clus.txt")) )  {
+	die ("cannot open new core coordinates clusters file: $rootname" . "_core_clus.txt!\n");
     }
     my $sumANI = 0;
     my $sumANIlen = 0;
@@ -1956,6 +2033,8 @@ sub output_files
 	my $edge_start = 0;
 	my $edge_end = 0;
 	my $edge_all_start = 0;
+	my $core_start = 0;
+	my $core_end = 0;
 	foreach my $column (@{ $columns{$contig} }) {
 	    if ($columns_status{$contig}->[$col_index] >= 0) {
 		(my $clus, my $index) = split('_', $column);
@@ -1964,7 +2043,6 @@ sub output_files
 		#print "COL$col_index:$column:$columns_status{$contig}->[$col_index]:$reduced_by_region[$index]->{'sinv'}\n";
 		#print "BLAST($column_scores{$contig}[$col_index]->{'best_score'}) $column:$reduced_by_region[$index]->{'clus'}($cluster_size[$reduced_by_region[$index]->{'clus'}]):$reduced_by_region[$index]->{'ctg'}:$reduced_by_region[$index]->{'pid'}:$reduced_by_region[$index]->{'qbeg'}:$reduced_by_region[$index]->{'qend'}:$reduced_by_region[$index]->{'qlen'}:$reduced_by_region[$index]->{'sbeg'}:$reduced_by_region[$index]->{'send'}:$reduced_by_region[$index]->{'sinv'}:$reduced_by_region[$index]->{'ctglen'}:$reduced_by_region[$index]->{'bits'}:$reduced_by_region[$index]->{'keepclus'}:$reduced_by_region[$index]->{'keepctg'}:$reduced_by_region[$index]->{'weak'}\n";
 		if ($columns_status{$contig}->[$col_index] == 1) {
-		    my $ortholog = $target . "CL_" . $clus;
 		    $clus_orient = $clus . '_' . ($reduced_by_region[$index]->{'sinv'} ? '3' : '5');
 		    $edge_end = $beg_align - 1;
 		    $next_clus_orient = $clus . '_' . ($reduced_by_region[$index]->{'sinv'} ? '5' : '3');
@@ -1980,8 +2058,10 @@ sub output_files
 			$prev_core_orient = $next_core_orient;
 			$core_edge_start = $end_align + 1;
 		    }
+		    my $current_edge = "";
 		    if ($prev_clus_orient ne "") {
 			my $tmp_len = ($edge_end - $edge_start) + 1;
+			$current_edge = '(' . $prev_clus_orient . ',' . $clus_orient . ')';
 			$hash_edges{'(' . $prev_clus_orient . ',' . $clus_orient . ')'} = "$target\t$contig\tuniq_edge\t$edge_start\t$edge_end\t$tmp_len\t";
 			$hash_edges{'(' . $clus_orient . ',' . $prev_clus_orient . ')'} = "$target\t$contig\tuniq_edge\t$edge_end\t$edge_start\t$tmp_len\t";
 			if ($reannotate) {
@@ -2001,6 +2081,24 @@ sub output_files
 		    if ($first_clus_orient eq "") {
 			$first_clus_orient = $clus_orient;
 		    }
+		    if ($core_start > 0) {
+			if (((($cluster_size[$clus] * 100) / $num_genomes) >= $core_thresh) && (defined $core_edges{$current_edge})){
+			    $core_end = $end_align;
+			} else {
+			    print $coreclusfile "$target\t$contig\t$core_start\t$core_end\n";
+			    if ((($cluster_size[$clus] * 100) / $num_genomes) >= $core_thresh) {
+				$core_start = $beg_align;
+				$core_end = $end_align;
+			    } else {
+				$core_start = 0;
+				$core_end = 0;
+			    }
+			}
+		    } elsif ((($cluster_size[$clus] * 100) / $num_genomes) >= $core_thresh) {
+			$core_start = $beg_align;
+			$core_end = $end_align;
+		    }
+		    my $ortholog = $target . "CL_" . $clus;
 		    $match_table[$clus] = $ortholog;
 		    my $tmp_len = ($end_align - $beg_align) + 1;
 		    print $attributefile "$contig\t$ortholog\t";
@@ -2020,6 +2118,11 @@ sub output_files
 		    $sumANI += $reduced_by_region[$index]->{'pid'} * $matchlen;
 		    $sumANIlen += $matchlen;
 		} else {
+		    if ($core_start > 0) {
+			print $coreclusfile "$target\t$contig\t$core_start\t$core_end\n";
+			$core_start = 0;
+			$core_end = 0;
+		    }
 		    my $paralog = $target . "PL_" . $paralog_index . "_" . $clus;
 		    $clus_orient = $paralog_index . '_' . ($reduced_by_region[$index]->{'sinv'} ? '3' : '5');
 		    $edge_end = $beg_align - 1;
@@ -2060,6 +2163,9 @@ sub output_files
 	    }
 	    $col_index++;
 	}
+	if ($core_start > 0) {
+	    print $coreclusfile "$target\t$contig\t$core_start\t$core_end\n";
+	}
 	if (($is_circular{$contig}) && ($first_clus_orient ne "") && ($prev_clus_orient ne "")) {
 	    $hash_edges{'(' . $prev_clus_orient . ',' . $first_clus_orient . ')'} = 0;
 	    $hash_edges{'(' . $first_clus_orient . ',' . $prev_clus_orient . ')'} = 0;
@@ -2076,18 +2182,19 @@ sub output_files
     close ($attributefile);
     close ($new_attributefile);
     close ($uniqclusfile);
+    close ($coreclusfile);
     my $matchfile;
     unless (open ($matchfile, ">", ($rootname . "_match.col")) )  {
-	die ("cannot open matchtable column file: $rootname'_match.col'!\n");
+	die ("cannot open matchtable column file: $rootname" . "_match.col!\n");
     }
-    #print "Outputting column for matchtable to $rootname'_match.col'\n";
+    #print "Outputting column for matchtable to $rootname" . "_match.col\n";
     foreach my $cluster (1 .. $num_clusters) {
 	print $matchfile $match_table[$cluster], "\n";
     }
     close ($matchfile);
     my $new_matchfile;
     unless (open ($new_matchfile, ">", ($rootname . "_match_new.col")) )  {
-	die ("cannot open matchtable column file: $rootname'_match_new.col'!\n");
+	die ("cannot open matchtable column file: $rootname" . "_match_new.col!\n");
     }
     my $paralog_index = $num_clusters + 1;
     foreach my $cluster (@new_match_table) {
@@ -2097,7 +2204,7 @@ sub output_files
     close ($new_matchfile);
     my $edgefile;
     unless (open ($edgefile, ">", ($rootname . "_pgg.col")) )  {
-	die ("cannot open edges column file: $rootname'_pgg.col'!\n");
+	die ("cannot open edges column file: $rootname" . "_pgg.col!\n");
     }
     foreach my $edge (@edges) {
 	if (defined $hash_edges{$edge}) {
@@ -2110,11 +2217,11 @@ sub output_files
     close ($edgefile);
     my $new_edgefile;
     unless (open ($new_edgefile, ">", ($rootname . "_pgg_new.col")) )  {
-	die ("cannot open edges column file: $rootname'_pgg_new.col'!\n");
+	die ("cannot open edges column file: $rootname" . "_pgg_new.col!\n");
     }
     my $uniqedgefile;
     unless (open ($uniqedgefile, ">", ($rootname . "_uniq_edge.txt")) )  {
-	die ("cannot open unique edge file: $rootname'_uniq_edge.txt'!\n");
+	die ("cannot open unique edge file: $rootname" . "_uniq_edge.txt!\n");
     }
     foreach my $edge (sort (keys %hash_edges)) {
 	if ($hash_edges{$edge} ne "NOT_UNIQUE") {
@@ -2160,18 +2267,114 @@ sub assign_paralogs
 }
 
 ###################################################################################################
+sub split_genes
+# check for split genes
+{
+    my $sort_by_clus_start = sub { # sort by contig, then start coordinate, then stop coordinate
+	my $contig_test = $a->{'ctg'} cmp $b->{'ctg'};
+	
+	if ($contig_test) {
+	    return ($contig_test);
+	} elsif ($a->{'qbeg'} <=> $b->{'qbeg'}) {
+	    return ($a->{'qbeg'} <=> $b->{'qbeg'});
+	} else {
+	    return (($b->{'qend'} - $b->{'qbeg'}) <=> ($a->{'qend'} - $a->{'qbeg'}));
+	}
+    };
+    
+    foreach my $locs (@cluster_locs) {
+	my @sort_locs = ();
+	my $num = 0;
+	if ((scalar @{ $locs }) <= 1) {
+	    next;
+	}
+	foreach my $loc (@{ $locs }) {
+	    (my $contig, my $col_index) = split('_', $loc);
+	    (my $clus, my $index) = split('_', $columns{$contig}[$col_index]);
+	    $sort_locs[$num++] = { 'clus' => $clus,                                # cluster number
+				   'ctg' => $contig,                               # contig identifier
+				   'col' => $col_index,                            # column index
+				   'blst' => $index,                               # blast index
+				   'qbeg' => $reduced_by_region[$index]->{'qbeg'}, # start coordinate of cluster medoid
+				   'qend' => $reduced_by_region[$index]->{'qend'}, # end  coordinate of cluster medoid
+				   'qlen' => $reduced_by_region[$index]->{'qlen'}, # length of cluster medoid
+				   'sbeg' => $reduced_by_region[$index]->{'sbeg'}, # start coordinate on contig
+				   'send' => $reduced_by_region[$index]->{'send'}, # end  coordinate on contig
+				   'sinv' => $reduced_by_region[$index]->{'sinv'}  # 0 if forward strand, 1 if reverse strand
+	    }
+	}
+	@sort_locs = sort $sort_by_clus_start (@sort_locs);
+	my $loc = pop @sort_locs;
+	my $prev_clus = $loc->{'clus'};
+	my $prev_ctg = $loc->{'ctg'};
+	my $prev_col = $loc->{'col'};
+	my $prev_blst = $loc->{'blst'};
+	my $prev_qbeg = $loc->{'qbeg'};
+	my $prev_qend = $loc->{'qend'};
+	my $prev_qlen = $loc->{'qlen'};
+	my $prev_sbeg = $loc->{'sbeg'};
+	my $prev_send = $loc->{'send'};
+	my $prev_sinv = $loc->{'sinv'};
+	foreach my $loc (@sort_locs) {
+	    my $cur_clus = $loc->{'clus'};
+	    my $cur_ctg = $loc->{'ctg'};
+	    my $cur_col = $loc->{'col'};
+	    my $cur_blst = $loc->{'blst'};
+	    my $cur_qbeg = $loc->{'qbeg'};
+	    my $cur_qend = $loc->{'qend'};
+	    my $cur_qlen = $loc->{'qlen'};
+	    my $cur_sbeg = $loc->{'sbeg'};
+	    my $cur_send = $loc->{'send'};
+	    my $cur_sinv = $loc->{'sinv'};
+	    if ($prev_clus ne $cur_clus) {
+		die "For cluster_locs not all referenced blast hits were to the same cluster\n";
+	    }
+	    my $overlap;
+	    my $prev_len = ($prev_qend - $prev_qbeg) + 1;
+	    my $cur_len = ($cur_qend - $cur_qbeg) + 1;
+	    if ($cur_qend < $prev_qend) {
+		$overlap = $cur_len;
+	    } else {
+		$overlap = ($prev_qend - $cur_qbeg) + 1;
+	    }
+	    my $prev_cov = $overlap / $prev_len;
+	    my $cur_cov = $overlap / $cur_len;
+	    my $maxcov = $cur_cov > $prev_cov ? $cur_cov : $prev_cov;
+	    if ($maxcov <= 0.20) {
+		print "Split gene clus:$prev_clus:$cur_clus;ctg:$prev_ctg:$cur_ctg;col:$prev_col:$cur_col;blast:$prev_blst:$cur_blst;qbeg:$prev_qbeg:$cur_qbeg;qend:$prev_qend:$cur_qend;qlen:$prev_qlen:$cur_qlen;sbeg:$prev_sbeg:$cur_sbeg;send:$prev_send:$cur_send;sinv:$prev_sinv:$cur_sinv\n";
+	    }
+	    $prev_clus = $cur_clus;
+	    $prev_ctg = $cur_ctg;
+	    $prev_col = $cur_col;
+	    $prev_blst = $cur_blst;
+	    $prev_qbeg = $cur_qbeg;
+	    $prev_qend = $cur_qend;
+	    $prev_qlen = $cur_qlen;
+	    $prev_sbeg = $cur_sbeg;
+	    $prev_send = $cur_send;
+	    $prev_sinv = $cur_sinv;
+	}
+    }
+    return;
+}
+
+###################################################################################################
 sub check_overlaps
 # check to see if columns overlap too much and if so if one match is weak enough to disregard
 {
     foreach my $contig (keys %columns) {
 	foreach my $i (0 .. $#{ $columns{$contig} }) {
-	    (my $clus1, my $index1) = split('_', $columns{$contig}[$i]);
+	    #print "COL$i:$columns{$contig}[$i]:$columns_status{$contig}->[$i]:$column_scores{$contig}[$i]->{'best_score'}\n";
+	    (my $col1) = split(';', $columns{$contig}[$i]);
+	    (my $clus1, my $index1) = split('_', $col1);
 	    my $beg1 = $reduced_by_region[$index1]->{'sbeg'};
 	    my $end1 = $reduced_by_region[$index1]->{'send'};
 	    my $bits1 = $reduced_by_region[$index1]->{'bits'};
 	    my $len1 = ($end1 - $beg1) + 1;
+	    #print "$col1:$clus1:$index1:$beg1:$end1\n";
 	    foreach my $j (($i + 1) .. $#{ $columns{$contig} }) {
-		(my $clus2, my $index2) = split('_', $columns{$contig}[$j]);
+		(my $col2) = split(';', $columns{$contig}[$j]);
+		(my $clus2, my $index2) = split('_', $col2);
 		my $beg2 = $reduced_by_region[$index2]->{'sbeg'};
 		my $end2 = $reduced_by_region[$index2]->{'send'};
 		my $bits2 = $reduced_by_region[$index2]->{'bits'};
@@ -2189,6 +2392,7 @@ sub check_overlaps
 		my $cov2 = $overlap / $len2;
 		my $maxcov = $cov1 > $cov2 ? $cov1 : $cov2;
 		if (($maxcov > 0.5) || ($overlap >= 50)) {
+		    #print "OCOL$j:$overlap:$maxcov:$col2:$clus2:$index2:$beg2:$end2\n";
 		    if (($columns_status{$contig}->[$i] <= 0) && ($columns_status{$contig}->[$j] > 0)) {
 			$columns_status{$contig}->[$i] = -1;
 		    } elsif (($columns_status{$contig}->[$j] <= 0) && ($columns_status{$contig}->[$i] > 0)) {
@@ -2230,15 +2434,15 @@ sub check_overlaps
 
 ###################################################################################################
 {#main
+    print "Reading clusters sizes\n";
+    &read_cluster_sizes;
     print "Reading PGG\n";
     &read_pgg;
     print "Reading genomes\n"
     &read_genome;
     print "Reading medoids\n";
     &read_medoids;
-    print "Reading clusters sizes\n";
-    &read_cluster_sizes;
-    print "Reading single copy ocres\n";
+    print "Reading single copy cores\n";
     &read_core_list;
     print "Reading Blast matches\n";
     &read_blast;
@@ -2256,10 +2460,13 @@ sub check_overlaps
     &calc_median;
     print "Resetting columns\n";
     &reset_columns;
-    print "Iterating scoring\n";
+    print "Starting scoring\n";
     &determine_contig_nearest_neighbors;
     &score_from_neighbors(0, 0, 0.8);
+    print "Checking overlapping columns\n";
+    &check_overlaps;
     &reset_columns;
+    print "Iterating scoring\n";
     &determine_contig_nearest_neighbors;
     &score_from_neighbors(0, 0, 0.85);
     &reset_columns;
@@ -2290,8 +2497,11 @@ sub check_overlaps
     &assign_paralogs;
     print "Checking overlapping columns\n";
     &check_overlaps;
-    print "Outputting files\n";
+    print "Refining alignments\n";
     &refine_alignments;
+    print "Checking overlapping columns\n";
     &check_overlaps;
+    &split_genes;
+    print "Outputting files\n";
     &output_files;
 }
