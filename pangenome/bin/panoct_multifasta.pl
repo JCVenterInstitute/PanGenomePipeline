@@ -113,7 +113,7 @@ sub process_matchtable {
 	    die ("ERROR: can not open file $basedir/$cluster_id.\n");
 	}
 	foreach my $feat_name (@feat_names) {
-	    if ($feat_name eq "----------") { #this is a placeholder and can be skipped
+	    if ($feat_name eq "----------" || $feat_name =~ /^$/ ) { #this is a placeholder and can be skipped
 		next;
 	    }
 	    if (!defined $feat_hash{$feat_name}) { # should not happen
