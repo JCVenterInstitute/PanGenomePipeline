@@ -36,7 +36,7 @@ $|++;
     compute_pangenome_ani.pl [ --working_dir <pangenome working directory> ]
                              [ --genome_list <genomes.list> ]
                              [ --combined_att <combined.att> ]
-                             [ --cluster_alignment_dir <directory of .afa files> ]
+                             [ --clust_align_dir <directory of .afa files> ]
                              [ --output_file <output file> ]
                              [ --help ]
 
@@ -48,7 +48,7 @@ B<--genome_list, -g>    :   Path to a list of genomes.  Default is B<--working_d
 
 B<--combined_att, -a>   :   Path to a combined gene attribute file.  Default is B<--working_dir>/combined.att
 
-B<--cluster_alignment_dir, -c>  :   Path to a directory containing ortholog cluster alignments in .afa format.  Default: B<--working_dir>/results/cluster_alignments
+B<--clust_align_dir, -c>  :   Path to a directory containing ortholog cluster alignments in .afa format.  Default: B<--working_dir>/results/cluster_alignments
 
 B<--output_file, -o>    :   Path to desired output file.  Default: B<--working_dir>/results/ani_by_clusters.pl
 
@@ -80,7 +80,7 @@ GetOptions( \%opts,
             'working_dir|w=s',
             'combined_att|a=s',
             'genome_list|g=s',
-            'cluster_alignments_dir|c=s',
+            'clust_align_dir|c=s',
             'output_file|o=s',
             'help|h',
             ) || die "Problem getting options: $!\n";
@@ -240,8 +240,8 @@ sub check_params {
 
     $output_file = $opts{ output_file } // "$working_dir/results/ani_by_clusters.txt";
     
-    $clust_align_dir = $opts{ cluster_alignment_dir } // "$working_dir/results/cluster_alignments";
-    $errors .= "Can't find --cluster_alignment_dir $clust_align_dir\n" unless ( -d $clust_align_dir );
+    $clust_align_dir = $opts{ clust_align_dir } // "$working_dir/results/cluster_alignments";
+    $errors .= "Can't find --clust_align_dir $clust_align_dir\n" unless ( -d $clust_align_dir );
 
     die $errors if $errors;
 
