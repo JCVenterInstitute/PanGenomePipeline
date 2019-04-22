@@ -63,7 +63,7 @@ B<--help, -h>           :   Display this help
 
 use Bio::Seq;
 use Bio::SeqIO;
-use Cwd 'abs_path';
+use Cwd qw( getcwd abs_path );
 use Getopt::Long qw( :config no_ignore_case no_auto_abbrev );
 use Pod::Usage;
 
