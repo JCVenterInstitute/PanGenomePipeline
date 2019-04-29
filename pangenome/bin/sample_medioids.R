@@ -105,7 +105,7 @@ cat("\nHclust Method: ", HclustMethod, "\n\n")
 # Load data - assumes all values in table are numeric to save memory on input colClasses="numeric"
 # header=TRUE assumes there is a header line with column genome names
 #row.names=1 specifies that the first column is a genome name for the row
-distance_dataframe <- read.delim(InputFileName, sep="\t", header=TRUE, check.names=FALSE, comment.char="", quote="", row.names=1, strip.white=TRUE)
+distance_dataframe <- read.delim(InputFileName, sep="\t", header=TRUE, check.names=FALSE, comment.char="", quote="", row.names=1, strip.white=TRUE, fill=TRUE)
 #print(distance_dataframe)
 num_genomes <- nrow(distance_dataframe)
 width_pdf <- ceiling(num_genomes / 3)
@@ -119,7 +119,13 @@ if (!is.null(opt$dist_convert)) {
     cat("\nConverting similarity matrix to distance matrix using threshold: ", opt$dist_convert, "\n\n")
     distance_matrix <- as.numeric(opt$dist_convert) - distance_matrix
 }
-dist_mat <- as.dist(distance_matrix)
+if (!is.na(distance_matrix[nrow(distance_matrix),1]))
+{
+	dist_mat <- as.dist(distance_matrix)
+}else
+{
+	dist_mat <- as.dist(t(distance_matrix))
+}
 if (HclustMethod == "nj") {
     library('ape')
     nj_tree <- nj(dist_mat)
