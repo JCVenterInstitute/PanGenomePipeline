@@ -86,6 +86,8 @@ B<--fasta,--gb,--both>          :   Specify the type of files to download.  [Def
 
 B<--cleanup_ids>                :   For use with B<--download_only>, will cleanup ids found in B<--download_file>.
 
+B<--leave_version>              :   Do NOT srtip version numbers from sequences in downloaded fasta headers.
+
 B<--separate_downloads>         :   Place each downloaded file into a directory within B<--output_dir> named by the newly generated ID for that genome.
 
 B<--exclusion_list>             :   File containing a list of assembly accessions that should NOT be included, even if they match other criteria.
@@ -205,6 +207,9 @@ Note that log file will also be written during B<--download_only> operation, and
 
 In addition to these files, the downloaded files will be placed in the path specified as B<--output_dir>.  If the user specifies B<--separate_downloads>, each downloaded file is placed in a directory specific to the genome to which it belongs, named by the ID created within this script, found in the B<--output_dir>.  Additionally, B<--separate_downloads> also creates a list file for each type of file downlaoded.  (output_dir/fasta.list and/or output_dir/gb.list).
 
+By default, fasta files will undergo a post-processing step to remove trailing version numbers from the ids in seequence headers.  This behaviour can be turned off via the B<--leave_version> flag.
+
+
 =head1 CONTACT
 
     Jason Inman
@@ -253,6 +258,7 @@ GetOptions( \%opts,
             'id_length=i',
             'id_type=s',
             'kingdom|k=s',
+            'leave_version',
             'log_file|l=s',
             'loglevel=i',
             'mapping_file|m=s',
@@ -1002,6 +1008,11 @@ sub retrieve_gb_and_fasta_files {
 
         } elsif ( $target_file =~ /\.fasta$/ ) {
 
+            # Post process to remove trailing versions in headers unless we're asked to not do that.
+            unless ( $opts{ leave_version } ) {
+                post_process_fasta( $target_file );
+            }
+
             # create the listfile of all fasta files if asked.
             if ( $opts{ separate_downloads } ) {
                 my $id = $downloads->{ $url }->{ id };
@@ -1012,6 +1023,33 @@ sub retrieve_gb_and_fasta_files {
         }
 
     }
+}
+
+
+sub post_process_fasta {
+# Remove trailing version ids from headers
+
+    my ( $fasta_file ) = @_;
+
+    # open tmp.  Safer but slower than editing in place.
+    my $tmp_file = "$fasta_file.tmp";
+    open( my $tfh, '>', $tmp_file ) || die "Can't write temp file: $tmp_file: $!\n";
+
+    open( my $ffh, '<', $fasta_file ) || die "Can't read fasta file: $fasta_file: $!\n";
+    while ( <$ffh> ) {
+
+        chomp;
+
+        my $line = $_;
+        if ( /^(>[^.]+)\.\d+(.*)/ ) {
+            $line = $1 . $2;
+        }
+        print $tfh "$line\n";
+
+    }
+
+    move( $tmp_file, $fasta_file );
+
 }
 
 
