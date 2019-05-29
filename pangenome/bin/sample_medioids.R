@@ -186,7 +186,7 @@ for (i in 1:NumMedoids) {
 }
 #print(size_cluster)
 if (sum_check != num_genomes) {
-    print("Sum of cluster sizes not equalt to number of genomes")
+    print("Sum of cluster sizes not equal to number of genomes")
     print(sum_check)
     print(num_genomes)
 }
@@ -201,7 +201,7 @@ clust.medoid = function(i, pdistmat, pclusters) {
     }
 }
 
-medoids <- sapply(unique(clusters), clust.medoid, distance_matrix, clusters)
+medoids <- sapply(unique(clusters), clust.medoid, as.matrix(dist_mat), clusters)
 #print(medoids)
 
 for (i in 1:NumMedoids) {
