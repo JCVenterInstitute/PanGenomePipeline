@@ -23,8 +23,8 @@ $prog =~ s/.*\///;
 use strict;
 use warnings;
 use Getopt::Std;
-getopts ('I:RSADhb:B:m:p:a:g:t:M:s:');
-our ($opt_I,$opt_S,$opt_A,$opt_D,$opt_h,$opt_b,$opt_m,$opt_p,$opt_a,$opt_g,$opt_t,$opt_M,$opt_R,$opt_B,$opt_s);
+getopts ('I:RSADhb:B:m:p:a:g:t:M:s:T:V');
+our ($opt_I,$opt_S,$opt_A,$opt_D,$opt_h,$opt_b,$opt_m,$opt_p,$opt_a,$opt_g,$opt_t,$opt_M,$opt_R,$opt_B,$opt_s,$opt_T,$opt_V);
 
 ## use boolean logic:  TRUE = 1, FALSE = 0
 
@@ -46,9 +46,12 @@ my $ignore_index = -1;
 my $remake_files;
 my $medoids_path;
 my $single_cores;
+my $topology_file;
+my $strip_version = 0;
 if ($opt_M) {$medoids_path = $opt_M;} else {$medoids_path = "";}
 if ($opt_s) {$single_cores = $opt_s;} else {$single_cores = "";}
 if ($opt_R) {$remake_files = 1;} else {$remake_files = 0;}
+if ($opt_V) {$strip_version = 1;} else {$strip_version = 0;}
 if ($opt_A) {$compute_all = 1;} else {$compute_all = 0;} # flag to compute statistics for all
 if ($opt_S) {$suppress = 1;} else {$suppress = 0;} # flag to suppress outputting multifasta files
 if ($opt_D) {$DEBUG = 1;} else { $DEBUG = 0; } # Debug mode is off as default.
@@ -61,6 +64,7 @@ if (($opt_p) && (-s "$opt_p")) {$pgg_file = $opt_p;} else { print STDERR "Error 
 if (($opt_m) && (-s "$opt_m")) {$matchtable_file = $opt_m;} else { print STDERR "Error with -m $opt_m\n"; &option_help; } # if no value for option m (matchtable input file), quit with help menu
 if (($opt_a) && (-s "$opt_a")) {$att_file = $opt_a;} else { print STDERR "Error with -a $opt_a\n"; &option_help; } # if no value for option a (attribute input file), quit with help menu
 if (($opt_g) && (-s "$opt_g")) {$genomes_file_name = $opt_g;} else { print STDERR "Error with -g\n"; &option_help; } # if no value for option g (genome tags and contig file names input file), quit with help menu
+if (($opt_T) && (-s "$opt_T")) {$topology_file = $opt_T;} else { print STDERR "Error with -T\n"; &option_help; } # if no value for option T (topology input file), quit with help menu
 
 my %edge_hash = ();            # Key1 = edge ID Key2 = struct members with their values (5p,3p,gtag, contig)
 my %single_copy_core = ();     # key = cluster number, value is defined if single copy core otherwise undefiend
@@ -94,12 +98,49 @@ my %uniq_edge_alle_25_75 = (); # key = genome ID, value = number of unique allel
 my %uniq_edge_alle_0_25 = ();  # key = genome ID, value = number of unique alleles for edges in 0-25% of genomes
 my @renumber = ();             # maps old cluster numbers to new cluster numbers
 
+######################################################################################################################################################################
+sub read_topology {
+
+    unless (open (CIRCFILE, "<", "$topology_file") )  {
+	die ("ERROR: can not open contig topology file $topology_file.\n");
+    }
+    while (<CIRCFILE>) {
+	my $tag = "";
+	my $asmbl_id = "";
+	my $type = "";
+
+	chomp;
+	($tag, $asmbl_id, $type) = split(/\t/, $_);  # split the scalar $line on tab
+	if ($ignore_id eq $tag) {
+	    next; #skip over the genome to be ignored
+	}
+	if (($tag eq "") || ($asmbl_id eq "") || ($type eq "")) {
+	    die ("ERROR: genome id, assembly id/contig id, and type  must not be empty/null in the contig topology file $topology_file.\nLine:\n$_\n");
+	}
+	if (!defined $genseq_hash{$tag}) {
+	    die ("ERROR: $tag is a genome in the contig topology file $topology_file but not in the genomes fasta list file for $genomes_file_name!\nLine:\n$_\n");
+	}
+	if (!defined $genseq_hash{$tag}->{$asmbl_id}) {
+	    die ("ERROR: $asmbl_id is a contig in the contig topology file $topology_file but not in the genome fasta file for $tag genome!\nLine:\n$_\n");
+	}
+	if ($type eq "circular") {
+	    $is_circular{$tag}->{$asmbl_id} = 1;
+	} elsif ($type eq "linear") {
+	    $is_circular{$tag}->{$asmbl_id} = 0;
+	} else {
+	    die ("ERROR: type $type must be either circular or linear in the  contig topology file $topology_file.\nLine:\n$_\n");
+	}
+    }
+    close (CIRCFILE);
+    return;
+}
+
 sub get_genomes {  # obtain list of genomes - must be in the same order as the matchtable columns - and the mulitfasta contigs file for the genomes
    
     $genome_number = 0;     # total number of genomes to be processed
 
     open (my $infile, "<", "$genomes_file_name") || die ("ERROR: cannot open file $genomes_file_name\n");
-    print "Order of genomes in $genomes_file_name with array index\n";
+    print  STDERR "Order of genomes in $genomes_file_name with array index\n";
     my $target_found = 0;
     while (my $line1 = <$infile>)  {
 	chomp $line1;
@@ -107,14 +148,14 @@ sub get_genomes {  # obtain list of genomes - must be in the same order as the m
 
 	if ($ignore_id eq $name) {
 	    $ignore_index = $genome_number;
-	    print "Ignoring genome $ignore_id with index $ignore_index\n";
+	    print  STDERR "Ignoring genome $ignore_id with index $ignore_index\n";
 	    next; #skip over the genome to be ignored
 	}
 	if (defined $genseq_hash{$name})  {
 	    die ("ERROR:  You have more than one occurance of $name in $genomes_file_name!\n");
 	} else  {
 	    push (@genome_array, $name); # populate the genome_array in the order of the genome file
-	    print "$name\t$genome_number\n";
+	    print  STDERR "$name\t$genome_number\n";
 	    $genome_number++;
 	    if ($target_id ne "") {
 		if ($target_id eq $name) {
@@ -133,15 +174,12 @@ sub get_genomes {  # obtain list of genomes - must be in the same order as the m
 	    my @fields = split(/\s+/, $title);  # split the scalar $line on space or tab (to separate the identifier from the header and store in array @line
 	    my $id = $fields[0]; # unique orf identifier is in column 0, com_name is in rest
 	    $id =~ s/>\s*//; # remove leading > and spaces
-	    $id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
+	    if ($strip_version) {
+		$id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
+	    }
 	    $sequence =~ s/[^a-zA-Z]//g; # remove any non-alphabet characters
 	    $genseq_hash{$name}->{$id} = $sequence;
 	    $genseq_len{$name}->{$id} = length($sequence);
-	    if (($#fields > 0) && ($fields[1] eq "circular")) {
-		$is_circular{$name}->{$id} = 1;
-	    } else {
-		$is_circular{$name}->{$id} = 0;
-	    }
 	    $title = ""; # clear the title for the next contig
 	    $sequence = ""; #clear out the sequence for the next contig
 	}
@@ -152,7 +190,7 @@ sub get_genomes {  # obtain list of genomes - must be in the same order as the m
 	die ("ERROR: Did not find target genome: $target_id in genome list file: $genomes_file_name.\n");
     }
     close($infile);
-    print "$genome_number genomes\n\n";
+    print  STDERR "$genome_number genomes\n\n";
 }
 
 sub get_attributes {
@@ -179,14 +217,16 @@ sub get_attributes {
 	$anno = $att_line[4];
 	$tag = $att_line[5];
 	if ($ignore_id eq $tag) {
-	    #print "$ignore_id:$ignore_index:$tag:$feat_name\n";
+	    #print STDERR "$ignore_id:$ignore_index:$tag:$feat_name\n";
 	    next; #skip over the genome to be ignored
 	}
 	if ($asmbl_id eq "") {
 	    print STDERR "ERROR: assembly id/contig id must not be empty/null in the gene attribute file\n$_\n";
 	    $failed = 1;
 	}
-	$asmbl_id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
+	if ($strip_version) {
+	    $asmbl_id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
+	}
 	if (defined $feat_hash{$feat_name}) {
 	    print STDERR "ERROR: $feat_name appears more than once in the gene attribute file $att_file!\n";
 	    $failed = 1;
@@ -255,7 +295,7 @@ sub process_matchtable {
 	my $seen = 0;
 	foreach my $feat_name (@feat_names) {
 	    if (!$seen && ($ignore_index == $index)) {
-		#print "$ignore_id:$ignore_index:$index:$feat_name\n";
+		#print STDERR "$ignore_id:$ignore_index:$index:$feat_name\n";
 		$seen =1;
 		next; # ignore the column corresponding to the genome to be ignored
 	    }
@@ -561,7 +601,7 @@ sub process_pgg {
 	my $seen = 0;
 	foreach my $edge_value (@edge_values) {
 	    if (!$seen && ($ignore_index == $index)) {
-		#print "$ignore_id:$ignore_index:$index:$edge_value\n";
+		#print STDERR "$ignore_id:$ignore_index:$index:$edge_value\n";
 		$seen = 1;
 		next; # ignore the column corresponding to the genome to be ignored
 	    }
@@ -619,7 +659,7 @@ sub process_pgg {
 	    my $sequence;
 	    my $contig_len = $genseq_len{$genome_tag}->{$contig1};
 	    if ((abs($start2 - $end1) > (0.9 * $contig_len)) && $is_circular{$genome_tag}->{$contig1}) {
-		#print "$genome_tag-$contig1($contig_len) $start1:$end1 - $start2:$end2\n";
+		#print STDERR "$genome_tag-$contig1($contig_len) $start1:$end1 - $start2:$end2\n";
 		if ($start1 < $end2) {
 		    my $tmp_seq = "";
 		    my $beg_offset = 0;
@@ -634,7 +674,7 @@ sub process_pgg {
 		    $edge_hash{$genome_tag . $edge_id}->{'len'} = $seq_len;
 		    $edge_hash{$genome_tag . $edge_id}->{'5p'} = $end1 - 1;
 		    $edge_hash{$genome_tag . $edge_id}->{'3p'} = $start2 + 1;
-		    #print "if $seq_len:$start2:$end1:$beg_offset:$end_offset\n";
+		    #print STDERR "if $seq_len:$start2:$end1:$beg_offset:$end_offset\n";
 		    if ($seq_len <= 0) {
 			$seq_len = 0;
 			$sequence = "";
@@ -662,7 +702,7 @@ sub process_pgg {
 		    $edge_hash{$genome_tag . $edge_id}->{'len'} = $seq_len;
 		    $edge_hash{$genome_tag . $edge_id}->{'5p'} = $end1 + 1;
 		    $edge_hash{$genome_tag . $edge_id}->{'3p'} = $start2 - 1;
-		    #print "else $seq_len:$end1:$start2:$beg_offset:$end_offset\n";
+		    #print STDERR "else $seq_len:$end1:$start2:$beg_offset:$end_offset\n";
 		    if ($seq_len <= 0) {
 			$seq_len = 0;
 			$sequence = "";
@@ -803,15 +843,15 @@ sub process_pgg {
 			    if ($seq_len < 0) {
 				$seq_len = 0;
 			    }
-			    #print "$genome_tag($mean):$median_25:$median:$median_75:$seq_len\n";
+			    #print STDERR "$genome_tag($mean):$median_25:$median:$median_75:$seq_len\n";
 			    if ($seq_len < ($median_25 - (0.1 * $median))) {
 				$short_edge{$genome_tag}++;
 				print DIFFFILE "$genome_tag\t$edge_hash{$feat_name}->{'contig'}\tshort_edge_allele\t$edge_hash{$feat_name}->{'5p'}\t$edge_hash{$feat_name}->{'3p'}\t$edge_hash{$feat_name}->{'len'}\t$edge_name\n";
-				#print "SHORT\n";
+				#print STDERR "SHORT\n";
 			    } elsif ($seq_len > ($median_75 + (0.1 * $median))) {
 				$long_edge{$genome_tag}++;
 				print DIFFFILE "$genome_tag\t$edge_hash{$feat_name}->{'contig'}\tlong_edge_allele\t$edge_hash{$feat_name}->{'5p'}\t$edge_hash{$feat_name}->{'3p'}\t$edge_hash{$feat_name}->{'len'}\t$edge_name\n";
-				#print "LONG\n";
+				#print STDERR "LONG\n";
 			    }
 			    $total_edge{$genome_tag}++;
 			} else {
@@ -923,7 +963,7 @@ sub read_single_cores                                               # Read in th
 	$line =~ s/\s*//g; # remove all whitespace characters
 	$line =~ s/^.*_//; # remove centroid_, medoid_, cluster_ or any other verbiage before the cluster number
 	$single_copy_core{$line} = 1;
-	#print "$line:$single_copy_core{$line}\n";
+	#print STDERR "$line:$single_copy_core{$line}\n";
     }
     close(CLUSTER_CORES);
 }
@@ -935,7 +975,7 @@ sub write_single_cores                                               # Read in t
     }
     foreach my $clus (sort {$a <=> $b} (keys %single_copy_core)) {
 	print OUT_CORES "$renumber[$clus]\n";
-	#print "$clus:$renumber[$single_copy_core{$clus}]\n";
+	#print STDERR "$clus:$renumber[$single_copy_core{$clus}]\n";
     }
     close(OUT_CORES);
 }
@@ -965,7 +1005,7 @@ Citation:  Derrick E. Fouts, Lauren Brinkac, Erin Beck, Jason Inman, and Granger
            Conserved Gene Neighborhood for Pan-Genomic Analysis of Bacterial Strains and Closely Related Species" Nucleic Acids Res. 2012 Dec;40(22).
 
   Usage: $prog <options>
-Example: $prog -b output_dir -g panoct_genome_tag_file -m panoct_matchtable_file -a panoct_attribute_file -p panoct_pan-genome_graph_file
+Example: $prog -b output_dir -g panoct_genome_tag_file -m panoct_matchtable_file -a panoct_attribute_file -p panoct_pan-genome_graph_file -T topology_file
 Version: $version
  Option:
      -h: print this help page
@@ -975,6 +1015,7 @@ Version: $version
      -m: panoct matchtable file (input)
      -a: combined panoct attribute file (input)
      -p: a panoct pan_genome_graph_file
+     -T: a topology file (3 columns tab delimited: genome id, contig id, circular/linear
      -t: target genome id if stats only wanted for one genome
      -A: output stats for all genomes
      -S: suppress multifasta output
@@ -1009,11 +1050,13 @@ _EOB_
 }
 
 ########################################  M A I N  #####################################################
-print "Getting genome names and contig sequences from $genomes_file_name\n";
+print  STDERR "Getting genome names and contig sequences from $genomes_file_name\n";
 &get_genomes;
-print "Reading single copy core clusters from $single_cores\n";
+print  STDERR "Getting topology from $topology_file\n";
+&read_topology;
+print  STDERR "Reading single copy core clusters from $single_cores\n";
 &read_single_cores;
-print "Gathering gene coordinates and attribute information from $att_file\n";
+print  STDERR "Gathering gene coordinates and attribute information from $att_file\n";
 foreach my $genome_tag (@genome_array) {
     $total_clus{$genome_tag} = 0;           # key = genome ID, value = number of nonsingleton clusters
     $total_edge{$genome_tag} = 0;           # key = genome ID, value = number of nonsingleton edges
@@ -1036,7 +1079,7 @@ foreach my $genome_tag (@genome_array) {
     $uniq_edge_alle_0_25{$genome_tag} = 0;  # key = genome ID, value = number of unique alleles for edges in 0-25% of genomes
 }    
 &get_attributes;
-print "Reading matchtable from $matchtable_file and outputting cluster multifasta files to $basedir\n";
+print  STDERR "Reading matchtable from $matchtable_file and outputting cluster multifasta files to $basedir\n";
 if ($compute_all || ($target_id ne "")) {
     unless (open (DIFFFILE, ">", "$basedir/anomalies.txt") ) {
 	die ("ERROR: cannot open file $basedir/anomalies.txt\n");
@@ -1044,7 +1087,7 @@ if ($compute_all || ($target_id ne "")) {
     print DIFFFILE "Genome ID\tContig ID\tType\tStart\tEnd\tLength\tCluster-Edge ID\n";
 }
 &process_matchtable;
-print "Reading pan-genome graph from $pgg_file and outputting edge multifasta files to $basedir\n";
+print  STDERR "Reading pan-genome graph from $pgg_file and outputting edge multifasta files to $basedir\n";
 &process_pgg;
 if ($compute_all || ($target_id ne "")) {
     close (DIFFFILE);

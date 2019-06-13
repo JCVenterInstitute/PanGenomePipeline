@@ -42,7 +42,6 @@ sub get_genomes {  # obtain list of genomes and ancilliary information
 	my %genseq_len = ();       # key = contig id, value = length of contig
 	my %gene_id_hash = ();     # key = gene id, value = current exon count
 	my @exons = ();            # array of hashs (struct) keys = contig (ctg), start coordinate (beg), attribute line (att), and stop coordinate (end)
-	my @sorted_exons = ();
 	my $exon_count = 0;
 	chomp $line1;
 	(my $name, my $gff_file_name, my $contig_file_name, my $att_file_name, my $fasta_file_name) = split(/\t/, $line1);  # split the scalar $line on tab
@@ -111,7 +110,7 @@ sub get_genomes {  # obtain list of genomes and ancilliary information
 			$feat_name = $name . "_" . $feat_name;
 		    }
 		    my $anno = "";
-		    my $attribute
+		    my $attribute;
 		    $attribute = "$seqid\t$feat_name\t";
 		    if ($strand eq "+") {
 			$attribute .= "$start\t$end\t";
@@ -122,8 +121,9 @@ sub get_genomes {  # obtain list of genomes and ancilliary information
 		    $exons[$exon_count++] = { 'ctg' => $seqid,       # contig identifier
 					      'beg' => $start,       # start coordinate on contig
 					      'att' => $attribute,   # attribute line
+					      'dup' => 0,            # start marked as not contained in another exon
 					      'end' => $end          # end  coordinate on contig
-		    }
+		    };
 		    last;
 		}
 	    }
@@ -141,7 +141,7 @@ sub get_genomes {  # obtain list of genomes and ancilliary information
 	    }
 	};
 	
-	@sorted_exons = sort $sort_by_contig_start (@exons);
+	@exons = sort $sort_by_contig_start (@exons);
 	
 	my $att_file;
 	unless (open ($att_file, ">", $att_file_name) )  {
@@ -151,26 +151,25 @@ sub get_genomes {  # obtain list of genomes and ancilliary information
 	unless (open ($fasta_file, ">", $fasta_file_name) )  {
 	    die ("ERROR: cannot open file $fasta_file_name.\n");
 	}
-	foreach my $i (0 .. $#sorted_exons) {
-	    my $ctg1 = $sorted_exons[$i]->{'ctg'};
-	    my $beg1 = $sorted_exons[$i]->{'beg'};
-	    my $end1 = $sorted_exons[$i]->{'end'};
-	    if (!defined $sorted_exons[$i]->{'dup'}) {
-		    print $att_file $sorted_exons[$i]->{'att'};
+	foreach my $i (0 .. $#exons) {
+	    my $ctg1 = $exons[$i]->{'ctg'};
+	    my $beg1 = $exons[$i]->{'beg'};
+	    my $end1 = $exons[$i]->{'end'};
+	    if (!$exons[$i]->{'dup'}) {
+		    print $att_file $exons[$i]->{'att'};
 		    my $sequence;
 		    my $seq_len;
-		    my $anno = "";
-		    if ($strand eq "+") {
+		    (my $seqid, my $feat_name, my $start, my $end, my $anno, my $genome) = split(/\t/, $exons[$i]->{'att'});
+		    if ($end >= $start) {
 			$seq_len = ($end - $start) + 1;
 			$sequence = substr($genseq_hash{$seqid}, ($start - 1), $seq_len);
 		    } else {
-			$seq_len = ($end - $start) + 1;
-			my $tmp_seq = substr($genseq_hash{$seqid}, ($start - 1), $seq_len);
+			$seq_len = ($start - $end) + 1;
+			my $tmp_seq = substr($genseq_hash{$seqid}, ($end - 1), $seq_len);
 			$sequence = reverse($tmp_seq);
 			$sequence =~ tr/AGCTYRWSKMDVHBagctyrwskmdvhb/TCGARYWSMKHBDVtcgarywsmkhbdv/;
 		    }
-		    my @fields = split(/\t/, $sorted_exons[$i]->{'att'});  # $fields[1] contains feat_name
-		    print $fasta_file ">$fields[1]\n";
+		    print $fasta_file ">$feat_name $anno\n";
 		    my $pos;
 		    my $tmp_seq_len = $seq_len;
 		    for ( $pos = 0 ; $tmp_seq_len > 60 ; $pos += 60 ) {
@@ -179,16 +178,16 @@ sub get_genomes {  # obtain list of genomes and ancilliary information
 		    }
 		    print $fasta_file substr($sequence, $pos, $tmp_seq_len), "\n";
 	    }
-	    foreach my $j (($i + 1) .. $#sorted_exons) {
-		my $ctg2 = $sorted_exons[$j]->{'ctg'};
-		my $beg2 = $sorted_exons[$j]->{'beg'};
-		my $end2 = $sorted_exons[$j]->{'end'};
+	    foreach my $j (($i + 1) .. $#exons) {
+		my $ctg2 = $exons[$j]->{'ctg'};
+		my $beg2 = $exons[$j]->{'beg'};
+		my $end2 = $exons[$j]->{'end'};
 		if (($ctg1 ne $ctg2) || ($beg2 > $end1)){
 		    last;
 		}
 		if ($end2 <= $end1) {
-		    print "WARNING: Ignoring:\n$sorted_exons[$j]->{'att'} which is contained by $sorted_exons[$i]->{'att'}";
-		    $sorted_exons[$j]->{'dup'} = 1;
+		    print "WARNING: Ignoring:\n$exons[$j]->{'att'} which is contained by $exons[$i]->{'att'}";
+		    $exons[$j]->{'dup'} = 1;
 		}
 	    }
 	}

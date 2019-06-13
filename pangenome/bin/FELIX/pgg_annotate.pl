@@ -60,10 +60,12 @@ my $help_text = "THIS IS PLACEHOLDER TEXT\n";                             #<----
 GetOptions('neighbors=s' => \my $adjacency_file_path,                              # Location of CGN data output by "core_neighbor_finder.pl"
 			'blast=s' => \my $blast_file_path,
 			'help' => \my $help,
+			'strip_version' => \my $strip_version,
 			'reannotate' => \my $reannotate,
 			'core=s' => \my $core_list,
 			'cutoff=f' => \my $core_thresh,
 			'genome=s' => \my $genome,
+			'topology=s' => \my $topology_file,
 	                'medoids=s' => \my $medoids_path,
 	                'target=s' => \my $target,
 	                'rootname=s' => \my $rootname,
@@ -77,15 +79,45 @@ if (!(defined $core_thresh)) {
 }
 if (!$blast_file_path || !$cluster_weights_path || !$genome) 
 {
-    print ("This program requires gene neighborhood information, BLAST results, and list of core clusters as input\n$help_text\n");   #<----- update to include new mandatory input
+    print STDERR "This program requires gene neighborhood information, BLAST results, and list of core clusters as input\n$help_text\n";   #<----- update to include new mandatory input
     exit;
 }
 if ($help)
 {
-    print ("$help_text");
+    print STDERR "$help_text";
     exit;
 }
 
+######################################################################################################################################################################
+sub read_topology {
+
+    unless (open (CIRCFILE, "<", "$topology_file") )  {
+	die ("ERROR: can not open contig topology file $topology_file.\n");
+    }
+    while (<CIRCFILE>) {
+	my $tag = "";
+	my $asmbl_id = "";
+	my $type = "";
+
+	chomp;
+	($tag, $asmbl_id, $type) = split(/\t/, $_);  # split the scalar $line on tab
+	if (($tag eq "") || ($asmbl_id eq "") || ($type eq "")) {
+	    die ("ERROR: genome id, assembly id/contig id, and type  must not be empty/null in the contig topology file $topology_file.\nLine:\n$_\n");
+	}
+	if (!defined $contigs{$asmbl_id}) {
+	    die ("ERROR: $asmbl_id is a contig in the contig topology file but not in the genome fasta file $genome!\nLine:\n$_\n");
+	}
+	if ($type eq "circular") {
+	    $is_circular{$asmbl_id} = 1;
+	} elsif ($type eq "linear") {
+	    $is_circular{$asmbl_id} = 0;
+	} else {
+	    die ("ERROR: type $type must be either circular or linear in the  contig topology file $topology_file.\nLine:\n$_\n");
+	}
+    }
+    close (CIRCFILE);
+    return;
+}
 
 ######################################################################################################################################################################
 sub read_neighbors                                  # reads in neighbors from core_neighbor_finder.pl output, this is how program gets CGN info
@@ -96,19 +128,19 @@ sub read_neighbors                                  # reads in neighbors from co
     my $line = '';
     while ($line = <NEIGHBORS>)
 	{
-	    #print $line;
+	    #print STDERR $line;
 	    if ($line =~ /^#/)
 	    {
 		next;                                    # skip comment/header lines
 	    }
 	    if (!($line =~ /(\d+)\t([0123456789_, ]+|NONE)\t([0123456789_, ]+|NONE)\t([0123456789_, ]+|NONE)\t([0123456789_, ]+|NONE)/))
 	    {
-		print ("BAD CGN DATA:\n $line \n");                                # NOTE: SHOULD WE DIE HERE???????
+		print STDERR "BAD CGN DATA:\n $line \n";                                # NOTE: SHOULD WE DIE HERE???????
 		next;                                                              # Is it better to split on tab and sanitize later?
 	    }
 	    elsif ($line =~ /(\d+)\t([0123456789_, ]+|NONE)\t([0123456789_, ]+|NONE)\t([0123456789_, ]+|NONE)\t([0123456789_, ]+|NONE)/)
 	    {
-		#print "$1:$2:$3:$4:$5\n";
+		#print STDERR "$1:$2:$3:$4:$5\n";
 		&store_neighbors($1,$2,$NEAR_3);                                   # Cluster, 3' nearest, index
 		&store_neighbors($1,$3,$NEAR_5);                                   # Cluster, 5' nearest, index
 		&store_neighbors($1,$4,$CORE_3);                                   # Cluster, 3' core, index
@@ -122,7 +154,7 @@ sub read_neighbors                                  # reads in neighbors from co
 	    if ($cluster < $near_5_clus) {
 		my $index = ($near_5_end == 5) ? $NEAR_5 : $NEAR_3;
 		my $score = ($neighbors[$cluster][$NEAR_5]->{$choice} + $neighbors[$near_5_clus][$index]->{$cluster . "_5"}) / 2;
-		#print "SYM $cluster:$NEAR_5:$choice:$neighbors[$cluster][$NEAR_5]->{$choice}:$neighbors[$near_5_clus][$index]->{$cluster . '_5'}:$score\n";
+		#print STDERR "SYM $cluster:$NEAR_5:$choice:$neighbors[$cluster][$NEAR_5]->{$choice}:$neighbors[$near_5_clus][$index]->{$cluster . '_5'}:$score\n";
 		$neighbors[$near_5_clus][$index]->{$cluster . "_5"} = $score;
 		$neighbors[$cluster][$NEAR_5]->{$choice} = $score;
 	    }
@@ -132,7 +164,7 @@ sub read_neighbors                                  # reads in neighbors from co
 	    if ($cluster < $near_3_clus) {
 		my $index = ($near_3_end == 5) ? $NEAR_5 : $NEAR_3;
 		my $score = ($neighbors[$cluster][$NEAR_3]->{$choice} + $neighbors[$near_3_clus][$index]->{$cluster . "_3"}) / 2;
-		#print "SYM $cluster:$NEAR_3:$choice:$neighbors[$cluster][$NEAR_3]->{$choice}:$neighbors[$near_3_clus][$index]->{$cluster . '_3'}:$score\n";
+		#print STDERR "SYM $cluster:$NEAR_3:$choice:$neighbors[$cluster][$NEAR_3]->{$choice}:$neighbors[$near_3_clus][$index]->{$cluster . '_3'}:$score\n";
 		$neighbors[$near_3_clus][$index]->{$cluster . "_3"} = $score;
 		$neighbors[$cluster][$NEAR_3]->{$choice} = $score;
 	    }
@@ -189,9 +221,9 @@ sub store_neighbors
 		    $neighbors[$cluster][$index]{$adjacent} = $count / $total;            # weight by percentage of total neighbors
 		    if (@fields == 3) {
 			$neighbors[$cluster][$index]{$adjacent . "_d"} = $fields[2];
-			#print "SCORE $cluster:$index:$adjacent:$neighbors[$cluster][$index]{$adjacent}:$neighbors[$cluster][$index]{$adjacent . '_d'}\n";
+			#print STDERR "SCORE $cluster:$index:$adjacent:$neighbors[$cluster][$index]{$adjacent}:$neighbors[$cluster][$index]{$adjacent . '_d'}\n";
 		    } else {
-			#print "SCORE $cluster:$index:$adjacent:$neighbors[$cluster][$index]{$adjacent}\n";
+			#print STDERR "SCORE $cluster:$index:$adjacent:$neighbors[$cluster][$index]{$adjacent}\n";
 		    }
 		}
 	}
@@ -225,9 +257,9 @@ sub store_neighbors
 		    $neighbors[$cluster][$index]{$adjacent} = (($current_rank)/$number_ranks);            # Finally, assign score based on currnet rank/# ranks   (top rank gets n/n=100%, worst rank gets 1/n)
 		    if (@fields == 3) {
 			$neighbors[$cluster][$index]{$adjacent . "_d"} = $fields[2];
-			#print "SCORE $cluster:$index:$adjacent:$neighbors[$cluster][$index]{$adjacent}:$neighbors[$cluster][$index]{$adjacent . '_d'}\n";
+			#print STDERR "SCORE $cluster:$index:$adjacent:$neighbors[$cluster][$index]{$adjacent}:$neighbors[$cluster][$index]{$adjacent . '_d'}\n";
 		    } else {
-			#print "SCORE $cluster:$index:$adjacent:$neighbors[$cluster][$index]{$adjacent}\n";
+			#print STDERR "SCORE $cluster:$index:$adjacent:$neighbors[$cluster][$index]{$adjacent}\n";
 		    }
 		}
 	}
@@ -360,7 +392,9 @@ sub read_blast                                                       # For each 
 	$qid = $btab_line[0];
 	$qid =~ s/^.*_//; # remove centroid_, medoid_, cluster_ or any other verbiage before the cluster number
 	$sid = $btab_line[1];
-	$sid =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
+	if ($strip_version) {
+	    $sid =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
+	}
 	$pid = $btab_line[2];
 	$qbegin = $btab_line[3];
 	$qend = $btab_line[4];
@@ -456,7 +490,7 @@ sub process_blast_by_region
     
     @matches_by_region = sort $sort_by_contig_start (@matches_by_cluster);
 
-    print "Sorted by region - now mark weak matches\n";
+    print STDERR "Sorted by region - now mark weak matches\n";
     foreach my $i (0 .. $#matches_by_region) {
 	my $ctg1 = $matches_by_region[$i]->{'ctg'};
 	my $beg1 = $matches_by_region[$i]->{'sbeg'};
@@ -525,15 +559,15 @@ sub process_blast_by_region
 	$cluster_locs[$cluster] = []; #initialize to empty array
     }
     my $index = 0;
-    print "Sorted by region - now eliminate weak matches\n";
+    print STDERR "Sorted by region - now eliminate weak matches\n";
     foreach my $match (@matches_by_region) {
 	if ($match->{'keepctg'} || ($match->{'keepclus'} && !$match->{'weak'})) {
-	    #print "PASS($index):$match->{'clus'}($cluster_size[$match->{'clus'}]):$match->{'ctg'}:$match->{'pid'}:$match->{'qbeg'}:$match->{'qend'}:$match->{'qlen'}:$match->{'sbeg'}:$match->{'send'}:$match->{'sinv'}:$match->{'ctglen'}:$match->{'bits'}:$match->{'keepclus'}:$match->{'keepctg'}:$match->{'weak'}\n";
+	    #print STDERR "PASS($index):$match->{'clus'}($cluster_size[$match->{'clus'}]):$match->{'ctg'}:$match->{'pid'}:$match->{'qbeg'}:$match->{'qend'}:$match->{'qlen'}:$match->{'sbeg'}:$match->{'send'}:$match->{'sinv'}:$match->{'ctglen'}:$match->{'bits'}:$match->{'keepclus'}:$match->{'keepctg'}:$match->{'weak'}\n";
 	    push @reduced_by_region, $match;
 	    $cluster_hits[$match->{'clus'}]++;
 	    $index++;
 	} else {
-	    #print "FAIL:$match->{'clus'}($cluster_size[$match->{'clus'}]):$match->{'ctg'}:$match->{'pid'}:$match->{'qbeg'}:$match->{'qend'}:$match->{'qlen'}:$match->{'sbeg'}:$match->{'send'}:$match->{'sinv'}:$match->{'ctglen'}:$match->{'bits'}:$match->{'keepclus'}:$match->{'keepctg'}:$match->{'weak'}\n";
+	    #print STDERR "FAIL:$match->{'clus'}($cluster_size[$match->{'clus'}]):$match->{'ctg'}:$match->{'pid'}:$match->{'qbeg'}:$match->{'qend'}:$match->{'qlen'}:$match->{'sbeg'}:$match->{'send'}:$match->{'sinv'}:$match->{'ctglen'}:$match->{'bits'}:$match->{'keepclus'}:$match->{'keepctg'}:$match->{'weak'}\n";
 	}
     }
     my $first_overlap = 0;
@@ -544,7 +578,7 @@ sub process_blast_by_region
     my @tmp_cores = ();        # parallel array to tmp_columns to deisgnate if the current column contains a single copy core cluster
     my @tmp_scores = ();        # parallel array to tmp_columns to store scores for the matches in the column
     my @tmp_status = ();        # parallel array to tmp_columns to deisgnate if the current column contains a single copy core cluster
-    print "Sorted by region building columns\n";
+    print STDERR "Sorted by region building columns\n";
     foreach my $i (0 .. $#reduced_by_region) {
 	my $ctg1 = $reduced_by_region[$i]->{'ctg'};
 	my $beg1 = $reduced_by_region[$i]->{'sbeg'};
@@ -556,7 +590,7 @@ sub process_blast_by_region
 	    my $core = {'is_core' => 0}; # initialize to not containing a core
 	    my $score = {'best_score' => 0}; #initialize to being empty
 	    my $status = 0;
-	    #print "FL:$first_overlap:$last_overlap\n";
+	    #print STDERR "FL:$first_overlap:$last_overlap\n";
 	    if ($first_overlap == $last_overlap) {
 		$column = $reduced_by_region[$first_overlap]->{'clus'} . "_" . $first_overlap;
 		if ($core_clusters[$reduced_by_region[$first_overlap]->{'clus'}]) {
@@ -588,7 +622,7 @@ sub process_blast_by_region
 		    }
 		    $used{$over_index} = 1;
 		    if ($notfirst) {
-			#print "THIS ACTUALLY HAPPENED!\n";
+			#print STDERR "THIS ACTUALLY HAPPENED!\n";
 			push @tmp_columns, $column;
 			push @tmp_cores, $core;
 			push @tmp_scores, $score;
@@ -639,7 +673,7 @@ sub process_blast_by_region
 #			} else {
 #			    $core->{$reduced_by_region[$over_index]->{'clus'} . "_" . $reduced_by_region[$over_index]->{'sinv'}} = 0;
 #			}
-#			#print "BA$column\n";
+#			#print STDERR "BA$column\n";
 #		    } else {
 #			if ($first_hier < 0) {
 #			    $first_hier = $over_index;
@@ -653,7 +687,7 @@ sub process_blast_by_region
 #				$core->{$reduced_by_region[$over_index]->{'clus'} . "_" . $reduced_by_region[$over_index]->{'sinv'}} = 0;
 #			    }
 #			    $column .= &calc_column (("(" . $reduced_by_region[$over_index]->{'clus'} . "_" . $over_index . ","), $over_index, $last_overlap, $core) . ";";
-#			    #print "BB$column\n";
+#			    #print STDERR "BB$column\n";
 #			}
 #		    }
 #		}
@@ -663,7 +697,7 @@ sub process_blast_by_region
 #		    die "ERROR last character of $column was not a ; but a $last_char\n";
 #		}
 #	    }
-	    #print "BC$column\n";
+	    #print STDERR "BC$column\n";
 	    $first_overlap = $last_overlap = $i;
 	    push @tmp_columns, $column;
 	    push @tmp_cores, $core;
@@ -700,7 +734,7 @@ sub process_blast_by_region
 	    my $cov2 = $overlap / $len2;
 	    my $mincov = $cov1 < $cov2 ? $cov1 : $cov2; # this used to be maxcov but could lead to combinatorial explosion so instead resolve with check_overlaps later
 	    if ($mincov > $overlap_threshold) {
-		#print "OVER:$i:$j\n";
+		#print STDERR "OVER:$i:$j\n";
 		$overlaps{$i}{$j} = $overlaps{$j}{$i} = $mincov;
 		if ($j > $last_overlap) {
 		    $last_overlap = $j;
@@ -714,7 +748,7 @@ sub process_blast_by_region
     $column_scores{$cur_ctg} = [ @tmp_scores ];
     #foreach my $contig (keys %columns) {
 	#foreach my $i (0 .. $#{ $columns{$contig} }) {
-	    #print "COL$i:$columns{$contig}[$i]:$columns_status{$contig}->[$i]:$column_scores{$contig}[$i]->{'best_score'}\n";
+	    #print STDERR "COL$i:$columns{$contig}[$i]:$columns_status{$contig}->[$i]:$column_scores{$contig}[$i]->{'best_score'}\n";
 	#}
     #}
     return;
@@ -726,7 +760,7 @@ sub calc_column
 {
     my ($partcol, $first, $last, $core) = @_;
     my $concols = "";
-    #print "CFL:$first:$last:$partcol\n";
+    #print STDERR "CFL:$first:$last:$partcol\n";
     if ($first == $last) {
 	# didn't add anything so add )
 	#remove the trailing ","
@@ -735,7 +769,7 @@ sub calc_column
 	    die "ERROR last character of $partcol was not a , but a $last_char\n";
 	}
 	$concols = $partcol . ")";
-	#print "AA$concols\n";
+	#print STDERR "AA$concols\n";
 	return ($concols);
     }
     my $first_hier = -1; #index of first match which doesn't overlap everything so need hierarchical matches
@@ -753,7 +787,7 @@ sub calc_column
 		    $core->{$reduced_by_region[$index]->{'clus'} . "_" . $reduced_by_region[$index]->{'sinv'}} = 0;
 		}
 		$concols .= (&calc_column (($partcol . $reduced_by_region[$index]->{'clus'} . "_" . $index . ","), $index, $last, $core)) . ";";
-		#print "AB$concols\n";
+		#print STDERR "AB$concols\n";
 	    }
 	}
     }
@@ -772,7 +806,7 @@ sub calc_column
 	    die "ERROR last character of $concols was not a ; but a $last_char\n";
 	}
     }
-    #print "AC$concols\n";
+    #print STDERR "AC$concols\n";
     return ($concols);
 }
 
@@ -781,9 +815,9 @@ sub nw_align
 # use dynamic programming to find best alignment of query to subject DNA sequences where full alignment of query is desired so all terminal query gaps are penalized
 {
     my ($query, $subject) = @_;
-    #print length($query), ":", length($subject), "\n";
-    #print substr($query, 0, 80), "...", substr($query, -80), "\n";
-    #print substr($subject, 0, 80), "...", substr($subject, -80), "\n";
+    #print STDERR length($query), ":", length($subject), "\n";
+    #print STDERR substr($query, 0, 80), "...", substr($query, -80), "\n";
+    #print STDERR substr($subject, 0, 80), "...", substr($subject, -80), "\n";
     my @prev_score = (); #previous row in dynamic programming array
     my @cur_score = (); #current row in dynamic programming array
     my @prev_s_gap_len = (); #previous row in dynamic programming array
@@ -886,12 +920,12 @@ sub nw_align
 	}
     }
     $best = $refcur_score->[0];
-    #print "0:$refcur_score->[0];";
+    #print STDERR "0:$refcur_score->[0];";
     $beg = 0;
     $end = 0;
     $matches = 0;
     foreach my $j (1 .. length($subject)) {
-	#print "$j:$refcur_score->[$j];";
+	#print STDERR "$j:$refcur_score->[$j];";
 	if ($refcur_score->[$j] > $best) {
 	    $best = $refcur_score->[$j];
 	    $beg = $refcur_beg->[$j];
@@ -899,7 +933,7 @@ sub nw_align
 	    $matches = $refcur_matches->[$j];
 	}
     }
-    #print "\n";
+    #print STDERR "\n";
     return ($beg, $end, $matches);
 }
 
@@ -908,9 +942,9 @@ sub nw_align_hash
 # use dynamic programming to find best alignment of query to subject DNA sequences where full alignment of query is desired so all terminal query gaps are penalized
 {
     my ($query, $subject) = @_;
-    #print length($query), ":", length($subject), "\n";
-    #print substr($query, 0, 80), "...", substr($query, -80), "\n";
-    #print substr($subject, 0, 80), "...", substr($subject, -80), "\n";
+    #print STDERR length($query), ":", length($subject), "\n";
+    #print STDERR substr($query, 0, 80), "...", substr($query, -80), "\n";
+    #print STDERR substr($subject, 0, 80), "...", substr($subject, -80), "\n";
     my @prev = (); #previous row in dynamic programming array
     my @cur = (); #current row in dynamic programming array
     my $gap_open = -4; #gap open penalty
@@ -980,12 +1014,12 @@ sub nw_align_hash
 	}
     }
     $best = $refcur->[0]{'score'};
-    #print "0:$refcur->[0]{'score'};";
+    #print STDERR "0:$refcur->[0]{'score'};";
     $beg = 0;
     $end = 0;
     $matches = 0;
     foreach my $j (1 .. length($subject)) {
-	#print "$j:$refcur->[$j]{'score'};";
+	#print STDERR "$j:$refcur->[$j]{'score'};";
 	if ($refcur->[$j]{'score'} > $best) {
 	    $best = $refcur->[$j]{'score'};
 	    $beg = $refcur->[$j]{'beg'};
@@ -993,7 +1027,7 @@ sub nw_align_hash
 	    $matches = $refcur->[$j]{'matches'};
 	}
     }
-    #print "\n";
+    #print STDERR "\n";
     return ($beg, $end, $matches);
 }
 
@@ -1012,14 +1046,11 @@ sub read_genome {  # read in the contigs for a genome and and store for later ex
 	my @fields = split(/\s+/, $title);  # split the scalar $line on space or tab (to separate the identifier from the header and store in array @line
 	my $id = $fields[0]; # unique orf identifier is in column 0, com_name is in rest
 	$id =~ s/>\s*//; # remove leading > and spaces
-	$id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
+	if ($strip_version) {
+	    $id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
+	}
 	$sequence =~ s/[^a-zA-Z]//g; # remove any non-alphabet characters
 	$contigs{$id} = $sequence;
-	if ($fields[1] eq "circular") {
-	    $is_circular{$id} = 1;
-	} else {
-	    $is_circular{$id} = 0;
-	}
 	$title = ""; # clear the title for the next contig
 	$sequence = ""; #clear out the sequence for the next contig
     }
@@ -1057,6 +1088,76 @@ sub read_medoids {  # read in the medoids for the PGG
 }
 
 #####################################################################################################
+sub refine_contig_nearest_neighbors                                            # For each column, reduce nearest neighbors and core neighbors from a hash to a single value
+{
+    foreach my $contig (keys	%nearest) {                                    # Go through each contig
+	foreach my $column (@{ $nearest{$contig} }) {                          # Go through each contig
+	    foreach my $index ($NEAR_5, $NEAR_3) {
+		my $neighbor = $column->[$index];                             # Go through each type of neighbor
+		my $first = 1;
+		my $concat = "";
+		foreach my $clus (keys %{ $neighbor }) {                  # Should only be one neighbor at this point
+		    if ($clus eq "is_core") {
+			next;
+		    }
+		    #print STDERR "$contig:$first $clus $neighbor->{$clus}\n";
+		    if ($first) {
+			$first = 0;
+			$concat .= $clus . "_" . $neighbor->{$clus};
+		    } else {
+			$concat .= ":" . $clus . "_" . $neighbor->{$clus};
+		    }
+		}
+		#print STDERR "$concat\n";
+		$column->[$index] = $concat;
+	    }
+	    foreach my $index ($CORE_5, $CORE_3) {
+		my $neighbor = $column->[$index];                             # Go through each type of neighbor
+		my %core_nn_values = ();
+		foreach my $clus (keys %{ $neighbor }) {                  # Should only be one neighbor at this point
+		    if ($clus eq "is_core") {
+			next;
+		    }
+		    #print STDERR "$clus ";
+		    if ($clus =~ /.*_d$/) {
+			my $newclus = $clus;
+			$newclus =~ s/_d$//;
+			if (!defined $core_nn_values{$newclus}) {
+			    $core_nn_values{$newclus} = {};
+			    #print STDERR "reset ";
+			}
+			$core_nn_values{$newclus}->{'dist'} = $neighbor->{$clus};
+			#print STDERR "$newclus dist $neighbor->{$clus}\n";
+		    } else {
+			if (!defined $core_nn_values{$clus}) {
+			    $core_nn_values{$clus} = {};
+			    #print STDERR "reset ";
+			}
+			$core_nn_values{$clus}->{'inv'} = $neighbor->{$clus};
+			#print STDERR "$clus inv $neighbor->{$clus}\n";
+		    }
+		}
+		my $first = 1;
+		my $concat = "";
+		foreach my $clus (keys %core_nn_values) {                  # Should only be one neighbor at this point
+		    #print STDERR "$contig:$first $clus $core_nn_values{$clus}->{'inv'} $core_nn_values{$clus}->{'dist'}\n";
+		    if ($first) {
+			$first = 0;
+			$concat .= $clus . "_" . $core_nn_values{$clus}->{'inv'} . "_" . $core_nn_values{$clus}->{'dist'};
+		    } else {
+			$concat .= ":" . $clus . "_" . $core_nn_values{$clus}->{'inv'} . "_" . $core_nn_values{$clus}->{'dist'};
+		    }
+		}
+		#print STDERR "$concat\n";
+		$column->[$index] = $concat;
+	    }
+	}
+    }
+    return;
+}
+		
+
+#####################################################################################################
 sub determine_contig_nearest_neighbors                                                     # For each column, find nearest neighbors and core neighbors
 {
 #my %nearest = ();          # hash of arrays of hashes, key = contid id, value = array where index = column #, value = hash where key = {left|right}, value = nearest core column on that side
@@ -1079,9 +1180,9 @@ sub determine_contig_nearest_neighbors                                          
 	my $last_index = $#{ $columns_core{$contig} };
 	foreach my $count (0 .. $last_index)                           # Go through each column of each contig
 	{
-	    #print "Column $count: $columns{$contig}[$count]\n";
-	    #print %{ $columns_core{$contig}[$count] };
-	    #print "\n";
+	    #print STDERR "Column $count: $columns{$contig}[$count]\n";
+	    #print STDERR %{ $columns_core{$contig}[$count] };
+	    #print STDERR "\n";
 	    my $col_count = 0;
 	    my $col_count_cores = 0;
 	    my $core_found = 0;
@@ -1109,23 +1210,23 @@ sub determine_contig_nearest_neighbors                                          
 		$end_window_cores += $col_count_cores;
 		push @window_cells_cores, $col_count_cores;
 	    }
-	    #print "$beg_window:$end_window:$beg_window_cores:$end_window_cores\n";
+	    #print STDERR "$beg_window:$end_window:$beg_window_cores:$end_window_cores\n";
 	}
-	#print "TMP_NEIGHBORS:";
-	#print @tmp_neighbors;
-	#print "\n";
-	#print "TMP_CORES:";
-	#print @tmp_cores;
-	#print "\n";
-	#print "is_circular: $is_circular{$contig}\n";
+	#print STDERR "TMP_NEIGHBORS:";
+	#print STDERR @tmp_neighbors;
+	#print STDERR "\n";
+	#print STDERR "TMP_CORES:";
+	#print STDERR @tmp_cores;
+	#print STDERR "\n";
+	#print STDERR "is_circular: $is_circular{$contig}\n";
 	if ($is_circular{$contig}) {
 	    my $context = 0; # count when we have filled in the context
 	    my $context_cores = 0; # count when we have filled in the context
 	    foreach my $count (0 .. $last_index)                           # Go through each column of each contig
 	    {
-		#print "Column $count: $columns{$contig}[$count]\n";
-		#print %{ $columns_core{$contig}[$count] };
-		#print "\n";
+		#print STDERR "Column $count: $columns{$contig}[$count]\n";
+		#print STDERR %{ $columns_core{$contig}[$count] };
+		#print STDERR "\n";
 		my $col_count = 0;
 		my $col_count_cores = 0;
 		my $core_found = 0;
@@ -1161,20 +1262,20 @@ sub determine_contig_nearest_neighbors                                          
 		    push @window_cells_cores, $col_count_cores;
 		    $context_cores++;
 		}
-		#print "$beg_window:$end_window:$beg_window_cores:$end_window_cores\n";
+		#print STDERR "$beg_window:$end_window:$beg_window_cores:$end_window_cores\n";
 	    }
-	    #print "TMP_NEIGHBORS:";
-	    #print @tmp_neighbors;
-	    #print "\n";
-	    #print "TMP_CORES:";
-	    #print @tmp_cores;
-	    #print "\n";
+	    #print STDERR "TMP_NEIGHBORS:";
+	    #print STDERR @tmp_neighbors;
+	    #print STDERR "\n";
+	    #print STDERR "TMP_CORES:";
+	    #print STDERR @tmp_cores;
+	    #print STDERR "\n";
 	}
 	
 	foreach my $count (0 .. $last_index)                           # Go through each column of each contig
 	{
 	    (my $beg, my $end) = split(':', $index_cols[$count]);
-	    #print "IC$index_cols[$count]:$beg:$end\n";
+	    #print STDERR "IC$index_cols[$count]:$beg:$end\n";
 	    $nearest{$contig}[$count][$NEAR_5] = {};
 	    if ($end >= 0) {
 		foreach my $index ($beg .. $end) {
@@ -1183,15 +1284,15 @@ sub determine_contig_nearest_neighbors                                          
 		}
 	    }
 	    ($beg, $end) = split(':', $index_cores[$count]);
-	    #print "IC$index_cores[$count]:$beg:$end\n";
+	    #print STDERR "IC$index_cores[$count]:$beg:$end\n";
 	    $nearest{$contig}[$count][$CORE_5] = {};
 	    if ($end >= 0) {
 		foreach my $index ($beg .. $end) {
 		    (my $clus, my $inv) = split('_', $tmp_cores[$index]);
-		    #print "$index:$clus:$inv:$tmp_cores[$index]\n";
+		    #print STDERR "$index:$clus:$inv:$tmp_cores[$index]\n";
 		    $nearest{$contig}[$count][$CORE_5]->{$clus} = $inv;
 		    $nearest{$contig}[$count][$CORE_5]->{$clus . "_d"} = ($tmp_cores_dists[$index] < $count) ? ($count - $tmp_cores_dists[$index]) : (($count + $last_index + 1) - $tmp_cores_dists[$index]);
-		    #print "LEFT:$contig:$count:$clus:$tmp_cores_dists[$index]:$last_index:$nearest{$contig}[$count][$CORE_5]->{$clus . '_d'}\n";
+		    #print STDERR "LEFT:$contig:$count:$clus:$tmp_cores_dists[$index]:$last_index:$nearest{$contig}[$count][$CORE_5]->{$clus . '_d'}\n";
 		}
 	    }
 	}
@@ -1210,9 +1311,9 @@ sub determine_contig_nearest_neighbors                                          
 	@index_cores = ();
 	foreach my $count (reverse(0 .. $last_index))                           # Go through each column of each contig in reverse order
 	{
-	    #print "Column $count: $columns{$contig}[$count]\n";
-	    #print %{ $columns_core{$contig}[$count] };
-	    #print "\n";
+	    #print STDERR "Column $count: $columns{$contig}[$count]\n";
+	    #print STDERR %{ $columns_core{$contig}[$count] };
+	    #print STDERR "\n";
 	    my $col_count = 0;
 	    my $col_count_cores = 0;
 	    my $core_found = 0;
@@ -1240,23 +1341,23 @@ sub determine_contig_nearest_neighbors                                          
 		$end_window_cores += $col_count_cores;
 		push @window_cells_cores, $col_count_cores;
 	    }
-	    #print "$beg_window:$end_window:$beg_window_cores:$end_window_cores\n";
+	    #print STDERR "$beg_window:$end_window:$beg_window_cores:$end_window_cores\n";
 	}
-	#print "TMP_NEIGHBORS:";
-	#print @tmp_neighbors;
-	#print "\n";
-	#print "TMP_CORES:";
-	#print @tmp_cores;
-	#print "\n";
-	#print "is_circular: $is_circular{$contig}\n";
+	#print STDERR "TMP_NEIGHBORS:";
+	#print STDERR @tmp_neighbors;
+	#print STDERR "\n";
+	#print STDERR "TMP_CORES:";
+	#print STDERR @tmp_cores;
+	#print STDERR "\n";
+	#print STDERR "is_circular: $is_circular{$contig}\n";
 	if ($is_circular{$contig}) {
 	    my $context = 0; # count when we have filled in the context
 	    my $context_cores = 0; # count when we have filled in the context
 	    foreach my $count (reverse(0 .. $last_index))                           # Go through each column of each contig
 	    {
-		#print "Column $count: $columns{$contig}[$count]\n";
-		#print %{ $columns_core{$contig}[$count] };
-		#print "\n";
+		#print STDERR "Column $count: $columns{$contig}[$count]\n";
+		#print STDERR %{ $columns_core{$contig}[$count] };
+		#print STDERR "\n";
 		my $col_count = 0;
 		my $col_count_cores = 0;
 		my $core_found = 0;
@@ -1292,22 +1393,22 @@ sub determine_contig_nearest_neighbors                                          
 		    push @window_cells_cores, $col_count_cores;
 		    $context_cores++;
 		}
-		#print "$beg_window:$end_window:$beg_window_cores:$end_window_cores\n";
+		#print STDERR "$beg_window:$end_window:$beg_window_cores:$end_window_cores\n";
 	    }
-	    #print "TMP_NEIGHBORS:";
-	    #print @tmp_neighbors;
-	    #print "\n";
-	    #print "TMP_CORES:";
-	    #print @tmp_cores;
-	    #print "\n";
+	    #print STDERR "TMP_NEIGHBORS:";
+	    #print STDERR @tmp_neighbors;
+	    #print STDERR "\n";
+	    #print STDERR "TMP_CORES:";
+	    #print STDERR @tmp_cores;
+	    #print STDERR "\n";
 	}
 	foreach my $count (0 .. $last_index)                           # Go through each column of each contig
 	{
-	    #print "Column: $columns{$contig}[$count]\n";
-	    #print %{ $columns_core{$contig}[$count] };
-	    #print "\n";
+	    #print STDERR "Column: $columns{$contig}[$count]\n";
+	    #print STDERR %{ $columns_core{$contig}[$count] };
+	    #print STDERR "\n";
 	    (my $beg, my $end) = split(':', $index_cols[$count]);
-	    #print "IC$index_cols[$count]:$beg:$end\n";
+	    #print STDERR "IC$index_cols[$count]:$beg:$end\n";
 	    $nearest{$contig}[$count][$NEAR_3] = {};
 	    if ($end >= 0) {
 		foreach my $index ($beg .. $end) {
@@ -1316,25 +1417,25 @@ sub determine_contig_nearest_neighbors                                          
 		}
 	    }
 	    ($beg, $end) = split(':', $index_cores[$count]);
-	    #print "IC$index_cores[$count]:$beg:$end\n";
+	    #print STDERR "IC$index_cores[$count]:$beg:$end\n";
 	    $nearest{$contig}[$count][$CORE_3] = {};
 	    if ($end >= 0) {
 		foreach my $index ($beg .. $end) {
 		    (my $clus, my $inv) = split('_', $tmp_cores[$index]);
 		    $nearest{$contig}[$count][$CORE_3]->{$clus} = $inv;
 		    $nearest{$contig}[$count][$CORE_3]->{$clus . "_d"} = ($tmp_cores_dists[$index] > $count) ? ($tmp_cores_dists[$index] - $count) : (($tmp_cores_dists[$index] + $last_index + 1) - $count);
-		    #print "RIGHT:$contig:$count:$clus:$tmp_cores_dists[$index]:$last_index:$nearest{$contig}[$count][$CORE_3]->{$clus . '_d'}\n";
+		    #print STDERR "RIGHT:$contig:$count:$clus:$tmp_cores_dists[$index]:$last_index:$nearest{$contig}[$count][$CORE_3]->{$clus . '_d'}\n";
 		}
 	    }
-	    #print "NEAR_5: ";
-	    #print %{ $nearest{$contig}[$count][$NEAR_5] };
-	    #print "\nNEAR_3: ";
-	    #print %{ $nearest{$contig}[$count][$NEAR_3] };
-	    #print "\nCORE_5: ";
-	    #print %{ $nearest{$contig}[$count][$CORE_5] };
-	    #print "\nCORE_3: ";
-	    #print %{ $nearest{$contig}[$count][$CORE_3] };
-	    #print "\n";
+	    #print STDERR "NEAR_5: ";
+	    #print STDERR %{ $nearest{$contig}[$count][$NEAR_5] };
+	    #print STDERR "\nNEAR_3: ";
+	    #print STDERR %{ $nearest{$contig}[$count][$NEAR_3] };
+	    #print STDERR "\nCORE_5: ";
+	    #print STDERR %{ $nearest{$contig}[$count][$CORE_5] };
+	    #print STDERR "\nCORE_3: ";
+	    #print STDERR %{ $nearest{$contig}[$count][$CORE_3] };
+	    #print STDERR "\n";
 	}
     }
     $, = '';
@@ -1345,18 +1446,18 @@ sub determine_contig_nearest_neighbors                                          
 sub calc_median # calculate median and quartile scores
 {
     @best_scores = sort {$a <=> $b} @best_scores;
-    #print "BEST SCORES\n";
+    #print STDERR "BEST SCORES\n";
     #foreach my $score (@best_scores) {
-	#print "$score\n";
+	#print STDERR "$score\n";
     #}
     @second_scores = sort {$a <=> $b} @second_scores;
-    #print "SECOND SCORES\n";
+    #print STDERR "SECOND SCORES\n";
     #foreach my $score (@second_scores) {
-	#print "$score\n";
+	#print STDERR "$score\n";
     #}
     $score_median = $best_scores[(scalar @best_scores) / 2];
     $score_threshold = ($best_scores[(scalar @best_scores) / 4] + $second_scores[(scalar @second_scores) / 2]) / 2;
-    print "Median $score_median Threshold $score_threshold\n";
+    print STDERR "Median $score_median Threshold $score_threshold\n";
     return;
 }
 
@@ -1465,9 +1566,8 @@ sub score_from_neighbors
 	my $count = 0;
 	foreach my $column (@{ $columns{$contig} })                           # Go through each column of each contig
 	{
-	    #print "Column $column\n"; 
+	    #print STDERR "Column $column\n"; 
 	    my @choices = split(';', $column);
-	    my $choice_count = 0;
 	    my $best = "";
 	    my $best_score = 0;
 	    my $best_bits = 0;
@@ -1481,7 +1581,7 @@ sub score_from_neighbors
 #	    }
 	    foreach my $choice (@choices)                                     # Go through each option of each column
 	    {
-		#print "$choice\n";
+		#print STDERR "$choice\n";
 		if ($choice =~ /^\(/)                                         # When there are (), each option needs to be further split
 		{
 		    my $last_char = chop $choice;
@@ -1506,13 +1606,13 @@ sub score_from_neighbors
 		    }
 		    foreach my $sec_choice (@sec_choices) 
 		    {
-			#print "$sec_choice\n";
+			#print STDERR "$sec_choice\n";
 			(my $clus, my $index) = split('_', $sec_choice);
 			(my $left, my $left_neighbor, my $left_core, my $left_core_neighbor, my $left_core_dist) = &score_neighbors($reduced_by_region[$index]->{'sinv'},1,$contig,$count,$clus,$index,1,$nearhash);                       # get scores and identities of best neighbors on left
 			(my $right, my $right_neighbor, my $right_core, my $right_core_neighbor, my $right_core_dist) = &score_neighbors($reduced_by_region[$index]->{'sinv'},0,$contig,$count,$clus,$index,1,$nearhash);                  # get scores and identities of best neighbors on right
 			my $total = ($left + $left_core + $right + $right_core + $left_core_dist + $right_core_dist) + &homology_score($clus, $index);                                                                                      # get total neighbor score
-			#print "BLAST $sec_choice:$reduced_by_region[$index]->{'clus'}($cluster_size[$reduced_by_region[$index]->{'clus'}]):$reduced_by_region[$index]->{'ctg'}:$reduced_by_region[$index]->{'pid'}:$reduced_by_region[$index]->{'qbeg'}:$reduced_by_region[$index]->{'qend'}:$reduced_by_region[$index]->{'qlen'}:$reduced_by_region[$index]->{'sbeg'}:$reduced_by_region[$index]->{'send'}:$reduced_by_region[$index]->{'sinv'}:$reduced_by_region[$index]->{'ctglen'}:$reduced_by_region[$index]->{'bits'}:$reduced_by_region[$index]->{'keepclus'}:$reduced_by_region[$index]->{'keepctg'}:$reduced_by_region[$index]->{'weak'}\n";
-			#print "$total:$left:$left_neighbor:$right:$right_neighbor:$left_core:$left_core_neighbor:$right_core:$right_core_neighbor:$left_core_dist:$right_core_dist\n";
+			#print STDERR "BLAST $sec_choice:$reduced_by_region[$index]->{'clus'}($cluster_size[$reduced_by_region[$index]->{'clus'}]):$reduced_by_region[$index]->{'ctg'}:$reduced_by_region[$index]->{'pid'}:$reduced_by_region[$index]->{'qbeg'}:$reduced_by_region[$index]->{'qend'}:$reduced_by_region[$index]->{'qlen'}:$reduced_by_region[$index]->{'sbeg'}:$reduced_by_region[$index]->{'send'}:$reduced_by_region[$index]->{'sinv'}:$reduced_by_region[$index]->{'ctglen'}:$reduced_by_region[$index]->{'bits'}:$reduced_by_region[$index]->{'keepclus'}:$reduced_by_region[$index]->{'keepctg'}:$reduced_by_region[$index]->{'weak'}\n";
+			#print STDERR "$total:$left:$left_neighbor:$right:$right_neighbor:$left_core:$left_core_neighbor:$right_core:$right_core_neighbor:$left_core_dist:$right_core_dist\n";
 			if ($total > $sec_best_score) { # perhaps keep more than just the best if the scores are close
 			    $sec_best_score = $total;
 			    $sec_best_bits = $reduced_by_region[$index]->{'bits'};
@@ -1539,8 +1639,8 @@ sub score_from_neighbors
 		    (my $left, my $left_neighbor, my $left_core, my $left_core_neighbor, my $left_core_dist) = &score_neighbors($reduced_by_region[$index]->{'sinv'},1,$contig,$count,$clus,$index,0,0);                       # get scores and identities of best neighbors on left
 		    (my $right, my $right_neighbor, my $right_core, my $right_core_neighbor, my $right_core_dist) = &score_neighbors($reduced_by_region[$index]->{'sinv'},0,$contig,$count,$clus,$index,0,0);                  # get scores and identities of best neighbors on right
 		    my $total = ($left + $left_core + $right + $right_core + $left_core_dist + $right_core_dist) + &homology_score($clus, $index);                                                                                      # get total neighbor score
-		    #print "BLAST $choice:$reduced_by_region[$index]->{'clus'}($cluster_size[$reduced_by_region[$index]->{'clus'}]):$reduced_by_region[$index]->{'ctg'}:$reduced_by_region[$index]->{'pid'}:$reduced_by_region[$index]->{'qbeg'}:$reduced_by_region[$index]->{'qend'}:$reduced_by_region[$index]->{'qlen'}:$reduced_by_region[$index]->{'sbeg'}:$reduced_by_region[$index]->{'send'}:$reduced_by_region[$index]->{'sinv'}:$reduced_by_region[$index]->{'ctglen'}:$reduced_by_region[$index]->{'bits'}:$reduced_by_region[$index]->{'keepclus'}:$reduced_by_region[$index]->{'keepctg'}:$reduced_by_region[$index]->{'weak'}\n";
-		    #print "$total:$left:$left_neighbor:$right:$right_neighbor:$left_core:$left_core_neighbor:$right_core:$right_core_neighbor:$left_core_dist:$right_core_dist\n";
+		    #print STDERR "BLAST $choice:$reduced_by_region[$index]->{'clus'}($cluster_size[$reduced_by_region[$index]->{'clus'}]):$reduced_by_region[$index]->{'ctg'}:$reduced_by_region[$index]->{'pid'}:$reduced_by_region[$index]->{'qbeg'}:$reduced_by_region[$index]->{'qend'}:$reduced_by_region[$index]->{'qlen'}:$reduced_by_region[$index]->{'sbeg'}:$reduced_by_region[$index]->{'send'}:$reduced_by_region[$index]->{'sinv'}:$reduced_by_region[$index]->{'ctglen'}:$reduced_by_region[$index]->{'bits'}:$reduced_by_region[$index]->{'keepclus'}:$reduced_by_region[$index]->{'keepctg'}:$reduced_by_region[$index]->{'weak'}\n";
+		    #print STDERR "$total:$left:$left_neighbor:$right:$right_neighbor:$left_core:$left_core_neighbor:$right_core:$right_core_neighbor:$left_core_dist:$right_core_dist\n";
 		    $column_scores{$contig}[$count]{$choice} = $total;
 		    if ($total > $best_score) { # perhaps keep more than just the best if the scores are close
 			$second_score = $best_score;
@@ -1553,7 +1653,6 @@ sub score_from_neighbors
 			$best_index = $index;
 		    }
 		}
-		$choice_count++;                                                  # BE SURE TO DO THIS AFTER SCORE COMPUTATION AND STORING
 	    }
 	    if (!$core_clusters[$best_clus]) {
 		push @best_scores, $best_score;
@@ -1572,19 +1671,26 @@ sub score_from_neighbors
 		$cluster_colindex[$best_clus] = $contig . "_" . $count;
 	    }
 	    $columns{$contig}[$count] = $best;
-	    #print "COLUMN $contig:$count:$best_score:$best\n";
+	    #print STDERR "COLUMN $contig:$count:$best_score:$best\n";
 	    if ((!$final) && (!($final_hierarchical && ($best =~ /^\(/)))) {
 		foreach my $choice (@choices)                                     # Go through each option of each column
 		{
 		    if (($best ne $choice) && (!($final_hierarchical && ($choice =~ /^\(/))) && ($column_scores{$contig}[$count]{$choice} >= ($fraction * $best_score))) {
 			$columns{$contig}[$count] .= ';' . $choice;
-			#print "$column_scores{$contig}[$count]{$choice}:$choice\n";
+			#print STDERR "$column_scores{$contig}[$count]{$choice}:$choice\n";
 		    }
 		}
 	    }
 	    if ($best_score > $score_threshold) {
 		$columns_status{$contig}->[$count] = 1;
-		push @{ $cluster_locs[$best_clus] }, $contig . "_" . $count;
+		if ($final) {
+		    push @{ $cluster_locs[$best_clus] }, $contig . "_:_" . $count;
+		    (my $test_clus, my $test_index) = split('_', $columns{$contig}[$count]);
+		    #print STDERR "locs:$best_clus:$contig:$count:$test_clus:$test_index\n";
+		    if ($test_clus != $best_clus) {
+			die "For cluster_locs cluster:$best_clus has unexpected cluster:$test_clus stored (contig:$contig, column:$count, blast_index:$test_index\n";
+		    }
+		}
 	    } elsif ($best_score > $minimum_score) {
 		if ($final && ($core_clusters[$best_clus] || ($best_score > ($minimum_score + 1)) || (($best_neighbor_score >= 1) && ($reduced_by_region[$best_index]->{'pid'} >= 90)))) {
 		    $columns_status{$contig}->[$count] = 1;
@@ -1594,7 +1700,7 @@ sub score_from_neighbors
 	    } else {
 		$columns_status{$contig}->[$count] = -1;
 	    }
-	    #print "SCOL$count:$columns{$contig}[$count]:$columns_status{$contig}->[$count]:$column_scores{$contig}[$count]{'best_score'}\n";
+	    #print STDERR "SCOL$count:$columns{$contig}[$count]:$columns_status{$contig}->[$count]:$column_scores{$contig}[$count]{'best_score'}\n";
 	    $count++;
 	}
     }
@@ -1650,15 +1756,15 @@ sub score_neighbors
 	    }
 	}
     }
-    #print "NEAR";
+    #print STDERR "NEAR";
     foreach my $option (keys %{$neighbors[$cluster][$PGG_NEAR]})                             # go through all observed neighbors of cluster in PGG
     {
-	#print ": $option ";
+	#print STDERR ": $option ";
 	(my $clus, my $which_end) = split('_', $option);
 	if (defined($nearest{$contig}[$column][$NEAR]{$clus}))                   # check if observed neighbor is a possible identity
 	{
 	    my $inv = $nearest{$contig}[$column][$NEAR]{$clus};
-	    #print "$inv";
+	    #print STDERR "$inv";
 	    my $score = $neighbors[$cluster][$PGG_NEAR]{$option};
 	    if (($is_left && (($inv && ($which_end == 3)) || (!$inv && ($which_end == 5)))) || (!$is_left && (($inv && ($which_end == 5)) || (!$inv && ($which_end == 3))))) {
 		$score /= 2; # decrease score if inverted
@@ -1670,7 +1776,7 @@ sub score_neighbors
 	    }
 	}
     }
-    #print "\n";
+    #print STDERR "\n";
     my $best_rev = 0;
     my $best_id_rev = "";
     foreach my $option (keys %{$neighbors[$cluster][$PGG_NEAR_REV]})                             # go through all observed neighbors of cluster in PGG
@@ -1729,13 +1835,13 @@ sub score_neighbors
 	    }
 	}
     }
-    #print "CORE";
+    #print STDERR "CORE";
     foreach my $option (keys %{$neighbors[$cluster][$PGG_CORE]})                             # go through all observed core neighbors of cluster in PGG
     {
 	if ($option =~ /.*_d$/) {
 	    next; #skip the distance constraints
 	}
-	#print ": $option ";
+	#print STDERR ": $option ";
 	(my $clus, my $which_end) = split('_', $option);
 	if (defined($nearest{$contig}[$column][$CORE]{$clus}))                   # check if observed neighbor is a possible identity
 	{
@@ -1743,7 +1849,7 @@ sub score_neighbors
 	    my $score = $neighbors[$cluster][$PGG_CORE]{$option};
 	    my $exp_dist = $neighbors[$cluster][$PGG_CORE]{$option . "_d"};
 	    my $dist = $nearest{$contig}[$column][$CORE]{$clus . "_d"};
-	    #print "$inv $score $exp_dist $dist";
+	    #print STDERR "$inv $score $exp_dist $dist";
 	    my $dist_score = abs($exp_dist - $dist) / $exp_dist;
 	    if ($dist_score > .99) {
 		$dist_score = 0.01;
@@ -1763,7 +1869,7 @@ sub score_neighbors
 	    }
 	}
     }
-    #print "\n";
+    #print STDERR "\n";
     my $best_core_rev = 0;
     my $best_core_tot_rev = 0;
     my $best_core_dist_rev = 0;
@@ -1841,7 +1947,7 @@ sub homology_score
     } else {
 	$per_id = 0;
     }
-    #print "$single_copy:$coreness:$uniqueness:$per_id:$per_len\n";
+    #print STDERR "$single_copy:$coreness:$uniqueness:$per_id:$per_len\n";
     return($single_copy + $coreness + $uniqueness + $per_id + $per_len);
 }
 
@@ -1863,13 +1969,53 @@ sub buffer_align_length
 }
 
 ###################################################################################################
+sub write_seq
+# extract and write a sequence in fasta format to the seqs file
+{
+    (my $seqs_file, my $id, my $contig, my $index)  = @_;
+    my $beg_align = $reduced_by_region[$index]->{'sbeg'} - 1; #adjust for 1s based blast versus 0 based string
+    my $end_align = $reduced_by_region[$index]->{'send'} - 1;
+    my $contig_sequence = "";
+    if ($beg_align < 0) {
+	if ($is_circular{$contig}) {
+	    $contig_sequence = substr($contigs{$contig}, $beg_align);
+	    $contig_sequence .= substr($contigs{$contig}, 0, ($end_align  + 1));
+	} else {
+	    $beg_align++;
+	    die "ERROR: contig $contig is not designated as circular but begin coordinate is < 1 ($beg_align)\n";
+	}
+    } elsif ($end_align >= $reduced_by_region[$index]->{'ctglen'}) {
+	if ($is_circular{$contig}) {
+	    $contig_sequence = substr($contigs{$contig}, $beg_align);
+	    $contig_sequence .= substr($contigs{$contig}, 0, (($end_align  + 1) - $reduced_by_region[$index]->{'ctglen'}));
+	} else {
+	    $end_align++;
+	    die "ERROR: contig $contig is not designated as circular but end coordinate is > contig length ($end_align > $reduced_by_region[$index]->{'ctglen'})\n";
+	}
+    } else {
+	$contig_sequence = substr($contigs{$contig}, $beg_align, (($end_align - $beg_align) + 1));
+    }
+    if ($reduced_by_region[$index]->{'sinv'}) {
+	$contig_sequence = reverse($contig_sequence);
+	$contig_sequence =~ tr/AGCTYRWSKMDVHBagctyrwskmdvhb/TCGARYWSMKHBDVtcgarywsmkhbdv/;
+    }
+    print $seqs_file ">$id\n";
+    my $seq_len = ($end_align - $beg_align) + 1;
+    for ( my $pos = 0 ; $pos < $seq_len ; $pos += 60 ) {
+	print $seqs_file substr($contig_sequence, $pos, 60), "\n";
+    }
+    return;
+}
+
+###################################################################################################
 sub refine_alignments
-# output the newly calculated attribute file and matchtable column file
+# refine the initial Blast alignments using Needleman-Wunsch
 {
     foreach my $contig (keys %columns) {
 	my $col_index = 0;
 	foreach my $column (@{ $columns{$contig} }) {
-	    if ($columns_status{$contig}->[$col_index] >= 0) {
+	    if ($columns_status{$contig}->[$col_index] == 1) {
+		#print STDERR "$contig:$col_index\n";
 		my $beg_align = -1;
 		my $end_align = -1;
 		my $ignore = -1;
@@ -1897,7 +2043,7 @@ sub refine_alignments
 		    $sequence = substr($medoids[$clus], 0, (($reduced_by_region[$index]->{'qbeg'} - 1) + $align_anchor_len));
 		    ($beg_align, $ignore, $num_matches) = &nw_align($sequence, $contig_sequence);
 		    $beg_align += $s_offset;
-		    #print "NWB:$beg_align:$ignore:$num_matches:$s_offset:$s_extra\n";
+		    #print STDERR "NWB:$beg_align:$ignore:$num_matches:$s_offset:$s_extra\n";
 		} elsif ($reduced_by_region[$index]->{'sinv'} && ($reduced_by_region[$index]->{'qlen'} != $reduced_by_region[$index]->{'qend'})) {
 		    $s_extra = ($reduced_by_region[$index]->{'sbeg'} - 1) + ($align_anchor_len - 1); # give $align_anchor_len bp to anchor the alignment but only really looking for the beginning need -1 for string beginning at 0 and 'beg" starting at 1
 		    if ($s_extra >= $reduced_by_region[$index]->{'ctglen'}) {$s_extra = $reduced_by_region[$index]->{'ctglen'} - 1;}
@@ -1917,7 +2063,7 @@ sub refine_alignments
 		    $sequence =~ tr/AGCTYRWSKMDVHBagctyrwskmdvhb/TCGARYWSMKHBDVtcgarywsmkhbdv/;
 		    ($beg_align, $ignore, $num_matches) = &nw_align($sequence, $contig_sequence);
 		    $beg_align += $s_offset;
-		    #print "NWBC:$beg_align:$ignore:$num_matches:$s_offset:$s_extra\n";
+		    #print STDERR "NWBC:$beg_align:$ignore:$num_matches:$s_offset:$s_extra\n";
 		} else {
 		    $beg_align = $reduced_by_region[$index]->{'sbeg'};
 		}
@@ -1939,7 +2085,7 @@ sub refine_alignments
 		    $sequence = substr($medoids[$clus], (-1 *(($reduced_by_region[$index]->{'qlen'} - $reduced_by_region[$index]->{'qend'}) + $align_anchor_len)));
 		    ($ignore, $end_align, $num_matches) = &nw_align($sequence, $contig_sequence);
 		    $end_align += $s_offset;
-		    #print "NWE:$ignore:$end_align:$num_matches:$s_offset:$s_extra\n";
+		    #print STDERR "NWE:$ignore:$end_align:$num_matches:$s_offset:$s_extra\n";
 		} elsif ($reduced_by_region[$index]->{'sinv'} && ($reduced_by_region[$index]->{'qbeg'} != 1)) {
 		    $s_offset = $reduced_by_region[$index]->{'send'} - $align_anchor_len; # give $align_anchor_len bp to anchor the alignment but only really looking for the ending
 		    if ($s_offset < 0) {$s_offset = 0;}
@@ -1959,16 +2105,17 @@ sub refine_alignments
 		    $sequence =~ tr/AGCTYRWSKMDVHBagctyrwskmdvhb/TCGARYWSMKHBDVtcgarywsmkhbdv/;
 		    ($ignore, $end_align, $num_matches) = &nw_align($sequence, $contig_sequence);
 		    $end_align += $s_offset;
-		    #print "NWEC:$ignore:$end_align:$num_matches:$s_offset:$s_extra\n";
+		    #print STDERR "NWEC:$ignore:$end_align:$num_matches:$s_offset:$s_extra\n";
 		} else {
 		    $end_align = $reduced_by_region[$index]->{'send'};
 		}
-		#print "COL$col_index:$column:$columns_status{$contig}->[$col_index]:$reduced_by_region[$index]->{'sinv'}\n";
-		#print "NWFINAL:$beg_align:$end_align:$num_matches:$s_offset:$s_extra\n";
-		#print "BLAST($column_scores{$contig}[$col_index]->{'best_score'}) $column:$reduced_by_region[$index]->{'clus'}($cluster_size[$reduced_by_region[$index]->{'clus'}]):$reduced_by_region[$index]->{'ctg'}:$reduced_by_region[$index]->{'pid'}:$reduced_by_region[$index]->{'qbeg'}:$reduced_by_region[$index]->{'qend'}:$reduced_by_region[$index]->{'qlen'}:$reduced_by_region[$index]->{'sbeg'}:$reduced_by_region[$index]->{'send'}:$reduced_by_region[$index]->{'sinv'}:$reduced_by_region[$index]->{'ctglen'}:$reduced_by_region[$index]->{'bits'}:$reduced_by_region[$index]->{'keepclus'}:$reduced_by_region[$index]->{'keepctg'}:$reduced_by_region[$index]->{'weak'}\n";
+		#print STDERR "COL$col_index:$column:$columns_status{$contig}->[$col_index]:$reduced_by_region[$index]->{'sinv'}\n";
+		#print STDERR "NWFINAL:$beg_align:$end_align:$num_matches:$s_offset:$s_extra\n";
+		#print STDERR "BLAST($column_scores{$contig}[$col_index]->{'best_score'}) $column:$reduced_by_region[$index]->{'clus'}($cluster_size[$reduced_by_region[$index]->{'clus'}]):$reduced_by_region[$index]->{'ctg'}:$reduced_by_region[$index]->{'pid'}:$reduced_by_region[$index]->{'qbeg'}:$reduced_by_region[$index]->{'qend'}:$reduced_by_region[$index]->{'qlen'}:$reduced_by_region[$index]->{'sbeg'}:$reduced_by_region[$index]->{'send'}:$reduced_by_region[$index]->{'sinv'}:$reduced_by_region[$index]->{'ctglen'}:$reduced_by_region[$index]->{'bits'}:$reduced_by_region[$index]->{'keepclus'}:$reduced_by_region[$index]->{'keepctg'}:$reduced_by_region[$index]->{'weak'}\n";
 		$reduced_by_region[$index]->{'sbeg'} = $beg_align;
 		$reduced_by_region[$index]->{'send'} = $end_align;
 	    }
+	    $col_index++;
 	}
     }
     return;
@@ -1994,9 +2141,13 @@ sub output_files
 	die ("cannot open rearrangementss file: $rootname" . "_rearrange.txt!\n");
     }
     my $alledgesfile;
+    my $seqsfile;
     if ($reannotate) {
 	unless (open ($alledgesfile, ">", ($rootname . "_alledges.txt")) )  {
 	    die ("cannot open all edges file: $rootname" . "_alledges.txt!\n");
+	}
+	unless (open ($seqsfile, ">", ($rootname . "_seqs.fasta")) )  {
+	    die ("cannot open sequences file: $rootname" . "_seqs.fasta!\n");
 	}
     }
     my $attributefile;
@@ -2015,6 +2166,10 @@ sub output_files
     unless (open ($coreclusfile, ">", ($rootname . "_core_clus.txt")) )  {
 	die ("cannot open new core coordinates clusters file: $rootname" . "_core_clus.txt!\n");
     }
+    my $newclusfile;
+    unless (open ($newclusfile, ">", ($rootname . "_new_clus.txt")) )  {
+	die ("cannot open new clusters file: $rootname" . "_new_clus.txt!\n");
+    }
     my $sumANI = 0;
     my $sumANIlen = 0;
     my $paralog_index = $num_clusters + 1;
@@ -2022,7 +2177,7 @@ sub output_files
 	my $col_index = 0;
 	my $first_clus_orient = "";
 	my $prev_clus_orient = "";
-	my $prev_all_clus_orient = "";
+#	my $prev_all_clus_orient = "";
 	my $clus_orient = "";
 	my $next_clus_orient = "";
 	my $core_orient = "";
@@ -2032,16 +2187,16 @@ sub output_files
 	my $core_edge_end = 0;
 	my $edge_start = 0;
 	my $edge_end = 0;
-	my $edge_all_start = 0;
+#	my $edge_all_start = 0;
 	my $core_start = 0;
 	my $core_end = 0;
 	foreach my $column (@{ $columns{$contig} }) {
-	    if ($columns_status{$contig}->[$col_index] >= 0) {
+	    if ($columns_status{$contig}->[$col_index] > 0) {
 		(my $clus, my $index) = split('_', $column);
 		my $beg_align = $reduced_by_region[$index]->{'sbeg'};
 		my $end_align = $reduced_by_region[$index]->{'send'};
-		#print "COL$col_index:$column:$columns_status{$contig}->[$col_index]:$reduced_by_region[$index]->{'sinv'}\n";
-		#print "BLAST($column_scores{$contig}[$col_index]->{'best_score'}) $column:$reduced_by_region[$index]->{'clus'}($cluster_size[$reduced_by_region[$index]->{'clus'}]):$reduced_by_region[$index]->{'ctg'}:$reduced_by_region[$index]->{'pid'}:$reduced_by_region[$index]->{'qbeg'}:$reduced_by_region[$index]->{'qend'}:$reduced_by_region[$index]->{'qlen'}:$reduced_by_region[$index]->{'sbeg'}:$reduced_by_region[$index]->{'send'}:$reduced_by_region[$index]->{'sinv'}:$reduced_by_region[$index]->{'ctglen'}:$reduced_by_region[$index]->{'bits'}:$reduced_by_region[$index]->{'keepclus'}:$reduced_by_region[$index]->{'keepctg'}:$reduced_by_region[$index]->{'weak'}\n";
+		#print STDERR "COL$col_index:$column:$columns_status{$contig}->[$col_index]:$reduced_by_region[$index]->{'sinv'}\n";
+		#print STDERR "BLAST($column_scores{$contig}[$col_index]->{'best_score'}) $column:$reduced_by_region[$index]->{'clus'}($cluster_size[$reduced_by_region[$index]->{'clus'}]):$reduced_by_region[$index]->{'ctg'}:$reduced_by_region[$index]->{'pid'}:$reduced_by_region[$index]->{'qbeg'}:$reduced_by_region[$index]->{'qend'}:$reduced_by_region[$index]->{'qlen'}:$reduced_by_region[$index]->{'sbeg'}:$reduced_by_region[$index]->{'send'}:$reduced_by_region[$index]->{'sinv'}:$reduced_by_region[$index]->{'ctglen'}:$reduced_by_region[$index]->{'bits'}:$reduced_by_region[$index]->{'keepclus'}:$reduced_by_region[$index]->{'keepctg'}:$reduced_by_region[$index]->{'weak'}\n";
 		if ($columns_status{$contig}->[$col_index] == 1) {
 		    $clus_orient = $clus . '_' . ($reduced_by_region[$index]->{'sinv'} ? '3' : '5');
 		    $edge_end = $beg_align - 1;
@@ -2069,15 +2224,15 @@ sub output_files
 			    print $alledgesfile '(' . $clus_orient . ',' . $prev_clus_orient . ')', "\n";
 			}
 		    }
-		    if ($reannotate && ($prev_all_clus_orient ne $prev_clus_orient)) {
-			my $tmp_len = ($edge_end - $edge_all_start) + 1;
-			$hash_edges{'(' . $prev_all_clus_orient . ',' . $clus_orient . ')'} = "$target\t$contig\tuniq_edge\t$edge_all_start\t$edge_end\t$tmp_len\t";
-			$hash_edges{'(' . $clus_orient . ',' . $prev_all_clus_orient . ')'} = "$target\t$contig\tuniq_edge\t$edge_end\t$edge_all_start\t$tmp_len\t";
-		    }
+#		    if ($reannotate && ($prev_all_clus_orient ne $prev_clus_orient)) {
+#			my $tmp_len = ($edge_end - $edge_all_start) + 1;
+#			$hash_edges{'(' . $prev_all_clus_orient . ',' . $clus_orient . ')'} = "$target\t$contig\tuniq_edge\t$edge_all_start\t$edge_end\t$tmp_len\t";
+#			$hash_edges{'(' . $clus_orient . ',' . $prev_all_clus_orient . ')'} = "$target\t$contig\tuniq_edge\t$edge_end\t$edge_all_start\t$tmp_len\t";
+#		    }
 		    $prev_clus_orient = $next_clus_orient;
 		    $edge_start = $end_align + 1;
-		    $prev_all_clus_orient = $next_clus_orient;
-		    $edge_all_start = $end_align + 1;
+#		    $prev_all_clus_orient = $next_clus_orient;
+#		    $edge_all_start = $end_align + 1;
 		    if ($first_clus_orient eq "") {
 			$first_clus_orient = $clus_orient;
 		    }
@@ -2117,37 +2272,45 @@ sub output_files
 		    my $matchlen = ($reduced_by_region[$index]->{'qend'} - $reduced_by_region[$index]->{'qbeg'}) + 1;
 		    $sumANI += $reduced_by_region[$index]->{'pid'} * $matchlen;
 		    $sumANIlen += $matchlen;
-		} else {
+		} elsif ($columns_status{$contig}->[$col_index] == 2) { # for now we are ignoring paralogs and so these will become part of the edges
+		} else { # right now this should never happen
+		    die ("Encountered a gene call which is not an ortholog or paralog: COL$col_index:$column:$columns_status{$contig}->[$col_index]:$reduced_by_region[$index]->{'sinv'}\n");
 		    if ($core_start > 0) {
 			print $coreclusfile "$target\t$contig\t$core_start\t$core_end\n";
 			$core_start = 0;
 			$core_end = 0;
 		    }
 		    my $paralog = $target . "PL_" . $paralog_index . "_" . $clus;
-		    $clus_orient = $paralog_index . '_' . ($reduced_by_region[$index]->{'sinv'} ? '3' : '5');
+		    $clus_orient = $paralog . '_' . ($reduced_by_region[$index]->{'sinv'} ? '3' : '5');
+#		    $clus_orient = $paralog_index . '_' . ($reduced_by_region[$index]->{'sinv'} ? '3' : '5');
 		    $edge_end = $beg_align - 1;
-		    $next_clus_orient = $paralog_index . '_' . ($reduced_by_region[$index]->{'sinv'} ? '5' : '3');
+		    $next_clus_orient = $paralog . '_' . ($reduced_by_region[$index]->{'sinv'} ? '5' : '3');
+#		    $next_clus_orient = $paralog_index . '_' . ($reduced_by_region[$index]->{'sinv'} ? '5' : '3');
 		    $paralog_index++;
-		    if ($reannotate) {
-			if ($prev_all_clus_orient ne "") {
-			    my $tmp_len = ($edge_end - $edge_all_start) + 1;
-			    $hash_edges{'(' . $prev_all_clus_orient . ',' . $clus_orient . ')'} = "$target\t$contig\tuniq_edge\t$edge_all_start\t$edge_end\t$tmp_len\t";
-			    $hash_edges{'(' . $clus_orient . ',' . $prev_all_clus_orient . ')'} = "$target\t$contig\tuniq_edge\t$edge_end\t$edge_all_start\t$tmp_len\t";
-			}
-			$prev_all_clus_orient = $next_clus_orient;
-			$edge_all_start = $end_align + 1;
-		    } else {
+#		    if ($reannotate) {
+#			if ($prev_all_clus_orient ne "") {
+#			    my $tmp_len = ($edge_end - $edge_all_start) + 1;
+#			    $hash_edges{'(' . $prev_all_clus_orient . ',' . $clus_orient . ')'} = "$target\t$contig\tuniq_edge\t$edge_all_start\t$edge_end\t$tmp_len\t";
+#			    $hash_edges{'(' . $clus_orient . ',' . $prev_all_clus_orient . ')'} = "$target\t$contig\tuniq_edge\t$edge_end\t$edge_all_start\t$tmp_len\t";
+#			}
+#			$prev_all_clus_orient = $next_clus_orient;
+#			$edge_all_start = $end_align + 1;
+#		    } else {
 			if ($prev_clus_orient ne "") {
 			    my $tmp_len = ($edge_end - $edge_start) + 1;
 			    $hash_edges{'(' . $prev_clus_orient . ',' . $clus_orient . ')'} = "$target\t$contig\tuniq_edge\t$edge_start\t$edge_end\t$tmp_len\t";
 			    $hash_edges{'(' . $clus_orient . ',' . $prev_clus_orient . ')'} = "$target\t$contig\tuniq_edge\t$edge_end\t$edge_start\t$tmp_len\t";
+			    if ($reannotate) {
+				print $alledgesfile '(' . $prev_clus_orient . ',' . $clus_orient . ')', "\n";
+				print $alledgesfile '(' . $clus_orient . ',' . $prev_clus_orient . ')', "\n";
+			    }
 			}
 			$prev_clus_orient = $clus_orient;
 			$edge_start = $end_align + 1;
 			if ($first_clus_orient eq "") {
 			    $first_clus_orient = $clus_orient;
 			}
-		    }
+#		    }
 		    push @new_match_table, $paralog;
 		    my $tmp_len = ($end_align - $beg_align) + 1;
 		    print $new_attributefile "$contig\t$paralog\t";
@@ -2159,6 +2322,10 @@ sub output_files
 			print $uniqclusfile "$target\t$contig\tuniq_clus\t$beg_align\t$end_align\t$tmp_len\t$paralog\n";
 		    }
 		    print $new_attributefile "$medoids_anno[$clus]\t$target\n";
+		    print $newclusfile "$target\t$paralog\t$nearest{$contig}[$col_index][$NEAR_5]\t$nearest{$contig}[$col_index][$NEAR_3]\t$nearest{$contig}[$col_index][$CORE_5]\t$nearest{$contig}[$col_index][$CORE_3]\n";
+		    if ($reannotate) {
+			&write_seq($seqsfile, $paralog, $contig, $index);
+		    }
 		}
 	    }
 	    $col_index++;
@@ -2178,16 +2345,18 @@ sub output_files
     close ($rearrange);
     if ($reannotate) {
 	close ($alledgesfile);
+	close ($seqsfile);
     }
     close ($attributefile);
     close ($new_attributefile);
     close ($uniqclusfile);
     close ($coreclusfile);
+    close ($newclusfile);
     my $matchfile;
     unless (open ($matchfile, ">", ($rootname . "_match.col")) )  {
 	die ("cannot open matchtable column file: $rootname" . "_match.col!\n");
     }
-    #print "Outputting column for matchtable to $rootname" . "_match.col\n";
+    #print STDERR "Outputting column for matchtable to $rootname" . "_match.col\n";
     foreach my $cluster (1 .. $num_clusters) {
 	print $matchfile $match_table[$cluster], "\n";
     }
@@ -2228,13 +2397,13 @@ sub output_files
 	    print $new_edgefile "$edge\t1\n";
 	    my $cluster1;
 	    my $cluster2;
-	    if ($edge =~ /\((\d+)_([35]),(\d+)_([35])\)/) {
+	    if ($edge =~ /\((.+)_([35]),(.+)_([35])\)/) {
 		$cluster1 = $1;
 		$cluster2 = $3;
 	    } else {
 		die ("ERROR: Bad edge formatting $edge in hash_edges\n");
 	    }
-	    if ($cluster1 < $cluster2) { #only capture one representation of the symmetric edge
+	    if ($cluster1 lt $cluster2) { #only capture one representation of the symmetric edge
 		print $uniqedgefile "$hash_edges{$edge}$edge\n";
 	    }
 	}
@@ -2246,16 +2415,16 @@ sub output_files
 
 ###################################################################################################
 sub assign_paralogs
-# output the newly calculated attribute file and matchtable column file
+# determine paralogs
 {
     foreach my $contig (keys %columns) {
 	my $col_index = 0;
 	foreach my $column (@{ $columns{$contig} }) {
 	    (my $clus, my $index) = split('_', $column);
-	    #print "COL$col_index:$column:$columns_status{$contig}->[$col_index]\n";
-	    #print "BLAST($column_scores{$contig}[$col_index]->{'best_score'}) $column:$reduced_by_region[$index]->{'clus'}($cluster_size[$reduced_by_region[$index]->{'clus'}]):$reduced_by_region[$index]->{'ctg'}:$reduced_by_region[$index]->{'pid'}:$reduced_by_region[$index]->{'qbeg'}:$reduced_by_region[$index]->{'qend'}:$reduced_by_region[$index]->{'qlen'}:$reduced_by_region[$index]->{'sbeg'}:$reduced_by_region[$index]->{'send'}:$reduced_by_region[$index]->{'sinv'}:$reduced_by_region[$index]->{'ctglen'}:$reduced_by_region[$index]->{'bits'}:$reduced_by_region[$index]->{'keepclus'}:$reduced_by_region[$index]->{'keepctg'}:$reduced_by_region[$index]->{'weak'}\n";
+	    #print STDERR "COL$col_index:$column:$columns_status{$contig}->[$col_index]\n";
+	    #print STDERR "BLAST($column_scores{$contig}[$col_index]->{'best_score'}) $column:$reduced_by_region[$index]->{'clus'}($cluster_size[$reduced_by_region[$index]->{'clus'}]):$reduced_by_region[$index]->{'ctg'}:$reduced_by_region[$index]->{'pid'}:$reduced_by_region[$index]->{'qbeg'}:$reduced_by_region[$index]->{'qend'}:$reduced_by_region[$index]->{'qlen'}:$reduced_by_region[$index]->{'sbeg'}:$reduced_by_region[$index]->{'send'}:$reduced_by_region[$index]->{'sinv'}:$reduced_by_region[$index]->{'ctglen'}:$reduced_by_region[$index]->{'bits'}:$reduced_by_region[$index]->{'keepclus'}:$reduced_by_region[$index]->{'keepctg'}:$reduced_by_region[$index]->{'weak'}\n";
 	    if ($columns_status{$contig}->[$col_index] == 1) {
-		#print "$contig $col_index != $cluster_colindex[$clus]\n";
+		#print STDERR "$contig $col_index != $cluster_colindex[$clus]\n";
 		if (($contig . "_" . $col_index) ne $cluster_colindex[$clus]) {
 		    $columns_status{$contig}->[$col_index] = 2;
 		}
@@ -2275,22 +2444,32 @@ sub split_genes
 	
 	if ($contig_test) {
 	    return ($contig_test);
-	} elsif ($a->{'qbeg'} <=> $b->{'qbeg'}) {
-	    return ($a->{'qbeg'} <=> $b->{'qbeg'});
+	} elsif ($a->{'sbeg'} <=> $b->{'sbeg'}) {
+	    return ($a->{'sbeg'} <=> $b->{'sbeg'});
 	} else {
-	    return (($b->{'qend'} - $b->{'qbeg'}) <=> ($a->{'qend'} - $a->{'qbeg'}));
+	    return (($b->{'send'} - $b->{'sbeg'}) <=> ($a->{'send'} - $a->{'sbeg'}));
 	}
     };
     
-    foreach my $locs (@cluster_locs) {
+    my $splitgenefile;
+    unless (open ($splitgenefile, ">", ($rootname . "_split_gene.txt")) )  {
+	die ("cannot open split gene file: $rootname" . "_split_gene.txt!\n");
+    }
+    foreach my $cluster (1 .. $num_clusters) {
+	#print STDERR "SG:$cluster\n";
+	my $locs = $cluster_locs[$cluster];
 	my @sort_locs = ();
 	my $num = 0;
 	if ((scalar @{ $locs }) <= 1) {
 	    next;
 	}
 	foreach my $loc (@{ $locs }) {
-	    (my $contig, my $col_index) = split('_', $loc);
+	    (my $contig, my $col_index) = split('_:_', $loc);
 	    (my $clus, my $index) = split('_', $columns{$contig}[$col_index]);
+	    #print STDERR "SG:$loc:$contig:$col_index:$clus:$index\n";
+	    if ($clus != $cluster) {
+		die "For cluster_locs cluster:$cluster has unexpected cluster:$clus stored (contig:$contig, column:$col_index, blast_index:$index\n";
+	    }
 	    $sort_locs[$num++] = { 'clus' => $clus,                                # cluster number
 				   'ctg' => $contig,                               # contig identifier
 				   'col' => $col_index,                            # column index
@@ -2326,22 +2505,29 @@ sub split_genes
 	    my $cur_sbeg = $loc->{'sbeg'};
 	    my $cur_send = $loc->{'send'};
 	    my $cur_sinv = $loc->{'sinv'};
-	    if ($prev_clus ne $cur_clus) {
-		die "For cluster_locs not all referenced blast hits were to the same cluster\n";
-	    }
-	    my $overlap;
-	    my $prev_len = ($prev_qend - $prev_qbeg) + 1;
-	    my $cur_len = ($cur_qend - $cur_qbeg) + 1;
-	    if ($cur_qend < $prev_qend) {
-		$overlap = $cur_len;
-	    } else {
-		$overlap = ($prev_qend - $cur_qbeg) + 1;
-	    }
-	    my $prev_cov = $overlap / $prev_len;
-	    my $cur_cov = $overlap / $cur_len;
-	    my $maxcov = $cur_cov > $prev_cov ? $cur_cov : $prev_cov;
-	    if ($maxcov <= 0.20) {
-		print "Split gene clus:$prev_clus:$cur_clus;ctg:$prev_ctg:$cur_ctg;col:$prev_col:$cur_col;blast:$prev_blst:$cur_blst;qbeg:$prev_qbeg:$cur_qbeg;qend:$prev_qend:$cur_qend;qlen:$prev_qlen:$cur_qlen;sbeg:$prev_sbeg:$cur_sbeg;send:$prev_send:$cur_send;sinv:$prev_sinv:$cur_sinv\n";
+	    if ($cur_ctg eq $prev_ctg) {
+		my $overlap;
+		my $prev_len = ($prev_qend - $prev_qbeg) + 1;
+		my $cur_len = ($cur_qend - $cur_qbeg) + 1;
+		if ($prev_qbeg <= $cur_qbeg) {
+		    if ($cur_qend <= $prev_qend) {
+			$overlap = $cur_len;
+		    } else {
+			$overlap = ($prev_qend - $cur_qbeg) + 1;
+		    }
+		} else {
+		    if ($prev_qend <= $cur_qend) {
+			$overlap = $prev_len;
+		    } else {
+			$overlap = ($cur_qend - $prev_qbeg) + 1;
+		    }
+		}
+		my $prev_cov = $overlap / $prev_len;
+		my $cur_cov = $overlap / $cur_len;
+		my $maxcov = $cur_cov > $prev_cov ? $cur_cov : $prev_cov;
+		if ($maxcov <= 0.20) {
+		    print $splitgenefile "Split gene clus:$prev_clus:$cur_clus;ctg:$prev_ctg:$cur_ctg;col:$prev_col:$cur_col;blast:$prev_blst:$cur_blst;qbeg:$prev_qbeg:$cur_qbeg;qend:$prev_qend:$cur_qend;qlen:$prev_qlen:$cur_qlen;sbeg:$prev_sbeg:$cur_sbeg;send:$prev_send:$cur_send;sinv:$prev_sinv:$cur_sinv\n";
+		}
 	    }
 	    $prev_clus = $cur_clus;
 	    $prev_ctg = $cur_ctg;
@@ -2355,6 +2541,7 @@ sub split_genes
 	    $prev_sinv = $cur_sinv;
 	}
     }
+    close ($splitgenefile);
     return;
 }
 
@@ -2364,14 +2551,14 @@ sub check_overlaps
 {
     foreach my $contig (keys %columns) {
 	foreach my $i (0 .. $#{ $columns{$contig} }) {
-	    #print "COL$i:$columns{$contig}[$i]:$columns_status{$contig}->[$i]:$column_scores{$contig}[$i]->{'best_score'}\n";
+	    #print STDERR "COL$i:$columns{$contig}[$i]:$columns_status{$contig}->[$i]:$column_scores{$contig}[$i]->{'best_score'}\n";
 	    (my $col1) = split(';', $columns{$contig}[$i]);
 	    (my $clus1, my $index1) = split('_', $col1);
 	    my $beg1 = $reduced_by_region[$index1]->{'sbeg'};
 	    my $end1 = $reduced_by_region[$index1]->{'send'};
 	    my $bits1 = $reduced_by_region[$index1]->{'bits'};
 	    my $len1 = ($end1 - $beg1) + 1;
-	    #print "$col1:$clus1:$index1:$beg1:$end1\n";
+	    #print STDERR "$col1:$clus1:$index1:$beg1:$end1\n";
 	    foreach my $j (($i + 1) .. $#{ $columns{$contig} }) {
 		(my $col2) = split(';', $columns{$contig}[$j]);
 		(my $clus2, my $index2) = split('_', $col2);
@@ -2392,7 +2579,7 @@ sub check_overlaps
 		my $cov2 = $overlap / $len2;
 		my $maxcov = $cov1 > $cov2 ? $cov1 : $cov2;
 		if (($maxcov > 0.5) || ($overlap >= 50)) {
-		    #print "OCOL$j:$overlap:$maxcov:$col2:$clus2:$index2:$beg2:$end2\n";
+		    #print STDERR "OCOL$j:$overlap:$maxcov:$col2:$clus2:$index2:$beg2:$end2\n";
 		    if (($columns_status{$contig}->[$i] <= 0) && ($columns_status{$contig}->[$j] > 0)) {
 			$columns_status{$contig}->[$i] = -1;
 		    } elsif (($columns_status{$contig}->[$j] <= 0) && ($columns_status{$contig}->[$i] > 0)) {
@@ -2434,39 +2621,41 @@ sub check_overlaps
 
 ###################################################################################################
 {#main
-    print "Reading clusters sizes\n";
+    print STDERR "Reading clusters sizes\n";
     &read_cluster_sizes;
-    print "Reading PGG\n";
+    print STDERR "Reading PGG\n";
     &read_pgg;
-    print "Reading genomes\n"
+    print STDERR "Reading genomes\n";
     &read_genome;
-    print "Reading medoids\n";
+    print STDERR "Reading contig topology\n";
+    &read_topology;
+    print STDERR "Reading medoids\n";
     &read_medoids;
-    print "Reading single copy cores\n";
+    print STDERR "Reading single copy cores\n";
     &read_core_list;
-    print "Reading Blast matches\n";
+    print STDERR "Reading Blast matches\n";
     &read_blast;
-    print "Processing Blast by clusters\n";
+    print STDERR "Processing Blast by clusters\n";
     &process_blast_by_cluster;
-    print "Processing Blast by region\n";
+    print STDERR "Processing Blast by region\n";
     &process_blast_by_region;
-    print "Reading PGG neighbors\n";
+    print STDERR "Reading PGG neighbors\n";
     &read_neighbors;
-    print "Determining genome neighbors\n";
+    print STDERR "Determining genome neighbors\n";
     &determine_contig_nearest_neighbors;
-    print "Scoring columns\n";
+    print STDERR "Scoring columns\n";
     &score_from_neighbors(0, 0, 0.8);
-    print "Calculating median score\n";
+    print STDERR "Calculating median score\n";
     &calc_median;
-    print "Resetting columns\n";
+    print STDERR "Resetting columns\n";
     &reset_columns;
-    print "Starting scoring\n";
+    print STDERR "Starting scoring\n";
     &determine_contig_nearest_neighbors;
     &score_from_neighbors(0, 0, 0.8);
-    print "Checking overlapping columns\n";
+    print STDERR "Checking overlapping columns\n";
     &check_overlaps;
     &reset_columns;
-    print "Iterating scoring\n";
+    print STDERR "Iterating scoring\n";
     &determine_contig_nearest_neighbors;
     &score_from_neighbors(0, 0, 0.85);
     &reset_columns;
@@ -2486,22 +2675,25 @@ sub check_overlaps
     &score_from_neighbors(0, 1, 0.95);
     &reset_columns;
     &determine_contig_nearest_neighbors;
-    &score_from_neighbors(0, 1, 0.95);
+    &score_from_neighbors(0, 1, 0.99);
     &reset_columns;
     &determine_contig_nearest_neighbors;
-    &score_from_neighbors(1, 1, 0.95);
+    &score_from_neighbors(1, 1, 0.99);
     &reset_columns;
     &determine_contig_nearest_neighbors;
-    &score_from_neighbors(1, 1, 0.95);
-    print "Assigning paralogs\n";
+    &score_from_neighbors(1, 1, 1.0);
+    print STDERR "Assigning paralogs\n";
     &assign_paralogs;
-    print "Checking overlapping columns\n";
+    print STDERR "Checking overlapping columns\n";
     &check_overlaps;
-    print "Refining alignments\n";
+    print STDERR "Refining alignments\n";
     &refine_alignments;
-    print "Checking overlapping columns\n";
+    print STDERR "Checking overlapping columns\n";
     &check_overlaps;
+    print STDERR "Checking for split genes\n";
     &split_genes;
-    print "Outputting files\n";
+    print STDERR "Refining nearest neighbors for output\n";
+    &refine_contig_nearest_neighbors;
+    print STDERR "Outputting files\n";
     &output_files;
 }

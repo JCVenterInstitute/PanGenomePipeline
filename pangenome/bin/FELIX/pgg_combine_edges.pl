@@ -9,17 +9,34 @@ use FileHandle;
 use Getopt::Long;
 use strict;
 my $genome_number;
-my %pgg_core_edges = ();   # key = pgg core edge, value = array of 0/1 of size number of genomes
+my %pgg_edges = ();  # key = pgg core edge, value = array of 0/1 of size number of genomes
+my %name_to_cluster = (); # key = gene name, value = cluster number gene is in
 
 my $help_text = "THIS IS PLACEHOLDER TEXT\n";                             #<------------------------------------------------------------------------ TODO: write help text
 
 
-GetOptions('help' => \my $help);
+GetOptions('index=s' => \my $index_file,
+	   'help' => \my $help);
 
 if ($help)
 {
     print STDERR "$help_text";
     exit;
+}
+
+sub read_index {
+
+############ Input a two column tab delimited file with gene_name and cluster number ###############
+    
+    open (my $indexfile, "<", $index_file) || die ("ERROR: can't open index file $index_file\n");
+    while (my $line = <$indexfile>) {
+	chomp $line;
+	(my $gene_name, my $cluster) = split(/\t/, $line);  # split the scalar $line on tab
+	$name_to_cluster{$gene_name} = $cluster;
+	#print "$gene_name $cluster $name_to_cluster{$gene_name}\n";
+    }
+    close ($indexfile);
+    return;
 }
 
 sub get_edges {  # obtain list of edge files - order will determine column order in PGG output
@@ -42,16 +59,31 @@ sub get_edges {  # obtain list of edge files - order will determine column order
 	}
 	while (my $edge = <$edgehandle>) {
 	    chomp $edge;
-	    if ($edge =~ /\((\d+)_([35]),(\d+)_([35])\)/) {
+	    my $cluster1;
+	    my $cluster2;
+	    my $whichend1;
+	    my $whichend2;
+	    if ($edge =~ /\((.+)_([35]),(.+)_([35])\)/) {
+		$cluster1 = $1;
+		$cluster2 = $3;
+		$whichend1 = $2;
+		$whichend2 = $4;
 	    } else {
 		die ("ERROR: Bad edge formatting $edge in file $edgefile.\n");
 	    }
-	    if (defined $pgg_core_edges{$edge}) {
-		$pgg_core_edges{$edge}[$index] = 1;
+	    if (defined $name_to_cluster{$cluster1}) {
+		$cluster1 = $name_to_cluster{$cluster1};
+	    }
+	    if (defined $name_to_cluster{$cluster2}) {
+		$cluster2 = $name_to_cluster{$cluster2};
+	    }
+	    $edge = "(" . $cluster1 . "_" . $whichend1 . "," . $cluster2 . "_" . $whichend2 . ")";
+	    if (defined $pgg_edges{$edge}) {
+		$pgg_edges{$edge}[$index] = 1;
 	    } else {
-		$pgg_core_edges{$edge} = [];
-		@{ $pgg_core_edges{$edge} } = @zero_vector;
-		$pgg_core_edges{$edge}[$index] = 1;
+		$pgg_edges{$edge} = [];
+		@{ $pgg_edges{$edge} } = @zero_vector;
+		$pgg_edges{$edge}[$index] = 1;
 	    }
 	}
 	close ($edgehandle);
@@ -89,9 +121,9 @@ sub print_edges {  # sort and print out the combined PGG edges
 	}
     };
 
-    foreach my $edge (sort $sort_edges (keys %pgg_core_edges)) {
+    foreach my $edge (sort $sort_edges (keys %pgg_edges)) {
 	print STDOUT "$edge";
-	foreach my $value ( @{ $pgg_core_edges{$edge} } ) {
+	foreach my $value ( @{ $pgg_edges{$edge} } ) {
 	    print STDOUT "\t$value";
 	}
 	print STDOUT "\n";
@@ -100,6 +132,9 @@ sub print_edges {  # sort and print out the combined PGG edges
 }
 
 ########################################  M A I N  #####################################################
+if ($index_file) {
+    &read_index;
+}
 &get_edges;
 &print_edges;
 exit(0);

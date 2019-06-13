@@ -21,9 +21,11 @@ Input Flags:
 -help - Outputs this help text";
 
 GetOptions('medoids=s' => \my $medoids,
-	'genome=s' => \my $genome,
-	'blastout=s' => \my $blastout,
-	'help' => \my $help);
+	   'genome=s' => \my $genome,
+	   'topology=s' => \my $topology_file,
+	   'blastout=s' => \my $blastout,
+	   'strip_version' => \my $strip_version,
+	   'help' => \my $help);
 	
 if($help){
     print("$help_text\n");
@@ -38,10 +40,42 @@ if(!$genome or !$medoids or !$blastout){
 my @blast_matches_raw = ();# contains all of the blast_matches input to the program via the -blast input file
 my @matches_by_cluster = ();# contains all of the blast_matches input to the program via the -blast input file; sorted by cluster followed by bit score
 my %contigs = ();  # key = contig ID, value = sequence
-my %circular = (); # key = contig ID, value = 1 if contig is circular, 0 otherwise
+my %is_circular = (); # key = contig ID, value = 1 if contig is circular, 0 otherwise
 my %headers = ();  # key = contig ID, value = fasta header line
 my %ctglen = ();   # key = contig ID, value = contig length
 my %added = ();    # key = contig ID, value = length added at beginning and end of circular contig
+
+######################################################################################################################################################################
+sub read_topology {
+
+    unless (open (CIRCFILE, "<", "$topology_file") )  {
+	die ("ERROR: can not open contig topology file $topology_file.\n");
+    }
+    while (<CIRCFILE>) {
+	my $tag = "";
+	my $asmbl_id = "";
+	my $type = "";
+
+	chomp;
+	($tag, $asmbl_id, $type) = split(/\t/, $_);  # split the scalar $line on tab
+	if (($tag eq "") || ($asmbl_id eq "") || ($type eq "")) {
+	    die ("ERROR: genome id, assembly id/contig id, and type  must not be empty/null in the contig topology file $topology_file.\nLine:\n$_\n");
+	}
+	if (!defined $contigs{$asmbl_id}) {
+	    die ("ERROR: $asmbl_id is a contig in the contig topology file but not in the genome fasta file $genome!\nLine:\n$_\n");
+	}
+	if ($type eq "circular") {
+	    $is_circular{$asmbl_id} = 1;
+	    $added{$asmbl_id} = $ctglen{$asmbl_id} > 100000 ? 100000 : $ctglen{$asmbl_id};
+	} elsif ($type eq "linear") {
+	    $is_circular{$asmbl_id} = 0;
+	} else {
+	    die ("ERROR: type $type must be either circular or linear in the  contig topology file $topology_file.\nLine:\n$_\n");
+	}
+    }
+    close (CIRCFILE);
+    return;
+}
 
 sub read_genome {  # read in the contigs for a genome and add 100,000 bp or as much as possible to both ends of circular contigs
 
@@ -57,6 +91,9 @@ sub read_genome {  # read in the contigs for a genome and add 100,000 bp or as m
 	my @fields = split(/\s+/, $title);  # split the scalar $line on space or tab (to separate the identifier from the header and store in array @line
 	my $id = $fields[0]; # unique orf identifier is in column 0, com_name is in rest
 	$id =~ s/>\s*//; # remove leading > and spaces
+	if ($strip_version) {
+	    $id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
+	}
 	$sequence =~ s/[^a-zA-Z]//g; # remove any non-alphabet characters
 	$contigs{$id} = $sequence;
 	if ($title =~ /^>/) {
@@ -65,12 +102,6 @@ sub read_genome {  # read in the contigs for a genome and add 100,000 bp or as m
 	    $headers{$id} = ">" . $title . "\n";
 	}
 	$ctglen{$id} = length ($sequence);
-	if ($fields[1] eq "circular") {
-	    $circular{$id} = 1;
-	    $added{$id} = $ctglen{$id} > 100000 ? 100000 : $ctglen{$id};
-	} else {
-	    $circular{$id} = 0;
-	}
 	$title = ""; # clear the title for the next contig
 	$sequence = ""; #clear out the sequence for the next contig
     }
@@ -100,7 +131,7 @@ sub write_genome {  # read in the contigs for a genome and add 100,000 bp or as 
     }
     foreach my $contig (keys %contigs) {
 	print $contigfile $headers{$contig};
-	if ($circular{$contig}) {
+	if ($is_circular{$contig}) {
 	    &print_fasta((substr($contigs{$contig}, (-$added{$contig})) . $contigs{$contig} . substr($contigs{$contig}, 0, $added{$contig})), ($ctglen{$contig} + (2 * $added{$contig})), $contigfile);
 	} else {
 	    &print_fasta($contigs{$contig}, $ctglen{$contig}, $contigfile);
@@ -157,6 +188,9 @@ sub mod_blast { # eliminate blast matches to the added regions but keep one copy
 	$qid = $btab_line[0];
 	$qid =~ s/^.*_//; # remove centroid_, medoid_, cluster_ or any other verbiage before the cluster number
 	$sid = $btab_line[1];
+	if ($strip_version) {
+	    $sid =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
+	}
 	$pid = $btab_line[2];
 	$qbegin = $btab_line[3];
 	$qend = $btab_line[4];
@@ -166,7 +200,7 @@ sub mod_blast { # eliminate blast matches to the added regions but keep one copy
 	$slength = $btab_line[8];
 	$evalue = $btab_line[9];
 	$score = $btab_line[10];
-	if ($circular{$sid}) {
+	if ($is_circular{$sid}) {
 	    my $ctgbeg = $added{$sid} + 1;
 	    my $ctgend = $added{$sid} + $ctglen{$sid};
 	    if ((($sbegin < $ctgbeg) && ($send < $ctgbeg)) || (($sbegin > $ctgend) && ($send > $ctgend))) {
@@ -221,7 +255,7 @@ sub mod_blast { # eliminate blast matches to the added regions but keep one copy
 	my $cur_cluster = $match->{'clus'};
 	my $cur_ctg = $match->{'ctg'};
 	my $cur_bitscore = $match->{'bits'};
-	if ($circular{$cur_ctg}) {
+	if ($is_circular{$cur_ctg}) {
 	    my $ctgadd = $added{$cur_ctg};
 	    my $ctglen = $ctglen{$cur_ctg};
 	    my $found = 0;
@@ -272,6 +306,7 @@ sub mod_blast { # eliminate blast matches to the added regions but keep one copy
 {#main
     `mkdir C_BLAST_TMP`;
     &read_genome;
+    &read_topology;
     &write_genome("C_BLAST_TMP/temp_fasta.ftmp");
     `makeblastdb -in C_BLAST_TMP/temp_fasta.ftmp -dbtype nucl -out C_BLAST_TMP/temp_fasta.ftmp`;
     `blastn -query $medoids -db C_BLAST_TMP/temp_fasta.ftmp -out C_BLAST_TMP/temp_results.ftmp -task blastn -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore\"`;
