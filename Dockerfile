@@ -25,13 +25,14 @@ RUN R -e "install.packages('getopt', repos = 'http://cran.us.r-project.org')"
 RUN R -e "install.packages('ape', repos = 'http://cran.us.r-project.org')"
 
 # Install all the perl modules needed.
-RUN ["cpanm", "Capture::Tiny", "Term::ReadKey", "DB_File", "MLDBM", "Devel::InnerPackage", "Class::Load", "String::RewritePrefix", "Fatal", "XML::LibXML", "HTML::TableExtract", "LWP::UserAgent", "File::Fetch", "File::Slurp@9999.19", "Bio::SeqIO", "DBI", "GD", "Getopt::Long::Descriptive" ]
+RUN ["cpanm", "Capture::Tiny", "Term::ReadKey", "DB_File", "MLDBM", "Devel::InnerPackage", "Class::Load", "String::RewritePrefix", "Fatal", "XML::LibXML@2.0134", "HTML::TableExtract", "LWP::UserAgent", "File::Fetch", "File::Slurp@9999.19", "Bio::SeqIO", "DBI", "GD", "Getopt::Long::Descriptive" ]
 
 # Install the pipeline.
 RUN wget https://github.com/JCVenterInstitute/PanGenomePipeline/archive/master.zip && unzip /master.zip; ln -s /PanGenomePipeline-master/pangenome /pangenome; rm /master.zip
 
+# Installing EMBOSS for a few useful binaries
+RUN wget ftp://emboss.open-bio.org/pub/EMBOSS/EMBOSS-6.6.0.tar.gz && tar xf EMBOSS-6.6.0.tar.gz; cd /EMBOSS-6.6.0; ./configure; make; make install; rm /EMBOSS-6.6.0.tar.gz
+
 # Retrieve the data directory
 RUN wget https://sandbox.zenodo.org/record/237583/files/HMMER2GO_data.tgz?download=1 -O /HMMER2GO_data.tgz && tar -zxf /HMMER2GO_data.tgz -C /pangenome/bin/HMMER2GO/ ; rm /HMMER2GO_data.tgz
 
-# Installing EMBOSS for a few useful binaries
-RUN wget ftp://emboss.open-bio.org/pub/EMBOSS/EMBOSS-6.6.0.tar.gz && tar xf EMBOSS-6.6.0.tar.gz; cd /EMBOSS-6.6.0; ./configure; make; make install; rm /EMBOSS-6.6.0.tar.gz
