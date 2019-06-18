@@ -121,10 +121,27 @@ if (!is.null(opt$dist_convert)) {
 }
 if (!is.na(distance_matrix[nrow(distance_matrix),1]))
 {
+	if (is.na(distance_matrix[nrow(distance_matrix), nrow(distance_matrix)]))
+	{
+		distance_matrix= rbind(rep(NA, nrow(distance_matrix)+1), cbind( distance_matrix, rep(NA, nrow(distance_matrix)),))
+		colnames(distance_matrix)[ncol(distance_matrix)] = rownames(distance_matrix)[ncol(distance_matrix)]
+		rownames(distance_matrix)[1] = colnames(distance_matrix)[1]
+		num_genomes = num_genomes + 1; # Adding one to the genome count
+	
+	}
 	dist_mat <- as.dist(distance_matrix)
+	distance_matrix = as.matrix(dist_mat)
+
 }else
 {
+	#Adding blank rows to the boundaries to correct for missing identity
+	distance_matrix= rbind(cbind(rep(NA, nrow(distance_matrix)), distance_matrix), rep(NA, nrow(distance_matrix)+1))
+	
+	colnames(distance_matrix)[1] = rownames(distance_matrix)[1]
+	rownames(distance_matrix)[nrow(distance_matrix)] = colnames(distance_matrix)[nrow(distance_matrix)]
+	num_genomes = num_genomes + 1; # Adding one to the genome count
 	dist_mat <- as.dist(t(distance_matrix))
+	distance_matrix = as.matrix(dist_mat)
 }
 if (HclustMethod == "nj") {
     library('ape')
