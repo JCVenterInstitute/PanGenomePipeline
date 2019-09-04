@@ -10,7 +10,8 @@ RUN yum clean all
 
 # Of course, python isn't that simple to install :/
 RUN echo 'alias python="python2.7"' >> ~/.bashrc
-RUN pip install biopython
+RUN pip install 'numpy==1.15.1'
+RUN pip install 'biopython==1.72'
 
 # Install blast
 RUN wget ftp://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/2.2.31/ncbi-blast-2.2.31+-x64-linux.tar.gz && \
@@ -25,7 +26,7 @@ RUN R -e "install.packages('getopt', repos = 'http://cran.us.r-project.org')"
 RUN R -e "install.packages('ape', repos = 'http://cran.us.r-project.org')"
 
 # Install all the perl modules needed.
-RUN ["cpanm", "Capture::Tiny", "Term::ReadKey", "DB_File", "MLDBM", "Devel::InnerPackage", "Class::Load", "String::RewritePrefix", "Fatal", "XML::LibXML@2.0134", "HTML::TableExtract", "LWP::UserAgent", "File::Fetch", "File::Slurp@9999.19", "Bio::SeqIO", "DBI", "GD", "Getopt::Long::Descriptive" ]
+RUN ["cpanm", "Capture::Tiny", "Term::ReadKey", "DB_File", "MLDBM", "Devel::InnerPackage", "Class::Load", "String::RewritePrefix", "Fatal", "XML::LibXML@2.0134", "HTML::TableExtract", "LWP::UserAgent", "File::Fetch", "File::Slurp@9999.19", "DBI", "GD", "Getopt::Long::Descriptive", "Bio::SeqIO" ]
 
 # Install the pipeline.
 RUN wget https://github.com/JCVenterInstitute/PanGenomePipeline/archive/master.zip && unzip /master.zip; ln -s /PanGenomePipeline-master/pangenome /pangenome; rm /master.zip
