@@ -35,15 +35,26 @@ my $debug = 0;
 my $help = 0;
 my $logfile = "multi_pgg_annotate_new.logfile";
 my $topology_file = "topology.txt";
+my $new_topology_file = "new_topology.txt";
+my $multifastadir = "multifasta";
+my $keep_divergent_alignments = "";
+my $input_multifastadir = "";
 my $cwd = getcwd;
 my %old_genomes = ();
-
+my $max_grid_jobs = 50;
+my $engdb = "";
+my $nrdb = "";
+my $pggdb = "";
+my $grid_queue = "";
 
 GetOptions('genomes=s' => \ $genome_list_path,
 	   'new_genomes=s' => \ $new_genomes,
 	   'topology=s' => \ $topology_file,
+	   'new_topology=s' => \ $new_topology_file,
 	   'single_copy=s' => \ $input_single_copy,
 	   'bin_directory=s' => \ $input_bin_directory,
+	   'multifastadir=s' => \ $input_multifastadir,
+	   'alignments=s' => \ $keep_divergent_alignments,
 	   'attributes=s' => \ $attributes,
 	   'weights=s' => \ $weights,
 	   'project=s' => \ $project,
@@ -51,7 +62,12 @@ GetOptions('genomes=s' => \ $genome_list_path,
 	   'pgg=s' => \ $pgg,                                                               # [pangenome_dir]/0_core_adjacency_vector.txt
 	   'medoids=s' => \ $medoids,
 	   'match=s' => \ $matchtable,                                                      # [pangenome_dir]/matchtable.txt
+	   'pggdb=s' => \ $pggdb,
+	   'engdb=s' => \ $engdb,
+	   'nrdb=s' => \ $nrdb,
 	   'id=i' => \ $id,
+	   'queue=s' => \ $grid_queue,
+	   'max_grid_jobs=i' => \ $max_grid_jobs,
 	   'strip_version' => \my $strip_version,
 	   'help' => \ $help,
 	   'debug' => \ $debug);
@@ -61,8 +77,11 @@ if ($help) {
 GetOptions('genomes=s' => \ genome_list_path,
 	   'new_genomes=s' => \ new_genomes,
 	   'topology=s' => \ topology_file,
+	   'new_topology=s' => \ new_topology_file,
 	   'single_copy=s' => \ input_single_copy,
 	   'bin_directory=s' => \ input_bin_directory,
+	   'multifastadir=s' => \ input_multifastadir,
+	   'alignments=s' => \ keep_divergent_alignments,
 	   'attributes=s' => \ attributes,
 	   'weights=s' => \ weights,
 	   'project=s' => \ project,
@@ -70,12 +89,36 @@ GetOptions('genomes=s' => \ genome_list_path,
 	   'pgg=s' => \ pgg,                                                               # [pangenome_dir]/0_core_adjacency_vector.txt
 	   'medoids=s' => \ medoids,
 	   'match=s' => \ matchtable,                                                      # [pangenome_dir]/matchtable.txt
+	   'pggdb=s' => \ pggdb,
+	   'engdb=s' => \ engdb,
+	   'nrdb=s' => \ nrdb,
 	   'id=i' => \ id,
+	   'queue=s' => \ grid_queue,
+	   'max_grid_jobs=i' => \ max_grid_jobs,
 	   'strip_version' => \ strip_version,
 	   'help' => \ help,
 	   'debug' => \ debug);
 _EOB_
     exit(0);
+}
+
+if (substr($pggdb, 0, 1) ne "/") {
+    $pggdb = $cwd . "/$pggdb";
+}
+if (substr($engdb, 0, 1) ne "/") {
+    $engdb = $cwd . "/$engdb";
+}
+if (substr($nrdb, 0, 1) ne "/") {
+    $nrdb = $cwd . "/$nrdb";
+}
+if ($keep_divergent_alignments) {
+    if (-d $keep_divergent_alignments) {
+	if (substr($keep_divergent_alignments, 0, 1) ne "/") {
+	    $keep_divergent_alignments = $cwd . "/$keep_divergent_alignments";
+	}
+    } else {
+	die "The specified alignments directory: $keep_divergent_alignments does not exist!\n";
+    }
 }
 
 if ($input_bin_directory) {
@@ -87,6 +130,17 @@ if ($input_bin_directory) {
 	die "The specified bin directory: $input_bin_directory does not exist!\n";
     }
     $bin_directory = $input_bin_directory;
+}
+
+if ($input_multifastadir) {
+    if (-d $input_multifastadir) {
+    } else {
+	die "The specified bin directory: $input_multifastadir does not exist!\n";
+    }
+    $multifastadir = $input_multifastadir;
+}
+if (substr($multifastadir, 0, 1) ne "/") {
+    $multifastadir = $cwd . "/$multifastadir";
 }
 
 if ($paralogs && $input_single_copy) {
@@ -267,8 +321,8 @@ sub load_genomes
 ######################################################################################################################################################################
 sub read_topology {
 
-    unless (open (CIRCFILE, "<", "$topology_file") )  {
-	die ("ERROR: can not open contig topology file $topology_file.\n");
+    unless (open (CIRCFILE, "<", "$new_topology_file") )  {
+	die ("ERROR: can not open new contig topology file $new_topology_file.\n");
     }
     my $cur_tag = "";
     while (<CIRCFILE>) {
@@ -278,7 +332,7 @@ sub read_topology {
 
 	($tag, $asmbl_id, $type) = split(/\t/, $_);  # split the scalar $line on tab
 	if (($tag eq "") || ($asmbl_id eq "") || ($type eq "")) {
-	    die ("ERROR: genome id, assembly id/contig id, and type  must not be empty/null in the contig topology file $topology_file.\nLine:\n$_\n");
+	    die ("ERROR: genome id, assembly id/contig id, and type  must not be empty/null in the new contig topology file $new_topology_file.\nLine:\n$_\n");
 	}
 	$cur_tag = $tag;
 	
@@ -295,7 +349,7 @@ sub read_topology {
 
 	($tag, $asmbl_id, $type) = split(/\t/, $_);  # split the scalar $line on tab
 	if (($tag eq "") || ($asmbl_id eq "") || ($type eq "")) {
-	    die ("ERROR: genome id, assembly id/contig id, and type  must not be empty/null in the contig topology file $topology_file.\nLine:\n$_\n");
+	    die ("ERROR: genome id, assembly id/contig id, and type  must not be empty/null in the contig new topology file $new_topology_file.\nLine:\n$_\n");
 	}
 	if ($tag ne $cur_tag) {
 	    close (TOPFILE);
@@ -335,23 +389,34 @@ sub compute
 	} else {
 	    $duplicate = 0;
 	}
-	my $shell_script = "/usr/bin/time -o $cpu_name -v $compute_path -duplicate $duplicate -name $identifier -genome $genome_path -weights $weights -medoids $medoids -pgg $pgg -debug";
+	my $shell_script = "/usr/bin/time -o $cpu_name -v $compute_path -multifastadir $multifastadir -duplicate $duplicate -name $identifier -genome $genome_path -weights $weights -medoids $medoids -pgg $pgg -debug -engdb $engdb -nrdb $nrdb -pggdb $pggdb";
 	if ($strip_version) {
 	    $shell_script .= " -strip_version";
+	}
+	if ($keep_divergent_alignments) {
+	    $shell_script .= " -alignments $keep_divergent_alignments";
 	}
 	my $stdoutfile = $cwd . "/" . $identifier . "_stdout";
 	my $stderrfile = $cwd . "/" . $identifier . "_stderr";
 	my $working_dir = $cwd . "/TMP_" . $identifier;
 	my $queue = "himem";
+	if ($grid_queue ne "") {
+	    $queue = $grid_queue;
+	}
 	my $match_name = "$identifier" . "_match.col";
 	my $pgg_name = "$identifier" . "_pgg.col";
 	my $att_name = "$identifier" . "_attributes.txt";
 	my $topology_name = "$identifier" . "_topology.txt";
-	if ((-e $match_name) && (-e $pgg_name) && (-e $att_name)){
+	my $stats_name = "$identifier" . "_cluster_stats.txt";
+	my $anomalies_name = "$identifier" . "_anomalies.txt";
+	if (-e $working_dir) {
+	    next; #we have already annotated this genome in a previous aborted run
+	}
+	if ((-e $match_name) && (-e $pgg_name) && (-e $att_name) && (-e $stats_name) && (-e $anomalies_name)){
 	    next; #we have already annotated this genome in a previous aborted run
 	}
 	`mkdir $working_dir`;
-	`ln $topology_name $single_copy $core_neighbors $working_dir`;
+	`cp $topology_name $single_copy $core_neighbors $working_dir`;
 	`cp $attributes $working_dir/combined.att`; 
 	`cp $topology_file $working_dir/full_topology.txt`; 
 	`cp $matchtable  $working_dir/matchtable.col`; 
@@ -361,8 +426,8 @@ sub compute
 	if ($debug) {print STDERR "qsub $shell_script\n";}
 	$job_ids{&launch_grid_job($job_name, $project, $working_dir, $shell_script, $stdoutfile, $stderrfile, $queue)} = 1;
 	$num_jobs++;
-	if ($num_jobs >= 50) {
-	    $num_jobs = &wait_for_grid_jobs($job_name, 40, \%job_ids);
+	if ($num_jobs >= $max_grid_jobs) {
+	    $num_jobs = &wait_for_grid_jobs($job_name, ($max_grid_jobs - 10), \%job_ids);
 	}
     }
     &wait_for_grid_jobs($job_name, 0, \%job_ids);
@@ -377,12 +442,14 @@ sub compute
 	my $match_name = "$identifier" . "_match.col";
 	my $pgg_name = "$identifier" . "_pgg.col";
 	my $att_name = "$identifier" . "_attributes.txt";
-	if (!(-e $match_name) || !(-e $pgg_name) || !(-e $att_name)){
+	my $stats_name = "$identifier" . "_cluster_stats.txt";
+	my $anomalies_name = "$identifier" . "_anomalies.txt";
+	if (!(-e $match_name) || !(-e $pgg_name) || !(-e $att_name) || !(-e $anomalies_name) || !(-e $stats_name)){
 	    $num_jobs++;
 	}
     }
     if ($debug) {print STDERR "$num_jobs FAILED resubmitting\n";}
-    if ($num_jobs > 50) {
+    if ($num_jobs > $max_grid_jobs) {
 	die "Too many grid jobs failed $num_jobs\n";
     } elsif ($num_jobs > 0) {
 	for (my $k=0; $k <= 2; $k++){ #try a maximum of 3 times on failed jobs
@@ -400,23 +467,31 @@ sub compute
 		my $match_name = "$identifier" . "_match.col";
 		my $pgg_name = "$identifier" . "_pgg.col";
 		my $att_name = "$identifier" . "_attributes.txt";
-		if (!(-e $match_name) || !(-e $pgg_name) || !(-e $att_name)){
+		my $anomalies_name = "$identifier" . "_anomalies.txt";
+		my $stats_name = "$identifier" . "_cluster_stats.txt";
+		if (!(-e $match_name) || !(-e $pgg_name) || !(-e $att_name) || !(-e $anomalies_name) || !(-e $stats_name)){
 		    if (defined $old_genomes{$identifier}) {
 			$duplicate = 1;
 		    } else {
 			$duplicate = 0;
 		    }
-		    my $shell_script = "/usr/bin/time -o $cpu_name -v $compute_path -duplicate $duplicate -name $identifier -genome $genome_path -weights $weights -medoids $medoids -pgg $pgg -debug";
+		    my $shell_script = "/usr/bin/time -o $cpu_name -v $compute_path -multifastadir $multifastadir -duplicate $duplicate -name $identifier -genome $genome_path -weights $weights -medoids $medoids -pgg $pgg -debug -engdb $engdb -nrdb $nrdb -pggdb $pggdb";
 		    if ($strip_version) {
 			$shell_script .= " -strip_version";
+		    }
+		    if ($keep_divergent_alignments) {
+			$shell_script .= " -alignments $keep_divergent_alignments";
 		    }
 		    my $stdoutfile = $cwd . "/" . $identifier . "_stdout";
 		    my $stderrfile = $cwd . "/" . $identifier . "_stderr";
 		    my $working_dir = $cwd . "/TMP_" . $identifier;
 		    my $topology_name = "$identifier" . "_topology.txt";
 		    my $queue = "himem";
+		    if ($grid_queue ne "") {
+			$queue = $grid_queue;
+		    }
 		    `mkdir $working_dir`;
-		    `ln $topology_name $single_copy $core_neighbors $working_dir`;
+		    `cp $topology_name $single_copy $core_neighbors $working_dir`;
 		    `cp $attributes $working_dir/combined.att`; 
 		    `cp $topology_file $working_dir/full_topology.txt`; 
 		    `cp $matchtable  $working_dir/matchtable.col`; 
@@ -437,11 +512,30 @@ sub compute
 	    if ($debug) {print STDERR "removed resubmitted TMP directories\n";}
 	}
     }
+    $num_jobs = 0;
+    for (my $j=0; $j <= $#genomes; $j++)
+    {
+	my $identifier = $genomes[$j][0];                                                 # get genome name
+	my $genome_path = $genomes[$j][1];                                                # get genome path
+	my $match_name = "$identifier" . "_match.col";
+	my $pgg_name = "$identifier" . "_pgg.col";
+	my $att_name = "$identifier" . "_attributes.txt";
+	my $stats_name = "$identifier" . "_cluster_stats.txt";
+	my $anomalies_name = "$identifier" . "_anomalies.txt";
+	if (!(-e $match_name) || !(-e $pgg_name) || !(-e $att_name) || !(-e $anomalies_name) || !(-e $stats_name)){
+	    $num_jobs++;
+	    print STDERR "$identifier\t$genome_path\tFAILED\n";
+	}
+    }
+    if ($num_jobs > 0) {
+	die "Too many grid jobs failed $num_jobs\n";
+    }
 
     if ($debug) {print STDERR "Starting genome processing\n\n";}
-    # print headers to columns that are new (currently gene_ANI, rearrange, and wgsANI)
+    # print headers to columns that are new (currently gene_ANI, rearrange, split_gene, and wgsANI)
     `echo "geneANI" > gene_ANI`;
     `echo "rearrange" > rearrange`;
+    `echo "SplitGene" > SplitGene`;
     `echo "wgsANI" > wgs_ANI`;
     for (my $j=0; $j <= $#genomes; $j++)
     {
@@ -457,6 +551,7 @@ sub compute
 	my $pgg_name = "$identifier" . "_pgg.col";
 	my $gene_ani_name = "$identifier" . "_geneANI.txt";
 	my $rearrange_name = "$identifier" . "_rearrange.txt";
+	my $split_gene_name = "$identifier" . "_split_gene.txt";
 	my $wgs_ani_name = "$identifier" . "_wgsANI.txt";
 	my $att_name = "$identifier" . "_attributes.txt";
 	my $new_att_name = "$identifier" . "_attributes_new.txt";
@@ -464,19 +559,23 @@ sub compute
 	my $new_pgg_name = "$identifier" . "_pgg_new.col";
 	my $uniq_clus_name = "$identifier" . "_uniq_clus.txt";
 	my $uniq_edge_name = "$identifier" . "_uniq_edge.txt";
-	my $anomalies_name_genome = "$identifier" . "_anomalies.txt";
+	my $anomalies_name = "$identifier" . "_anomalies.txt";
 	my $stats_name = "$identifier" . "_cluster_stats.txt";
+	my $topology_name = "$identifier" . "_topology.txt";
 	if ($debug) {print STDERR "matchname: $match_name \t pggname: $pgg_name \n";}
 	die ("$match_name doesn't exist \n") unless (-e $match_name);
 	die ("$pgg_name doesn't exist \n") unless (-e $pgg_name);
 	die ("$att_name doesn't exist \n") unless (-e $att_name);
+	die ("$stats_name doesn't exist \n") unless (-e $stats_name);
+	die ("$anomalies_name doesn't exist \n") unless (-e $anomalies_name);
 	`wc -l < $uniq_clus_name > uniq_clus`;
 	`wc -l < $uniq_edge_name > uniq_edge`;
 	`wc -l < $gene_ani_name >> gene_ANI`;
 	`wc -l < $rearrange_name >> rearrange`;
+	`wc -l < $split_gene_name >> SplitGene`;
 	`cat $wgs_ani_name >> wgs_ANI`;                                                    # we don't need to do a line-count here, we just copy over the entire one-line file
-	`rm $match_name $pgg_name $wgs_ani_name $att_name $new_match_name $new_pgg_name $new_att_name`;
-	`rm $gene_ani_name $rearrange_name $uniq_clus_name $uniq_edge_name`;
+	`rm $match_name $pgg_name $wgs_ani_name $att_name $new_match_name $new_pgg_name $new_att_name $topology_name`;
+	`rm $gene_ani_name $rearrange_name $split_gene_name $uniq_clus_name $uniq_edge_name`;
 	# Divide cluster_stats.txt into 5 files 
 	# 1: All lines before first new genome [stats.head]
 	# 2: All lines corresponding to new genomes [stats.tail]    (this file will be used to generate the next 3)
@@ -495,12 +594,12 @@ sub compute
 	`rm stats.tail stats.tail.col1 stats.tail.col345 stats.tail.col7plus uniq_clus uniq_edge $stats_name`;
     }
     if ($duplicate) {
-	`paste PGG_stats.txt gene_ANI rearrange wgs_ANI | sed -e 's/_ReDoDuP\t/\t/' > tmp.PGG_stats.txt`;                             #add in all columns that contain their own header (new columns)
+	`paste PGG_stats.txt gene_ANI rearrange SplitGene wgs_ANI | sed -e 's/_ReDoDuP\t/\t/' > tmp.PGG_stats.txt`;                             #add in all columns that contain their own header (new columns)
     } else {
-	`paste PGG_stats.txt gene_ANI rearrange wgs_ANI > tmp.PGG_stats.txt`;                             #add in all columns that contain their own header (new columns)
+	`paste PGG_stats.txt gene_ANI rearrange SplitGene wgs_ANI > tmp.PGG_stats.txt`;                             #add in all columns that contain their own header (new columns)
     }
     `mv tmp.PGG_stats.txt PGG_stats.txt`;
-    `rm core_neighbors $single_copy gene_ANI rearrange wgs_ANI *_topology.txt`;
+    `rm core_neighbors $single_copy gene_ANI rearrange SplitGene wgs_ANI`;
 }
 
 ############################################### main

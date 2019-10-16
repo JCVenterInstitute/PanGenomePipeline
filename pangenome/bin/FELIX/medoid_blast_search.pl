@@ -61,6 +61,9 @@ sub read_topology {
 	if (($tag eq "") || ($asmbl_id eq "") || ($type eq "")) {
 	    die ("ERROR: genome id, assembly id/contig id, and type  must not be empty/null in the contig topology file $topology_file.\nLine:\n$_\n");
 	}
+	if ($strip_version) {
+	    $asmbl_id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
+	}
 	if (!defined $contigs{$asmbl_id}) {
 	    die ("ERROR: $asmbl_id is a contig in the contig topology file but not in the genome fasta file $genome!\nLine:\n$_\n");
 	}
