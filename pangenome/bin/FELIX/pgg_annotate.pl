@@ -33,6 +33,7 @@ my %nearest = ();          # key = contig id, parallesl %columns, value = array(
 my @cluster_size = ();     # array of the size of a cluster  which is the number of genomes the cluster members are present in
 my @cluster_hits = ();     # array of the number of blast matches in the reduced_by_region array for a cluster
 my %contigs = ();          # key = contig id, value = sequence of contig
+my %contig_len = ();       # key = contig id, value = length of contig
 my @medoids = ();          # index = cluster id, value = sequence of medoid
 my @medoids_anno = ();     # index = cluster id, value = annotation from fasta header of medoid
 my @core_clusters = ();    # index = cluster number, value = 1 if core 0 otherwise
@@ -103,6 +104,9 @@ sub read_topology {
 	($tag, $asmbl_id, $type) = split(/\t/, $_);  # split the scalar $line on tab
 	if (($tag eq "") || ($asmbl_id eq "") || ($type eq "")) {
 	    die ("ERROR: genome id, assembly id/contig id, and type  must not be empty/null in the contig topology file $topology_file.\nLine:\n$_\n");
+	}
+	if ($strip_version) {
+	    $asmbl_id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
 	}
 	if (!defined $contigs{$asmbl_id}) {
 	    die ("ERROR: $asmbl_id is a contig in the contig topology file but not in the genome fasta file $genome!\nLine:\n$_\n");
@@ -1051,6 +1055,7 @@ sub read_genome {  # read in the contigs for a genome and and store for later ex
 	}
 	$sequence =~ s/[^a-zA-Z]//g; # remove any non-alphabet characters
 	$contigs{$id} = $sequence;
+	$contig_len{$id} = length($sequence);
 	$title = ""; # clear the title for the next contig
 	$sequence = ""; #clear out the sequence for the next contig
     }
@@ -2185,6 +2190,7 @@ sub output_files
 	my $next_core_orient = "";
 	my $core_edge_start = 0;
 	my $core_edge_end = 0;
+	my $first_edge_end = 0;
 	my $edge_start = 0;
 	my $edge_end = 0;
 #	my $edge_all_start = 0;
@@ -2235,6 +2241,7 @@ sub output_files
 #		    $edge_all_start = $end_align + 1;
 		    if ($first_clus_orient eq "") {
 			$first_clus_orient = $clus_orient;
+			$first_edge_end = $edge_end;
 		    }
 		    if ($core_start > 0) {
 			if (((($cluster_size[$clus] * 100) / $num_genomes) >= $core_thresh) && (defined $core_edges{$current_edge})){
@@ -2309,6 +2316,7 @@ sub output_files
 			$edge_start = $end_align + 1;
 			if ($first_clus_orient eq "") {
 			    $first_clus_orient = $clus_orient;
+			    $first_edge_end = $edge_end;
 			}
 #		    }
 		    push @new_match_table, $paralog;
@@ -2334,12 +2342,20 @@ sub output_files
 	    print $coreclusfile "$target\t$contig\t$core_start\t$core_end\n";
 	}
 	if (($is_circular{$contig}) && ($first_clus_orient ne "") && ($prev_clus_orient ne "")) {
-	    $hash_edges{'(' . $prev_clus_orient . ',' . $first_clus_orient . ')'} = 0;
-	    $hash_edges{'(' . $first_clus_orient . ',' . $prev_clus_orient . ')'} = 0;
+	    $edge_end = $contig_len{$contig} + $first_edge_end;
+	    my $tmp_len = ($edge_end - $edge_start) + 1;
+	    $hash_edges{'(' . $prev_clus_orient . ',' . $first_clus_orient . ')'} = "$target\t$contig\tuniq_edge\t$edge_start\t$edge_end\t$tmp_len\t";
+	    $hash_edges{'(' . $first_clus_orient . ',' . $prev_clus_orient . ')'} = "$target\t$contig\tuniq_edge\t$edge_end\t$edge_start\t$tmp_len\t";
 	}
 	
     }
-    printf $wgsANIfile "%5.2f\n", ($sumANI / $sumANIlen);
+    my $tmpANI;
+    if ($sumANIlen > 0) {
+	$tmpANI = $sumANI / $sumANIlen;
+    } else {
+	$tmpANI = 0;
+    }
+    printf $wgsANIfile "%5.2f\n", $tmpANI;
     close ($wgsANIfile);
     close ($geneANIfile);
     close ($rearrange);
@@ -2403,8 +2419,27 @@ sub output_files
 	    } else {
 		die ("ERROR: Bad edge formatting $edge in hash_edges\n");
 	    }
+	    my $contig_sequence;
 	    if ($cluster1 lt $cluster2) { #only capture one representation of the symmetric edge
-		print $uniqedgefile "$hash_edges{$edge}$edge\n";
+		(my $target, my $contig, my $type, my $edge_end, my $edge_start, my $len) = split(/\t/, $hash_edges{$edge});  # split on tab
+		if ($edge_end < $edge_start) {
+		    my $tmp = $edge_start;
+		    $edge_start = $edge_end;
+		    $edge_end = $tmp;
+		}
+		if ($edge_end > $contig_len{$contig}) {
+		    if ($is_circular{$contig}) {
+			$contig_sequence = substr($contigs{$contig}, ($edge_start - 1));
+			$contig_sequence .= substr($contigs{$contig}, 0, ($edge_end - $contig_len{$contig}));
+		    } else {
+			die ("edge coordinates exceed contig length for nonciruclar contig: $edge_start:$edge_end:$contig_len{$contig}\n");
+		    }
+		} else {
+		    $contig_sequence = substr($contigs{$contig}, ($edge_start - 1), $len);
+		}
+		if ($contig_sequence !~ /NNNNNNNNNN/) { # do not output as a unique edge if the sequence contains a gap
+		    print $uniqedgefile "$hash_edges{$edge}$edge\n";
+		}
 	    }
 	}
     }

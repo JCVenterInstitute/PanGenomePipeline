@@ -835,7 +835,7 @@ sub calc_cluster_medoids { # determine the medoid of each cluster based on BSR s
 	    die "medoid could not be determined for cluster $cluster_id !\n";
 	}
 	$medoids[$cluster_id] = $medoid;
-	print $medoidfile ">medoid_$cluster_id $medoid $feat_hash{$medoid}->{'header'}\n";
+	print $medoidfile ">centroid_$cluster_id $medoid $feat_hash{$medoid}->{'header'}\n";
 	my $seq_len = $feat_hash{$medoid}->{'length'};
 	my $sequence = $feat_hash{$medoid}->{'sequence'};
 	for ( my $pos = 0 ; $pos < $seq_len ; $pos += 60 ) {

@@ -19,7 +19,7 @@ my $core_neighbors = "core_neighbors"; # is the file the core neighbors is store
 my $genome_path = "";
 my $genome_name = "";
 my $weights = "cluster_sizes.txt";
-my $pgg = "pgg.txt";                                                               # [pangenome_dir]/0_core_adjacency_vector.txt
+my $pgg = "pgg.txt";
 my $medoids = "medoids.fasta";
 my $debug = 0;
 my $help = 0;
@@ -27,13 +27,23 @@ my $duplicate = 0;
 my $dup_genome_name = "";
 my $target_genome_name = "";
 my $cwd = getcwd;
+my $multifastadir = "multifasta";
+my $keep_divergent_alignments = "";
+my $engdb = "";
+my $nrdb = "";
+my $pggdb = "";
 
 GetOptions('genome=s' => \ $genome_path,
 	   'weights=s' => \ $weights,
 	   'name=s' => \ $genome_name,
-	   'pgg=s' => \ $pgg,                                                               # [pangenome_dir]/0_core_adjacency_vector.txt
+	   'pgg=s' => \ $pgg,
 	   'medoids=s' => \ $medoids,
+	   'pggdb=s' => \ $pggdb,
+	   'engdb=s' => \ $engdb,
+	   'nrdb=s' => \ $nrdb,
 	   'bin_directory=s' => \ $input_bin_directory,
+	   'multifastadir=s' => \ $multifastadir,
+	   'alignments=s' => \ $keep_divergent_alignments,
 	   'duplicate=i' => \ $duplicate,
 	   'strip_version' => \my $strip_version,
 	   'reannotate' => \my $reannotate,
@@ -45,9 +55,14 @@ if ($help) {
 GetOptions('genome=s' => \ genome_path,
 	   'weights=s' => \ weights,
 	   'name=s' => \ genome_name,
-	   'pgg=s' => \ pgg,                                                               # [pangenome_dir]/0_core_adjacency_vector.txt
+	   'pgg=s' => \ pgg,
 	   'medoids=s' => \ medoids,
+	   'pggdb=s' => \ pggdb,
+	   'engdb=s' => \ engdb,
+	   'nrdb=s' => \ nrdb,
 	   'bin_directory=s' => \ input_bin_directory,
+	   'multifastadir=s' => \ multifastadir,
+	   'alignments=s' => \ keep_divergent_alignments,
 	   'duplicate=i' => \ duplicate,
 	   'strip_version' => \ strip_version,
 	   'reannotate' => \ reannotate,
@@ -76,10 +91,21 @@ if ($input_bin_directory) {
     $bin_directory = $input_bin_directory;
 }
 			
+if ($keep_divergent_alignments) {
+    if (-d $keep_divergent_alignments) {
+	if (substr($keep_divergent_alignments, 0, 1) ne "/") {
+	    $keep_divergent_alignments = $cwd . "/$keep_divergent_alignments";
+	}
+    } else {
+	die "The specified alignments directory: $keep_divergent_alignments does not exist!\n";
+    }
+}
+
 ######################################COMPONENT PROGRAM PATHS################################
 my $medoid_blast_path = "$bin_directory/medoid_blast_search.pl";
 my $pgg_annotate_path = "$bin_directory/pgg_annotate.pl";
 my $pgg_multifasta_path = "$bin_directory/pgg_edge_multifasta.pl";
+my $filter_anomalies_path = "$bin_directory/filter_anomalies.pl";
 #############################################################################################
 
 sub bash_error_check {
@@ -111,53 +137,35 @@ sub compute
     
     if ($debug) {print STDERR "Starting compute ...\n\n";}
     if ($debug) {print STDERR "\ngenome_name: $genome_name \t path: $genome_path\n\n";}
-    if ($strip_version) {
-	if ($debug) {print STDERR "/usr/bin/time -o tmp_cpu_stats -v $medoid_blast_path -strip_version -topology $topology_name -m $medoids -g $genome_path -b $blast_name\n";}  # BLAST genome against medoids
-	`/usr/bin/time -o tmp_cpu_stats -v $medoid_blast_path -strip_version -topology $topology_name -m $medoids -g $genome_path -b $blast_name`;  # BLAST genome against medoids
-	`echo "***$medoid_blast_path***" >> $cpu_name`;
-	`cat tmp_cpu_stats >> $cpu_name`;
-	`rm tmp_cpu_stats`;
-	&bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $medoid_blast_path -strip_version -topology $topology_name -m $medoids -g $genome_path -b $blast_name", $?, $!);
-    } else {
-	if ($debug) {print STDERR "/usr/bin/time -o tmp_cpu_stats -v $medoid_blast_path -topology $topology_name -m $medoids -g $genome_path -b $blast_name\n";}  # BLAST genome against medoids
-	`/usr/bin/time -o tmp_cpu_stats -v $medoid_blast_path -topology $topology_name -m $medoids -g $genome_path -b $blast_name`;  # BLAST genome against medoids
-	`echo "***$medoid_blast_path***" >> $cpu_name`;
-	`cat tmp_cpu_stats >> $cpu_name`;
-	`rm tmp_cpu_stats`;
-	&bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $medoid_blast_path -topology $topology_name -m $medoids -g $genome_path -b $blast_name", $?, $!);
+    if ($keep_divergent_alignments) {
+	$pgg_multifasta_path .= " -k $keep_divergent_alignments ";
     }
     if ($strip_version) {
-	if ($reannotate) {
-	    if ($debug) {print STDERR "\n/usr/bin/time -o tmp_cpu_stats -v $pgg_annotate_path -strip_version -re -topology $topology_name -b $blast_name -cl $weights -me $medoids -g $genome_path -co $single_copy -target $target_genome_name -ro $genome_name -n $core_neighbors -pgg $pgg\n";}
-	    `/usr/bin/time -o tmp_cpu_stats -v $pgg_annotate_path -strip_version -re -topology $topology_name -b $blast_name -cl $weights -me $medoids -g $genome_path -co $single_copy -target $target_genome_name -ro $genome_name -n $core_neighbors -pgg $pgg`;
-	    `echo "***$pgg_annotate_path***" >> $cpu_name`;
-	    `cat tmp_cpu_stats >> $cpu_name`;
-	    `rm tmp_cpu_stats`;
-	    &bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $pgg_annotate_path -strip_version -re -topology $topology_name -b $blast_name -cl $weights -me $medoids -g $genome_path -co $single_copy -target $target_genome_name -ro $genome_name -n $core_neighbors -pgg $pgg", $?, $!);
-	} else {
-	    if ($debug) {print STDERR "\n/usr/bin/time -o tmp_cpu_stats -v $pgg_annotate_path -strip_version -topology $topology_name -b $blast_name -cl $weights -me $medoids -g $genome_path -co $single_copy -target $target_genome_name -ro $genome_name -n $core_neighbors -pgg $pgg\n";}
-	    `/usr/bin/time -o tmp_cpu_stats -v $pgg_annotate_path -strip_version -topology $topology_name -b $blast_name -cl $weights -me $medoids -g $genome_path -co $single_copy -target $target_genome_name -ro $genome_name -n $core_neighbors -pgg $pgg`;
-	    `echo "***$pgg_annotate_path***" >> $cpu_name`;
-	    `cat tmp_cpu_stats >> $cpu_name`;
-	    `rm tmp_cpu_stats`;
-	    &bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $pgg_annotate_path -strip_version -topology $topology_name -b $blast_name -cl $weights -me $medoids -g $genome_path -co $single_copy -target $target_genome_name -ro $genome_name -n $core_neighbors -pgg $pgg", $?, $!);
-	} 
+	$medoid_blast_path .= " -strip_version ";
+    }	
+    if ($debug) {print STDERR "/usr/bin/time -o tmp_cpu_stats -v $medoid_blast_path -topology $topology_name -m $medoids -g $genome_path -b $blast_name\n";}  # BLAST genome against medoids
+    `/usr/bin/time -o tmp_cpu_stats -v $medoid_blast_path -topology $topology_name -m $medoids -g $genome_path -b $blast_name`;  # BLAST genome against medoids
+    `echo "***$medoid_blast_path***" >> $cpu_name`;
+    `cat tmp_cpu_stats >> $cpu_name`;
+    `rm tmp_cpu_stats`;
+    &bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $medoid_blast_path -topology $topology_name -m $medoids -g $genome_path -b $blast_name", $?, $!);
+    if ($strip_version) {
+	$pgg_annotate_path .= " -strip_version ";
+    }	
+    if ($reannotate) {
+	if ($debug) {print STDERR "\n/usr/bin/time -o tmp_cpu_stats -v $pgg_annotate_path -re -topology $topology_name -b $blast_name -cl $weights -me $medoids -g $genome_path -co $single_copy -target $target_genome_name -ro $genome_name -n $core_neighbors -pgg $pgg\n";}
+	`/usr/bin/time -o tmp_cpu_stats -v $pgg_annotate_path -re -topology $topology_name -b $blast_name -cl $weights -me $medoids -g $genome_path -co $single_copy -target $target_genome_name -ro $genome_name -n $core_neighbors -pgg $pgg`; 
+	`echo "***$pgg_annotate_path***" >> $cpu_name`;
+	`cat tmp_cpu_stats >> $cpu_name`;
+	`rm tmp_cpu_stats`;
+	&bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $pgg_annotate_path -re -topology $topology_name -b $blast_name -cl $weights -me $medoids -g $genome_path -co $single_copy -target $target_genome_name -ro $genome_name -n $core_neighbors -pgg $pgg", $?, $!);
     } else {
-	if ($reannotate) {
-	    if ($debug) {print STDERR "\n/usr/bin/time -o tmp_cpu_stats -v $pgg_annotate_path -re -topology $topology_name -b $blast_name -cl $weights -me $medoids -g $genome_path -co $single_copy -target $target_genome_name -ro $genome_name -n $core_neighbors -pgg $pgg\n";}
-	    `/usr/bin/time -o tmp_cpu_stats -v $pgg_annotate_path -re -topology $topology_name -b $blast_name -cl $weights -me $medoids -g $genome_path -co $single_copy -target $target_genome_name -ro $genome_name -n $core_neighbors -pgg $pgg`; 
-	    `echo "***$pgg_annotate_path***" >> $cpu_name`;
-	    `cat tmp_cpu_stats >> $cpu_name`;
-	    `rm tmp_cpu_stats`;
-	    &bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $pgg_annotate_path -re -topology $topology_name -b $blast_name -cl $weights -me $medoids -g $genome_path -co $single_copy -target $target_genome_name -ro $genome_name -n $core_neighbors -pgg $pgg", $?, $!);
-	} else {
-	    if ($debug) {print STDERR "\n/usr/bin/time -o tmp_cpu_stats -v $pgg_annotate_path -topology $topology_name -b $blast_name -cl $weights -me $medoids -g $genome_path -co $single_copy -target $target_genome_name -ro $genome_name -n $core_neighbors -pgg $pgg\n";}
-	    `/usr/bin/time -o tmp_cpu_stats -v $pgg_annotate_path -topology $topology_name -b $blast_name -cl $weights -me $medoids -g $genome_path -co $single_copy -target $target_genome_name -ro $genome_name -n $core_neighbors -pgg $pgg`; 
-	    `echo "***$pgg_annotate_path***" >> $cpu_name`;
-	    `cat tmp_cpu_stats >> $cpu_name`;
-	    `rm tmp_cpu_stats`;
-	    &bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $pgg_annotate_path -topology $topology_name -b $blast_name -cl $weights -me $medoids -g $genome_path -co $single_copy -target $target_genome_name -ro $genome_name -n $core_neighbors -pgg $pgg", $?, $!);
-	}
+	if ($debug) {print STDERR "\n/usr/bin/time -o tmp_cpu_stats -v $pgg_annotate_path -topology $topology_name -b $blast_name -cl $weights -me $medoids -g $genome_path -co $single_copy -target $target_genome_name -ro $genome_name -n $core_neighbors -pgg $pgg\n";}
+	`/usr/bin/time -o tmp_cpu_stats -v $pgg_annotate_path -topology $topology_name -b $blast_name -cl $weights -me $medoids -g $genome_path -co $single_copy -target $target_genome_name -ro $genome_name -n $core_neighbors -pgg $pgg`; 
+	`echo "***$pgg_annotate_path***" >> $cpu_name`;
+	`cat tmp_cpu_stats >> $cpu_name`;
+	`rm tmp_cpu_stats`;
+	&bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $pgg_annotate_path -topology $topology_name -b $blast_name -cl $weights -me $medoids -g $genome_path -co $single_copy -target $target_genome_name -ro $genome_name -n $core_neighbors -pgg $pgg", $?, $!);
     }
     if ($debug) {print STDERR "\nmatchname: $match_name \t pggname: $pgg_name \n";}
     die ("$match_name doesn't exist \n") unless (-e $match_name);
@@ -183,27 +191,45 @@ sub compute
 	`paste matchtable.col $match_name > tmp.matchtable.col`;
 	`paste pgg.col $pgg_name > tmp.pgg.col`;
 	`cat $att_name >> combined.att`; 
-	`cat $topology_name | sed -e 's/\t/_ReDoDuP\t/' >> full_topology.txt`; 
 	`mv tmp.matchtable.col matchtable.col`;                                            # rename file
 	`mv tmp.pgg.col pgg.col;`;                                                         # rename file
+	if ($strip_version) {
+	    $pgg_multifasta_path .= " -V ";
+	}	
 	if ($duplicate) {
-	    if ($debug) {print STDERR "\n/usr/bin/time -o tmp_cpu_stats -v $pgg_multifasta_path -T full_topology.txt -I $genome_name -B output -b multifasta -g combined_genome_list -m matchtable.col -a combined.att -p pgg.col -t $dup_genome_name -S -s $single_copy\n";}
-	    `/usr/bin/time -o tmp_cpu_stats -v $pgg_multifasta_path -T full_topology.txt -I $genome_name -B output -b multifasta -g combined_genome_list -m matchtable.col -a combined.att -p pgg.col -t $dup_genome_name -S -s $single_copy`;    # run pgg edge multi_fasta
+	    `cat $topology_name | sed -e 's/\t/_ReDoDuP\t/' >> full_topology.txt`; 
+	    if ($debug) {print STDERR "\n/usr/bin/time -o tmp_cpu_stats -v $pgg_multifasta_path -l -T full_topology.txt -I $genome_name -B output -b $multifastadir -g combined_genome_list -m matchtable.col -a combined.att -p pgg.col -t $dup_genome_name -S -s $single_copy\n";}
+	    `/usr/bin/time -o tmp_cpu_stats -v $pgg_multifasta_path -l -T full_topology.txt -I $genome_name -B output -b $multifastadir -g combined_genome_list -m matchtable.col -a combined.att -p pgg.col -t $dup_genome_name -S -s $single_copy`;    # run pgg edge multi_fasta
 	    `echo "***$pgg_multifasta_path***" >> $cpu_name`;
 	    `cat tmp_cpu_stats >> $cpu_name`;
 	    `rm tmp_cpu_stats`;
-	    &bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $pgg_multifasta_path -T full_topology.txt -I $genome_name -B output -b multifasta -g combined_genome_list -m matchtable.col -a combined.att -p pgg.col -t $dup_genome_name -S -s $single_copy", $?, $!);
+	    &bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $pgg_multifasta_path -l -T full_topology.txt -I $genome_name -B output -b $multifastadir -g combined_genome_list -m matchtable.col -a combined.att -p pgg.col -t $dup_genome_name -S -s $single_copy", $?, $!);
 	} else {
-	    if ($debug) {print STDERR "\n/usr/bin/time -o tmp_cpu_stats -v $pgg_multifasta_path -T full_topology.txt -B output -b multifasta -g combined_genome_list -m matchtable.col -a combined.att -p pgg.col -t $genome_name -S -s $single_copy\n";}
-	    `/usr/bin/time -o tmp_cpu_stats -v $pgg_multifasta_path -T full_topology.txt -B output -b multifasta -g combined_genome_list -m matchtable.col -a combined.att -p pgg.col -t $genome_name -S -s $single_copy`;    # run pgg edge multi_fasta
+	    `cat $topology_name >> full_topology.txt`; 
+	    if ($debug) {print STDERR "\n/usr/bin/time -o tmp_cpu_stats -v $pgg_multifasta_path -l -T full_topology.txt -B output -b $multifastadir -g combined_genome_list -m matchtable.col -a combined.att -p pgg.col -t $genome_name -S -s $single_copy\n";}
+	    `/usr/bin/time -o tmp_cpu_stats -v $pgg_multifasta_path -l -T full_topology.txt -B output -b $multifastadir -g combined_genome_list -m matchtable.col -a combined.att -p pgg.col -t $genome_name -S -s $single_copy`;    # run pgg edge multi_fasta
 	    `echo "***$pgg_multifasta_path***" >> $cpu_name`;
 	    `cat tmp_cpu_stats >> $cpu_name`;
 	    `rm tmp_cpu_stats`;
-	    &bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $pgg_multifasta_path -T full_topology.txt -B output -b multifasta -g combined_genome_list -m matchtable.col -a combined.att -p pgg.col -t $genome_name -S -s $single_copy", $?, $!);
+	    &bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $pgg_multifasta_path -l -T full_topology.txt -B output -b $multifastadir -g combined_genome_list -m matchtable.col -a combined.att -p pgg.col -t $genome_name -S -s $single_copy", $?, $!);
 	}
-	`mv $stats_name $stats_name_genome`;
 	`cat $anomalies_name $gene_ani_name $rearrange_name $uniq_clus_name $uniq_edge_name > $anomalies_name_genome`;
 	`rm combined.att pgg.col matchtable.col full_topology.txt combined_genome_list`;
+	
+	my $filter_genomes_name = "$genome_name" . "_filter_genomes.txt";
+	my $filter_features_name = "$genome_name" . "_FEATURES";
+	open(FGLIST, ">", $filter_genomes_name);
+	print FGLIST "$genome_name\t$genome_path\t$anomalies_name_genome\n";
+	close(FGLIST);
+	if ($debug) {print STDERR "\n/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -genomes $filter_genomes_name -engdb $engdb -nrdb $nrdb -pggdb $pggdb\n";}
+	`/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -genomes $filter_genomes_name -engdb $engdb -nrdb $nrdb -pggdb $pggdb`;
+	`echo "***$filter_anomalies_path***" >> $cpu_name`;
+	`cat tmp_cpu_stats >> $cpu_name`;
+	`rm tmp_cpu_stats`;
+	&bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -genomes $filter_genomes_name -engdb $engdb -nrdb $nrdb -pggdb $pggdb", $?, $!);
+	`paste $stats_name $filter_features_name > $stats_name_genome`;
+	`rm $filter_features_name $filter_genomes_name`;
+	`rm -r output multifasta`;
     }
     `rm $blast_name`;
     my $all_files = $genome_name . "_*";
