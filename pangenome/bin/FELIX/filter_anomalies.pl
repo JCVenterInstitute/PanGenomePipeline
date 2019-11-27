@@ -346,10 +346,16 @@ while (my $line = <$infile>)  {
 		$diverged_type = "";
 	    }
 	    if (($prev_contig ne "") && (($contig_len{$prev_contig} - $prev_end) > 20)) { # include unannotated contig ends > 20 bp
-		&print_fasta($file_fasta_seqs, ($prev_contig . "_END_" . ($prev_end + 1) . "_" . $contig_len{$prev_contig}), $contigs{$prev_contig}, ($prev_end + 1), $contig_len{$prev_contig});
+		my $tmp_seq = substr($contigs{$prev_contig}, $prev_end, ($contig_len{$prev_contig} - $prev_end));
+		if ($tmp_seq !~ /NNNNN/) { # do not use sequences with gaps in them - perhaps should split on gaps instead
+		    &print_fasta($file_fasta_seqs, ($prev_contig . "_END_" . ($prev_end + 1) . "_" . $contig_len{$prev_contig}), $contigs{$prev_contig}, ($prev_end + 1), $contig_len{$prev_contig});
+		}
 	    }
 	    if ($cur_beg > 20) { # include unannotated contig ends > 20 bp
-		&print_fasta($file_fasta_seqs, ($cur_contig . "_BEG_1_" . ($cur_beg - 1)), $contigs{$cur_contig}, 1, ($cur_beg - 1));
+		my $tmp_seq = substr($contigs{$cur_contig}, 0, ($cur_beg - 1));
+		if ($tmp_seq !~ /NNNNN/) { # do not use sequences with gaps in them - perhaps should split on gaps instead
+		    &print_fasta($file_fasta_seqs, ($cur_contig . "_BEG_1_" . ($cur_beg - 1)), $contigs{$cur_contig}, 1, ($cur_beg - 1));
+		}
 	    }
 	    if (($prev_contig ne "") && ($range_beg != 0)) {
 		print $file_ranges "$prev_contig\t$range_beg\t$range_end\t$categories[$prev_category]\n";
@@ -402,7 +408,10 @@ while (my $line = <$infile>)  {
 	&print_fasta($file_fasta_seqs, ($prev_contig . "_DIV_" . $beg_diverged . "_" . $end_diverged . "_" . $diverged_type), $contigs{$prev_contig}, $beg_diverged, $end_diverged);
     }
     if (($prev_contig ne "") && (($contig_len{$prev_contig} - $prev_end) > 20)) { # include unannotated contig ends > 20 bp
-	&print_fasta($file_fasta_seqs, ($prev_contig . "_END_" . ($prev_end + 1) . "_" . $contig_len{$prev_contig}), $contigs{$prev_contig}, ($prev_end + 1), $contig_len{$prev_contig});
+	my $tmp_seq = substr($contigs{$prev_contig}, $prev_end, ($contig_len{$prev_contig} - $prev_end));
+	if ($tmp_seq !~ /NNNNN/) { # do not use sequences with gaps in them - perhaps should split on gaps instead
+	    &print_fasta($file_fasta_seqs, ($prev_contig . "_END_" . ($prev_end + 1) . "_" . $contig_len{$prev_contig}), $contigs{$prev_contig}, ($prev_end + 1), $contig_len{$prev_contig});
+	}
     }
     if (($prev_contig ne "") && ($range_beg != 0)) {
 	print $file_ranges "$prev_contig\t$range_beg\t$range_end\t$categories[$prev_category]\n";
@@ -415,7 +424,10 @@ while (my $line = <$infile>)  {
     foreach my $id (keys %contigs)  { # go through all contigs
 	if (!defined $seen_contig{$id}) {
 	    #print STDERR "not seen: $id\t$contig_len{$id}\n";
-	    &print_fasta($file_fasta_seqs, ($id . "_WHOLE_1_" . $contig_len{$id}), $contigs{$id}, 1, $contig_len{$id});
+	    my $tmp_seq = substr($contigs{$id}, 0, $contig_len{$id});
+	    if ($tmp_seq !~ /NNNNN/) { # do not use sequences with gaps in them - perhaps should split on gaps instead
+		&print_fasta($file_fasta_seqs, ($id . "_WHOLE_1_" . $contig_len{$id}), $contigs{$id}, 1, $contig_len{$id});
+	    }
 	}
     }
 
@@ -440,8 +452,8 @@ while (my $line = <$infile>)  {
     $cmd = 'export LD_LIBRARY_PATH=/usr/local/packages/glibc-2.14/lib:$LD_LIBRARY_PATH; ' . "/usr/local/projdata/99999/IFX/CommonDB/ncbi-blast+/ncbi-blast-2.9.0+/bin/blastn -query $out_fasta_seqs -db $out_genome -out $out_genome_blast -task blastn -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\" -culling_limit 3";
     `$cmd`;
     `rm $out_genome $out_genome_nsq $out_genome_nin $out_genome_nhr`;
-    $cmd = 'export LD_LIBRARY_PATH=/usr/local/packages/glibc-2.14/lib:$LD_LIBRARY_PATH; ' . "/usr/local/projdata/99999/IFX/CommonDB/ncbi-blast+/ncbi-blast-2.9.0+/bin/blastn -query $out_fasta_seqs -db $engdb -out $out_engdb_blast -task blastn -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\" -culling_limit 2";
-    `$cmd`;
+    #$cmd = 'export LD_LIBRARY_PATH=/usr/local/packages/glibc-2.14/lib:$LD_LIBRARY_PATH; ' . "/usr/local/projdata/99999/IFX/CommonDB/ncbi-blast+/ncbi-blast-2.9.0+/bin/blastn -query $out_fasta_seqs -db $engdb -out $out_engdb_blast -task blastn -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\" -culling_limit 2";
+    #`$cmd`;
     $cmd = 'export LD_LIBRARY_PATH=/usr/local/packages/glibc-2.14/lib:$LD_LIBRARY_PATH; ' . "/usr/local/projdata/99999/IFX/CommonDB/ncbi-blast+/ncbi-blast-2.9.0+/bin/blastn -query $out_fasta_seqs -db $PGGdb -out $out_PGG_blast -task blastn -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\"";
     `$cmd`;
     # read in anomalies file
@@ -508,7 +520,7 @@ while (my $line = <$infile>)  {
     close(PGG_BLAST_FILE);
     open(PGG_BLAST_FILE, ">", $out_PGG_blast) || die ("Couldn't open $out_PGG_blast for writing\n");
     open(CALLS_FILE, ">", $out_predictions) || die ("Couldn't open $out_predictions for writing\n");
-    print CALLS_FILE "Sample\tType\tQuery ID\t5pflank\t3pflank\tDeleted\tInserted\tSubject ID\t% Identity\tSubject Start\tSubject End\n";
+    print CALLS_FILE "Sample\tType\tQuery ID\t5pflank\t3pflank\tDeleted\tDeletion Length\tInserted\tInsertion Length\tSubject ID\t% Identity\tSubject Start\tSubject End\tQuery Start\tQuery End\n";
     my $mutations = 0;
     my $deletions = 0;
     my $insertions = 0;
@@ -577,7 +589,7 @@ while (my $line = <$infile>)  {
 	    my $btab = join("\t", @{ $pgg_blast_results[$full_index] });
 	    print PGG_BLAST_FILE "$btab\n";
 	    my $pid = $pgg_blast_results[$full_index][PIDENT];
-	    if (($pid < 99.5) && ($qid !~ /_WHOLE_/) && ($qid !~ /_BEG_/) && ($qid !~ /_WHOLE_/)) {
+	    if (($pid < 99.5) && ($qid !~ /_WHOLE_/) && ($qid !~ /_BEG_/) && ($qid !~ /_END_/)) {
 		my $cur_sid = $pgg_blast_results[$full_index][SSEQID];
 		my $qstart = $pgg_blast_results[$full_index][QSTART];
 		my $qend = $pgg_blast_results[$full_index][QEND];
@@ -595,7 +607,9 @@ while (my $line = <$infile>)  {
 		    $deletion = substr($pggdb_contigs{$cur_sid}, ($sstart - 1), (($send - $sstart) + 1));
 		}
 		$mutations++;
-		print CALLS_FILE "$output\tMUTATION\t$qid\t\t\t$deletion\t$insertion\t$cur_sid\t$pid\t$sstart\t$send\n";
+		my $del_len = length($deletion);
+		my $ins_len = length($insertion);
+		print CALLS_FILE "$output\tMUTATION\t$qid\t\t\t$deletion\t$del_len\t$insertion\t$ins_len\t$cur_sid\t$pid\t$sstart\t$send\t$qstart\t$qend\n";
 	    }
 	} elsif (($fivep_index >= 0) && ($threep_index >= 0)) {# possible deletion or insertion/replacement
 	    if (($fivep_index > $#pgg_blast_results) || ($fivep_index < 0)) {
@@ -612,7 +626,9 @@ while (my $line = <$infile>)  {
 	    my $pid = ($pgg_blast_results[$fivep_index][PIDENT] + $pgg_blast_results[$threep_index][PIDENT]) / 2;
 	    my $revcomp5p = ($pgg_blast_results[$fivep_index][SSTART] > $pgg_blast_results[$fivep_index][SEND]);
 	    my $revcomp3p = ($pgg_blast_results[$threep_index][SSTART] > $pgg_blast_results[$threep_index][SEND]);
-	    if ($repeat || ($revcomp5p != $revcomp3p) || ($revcomp5p && ($pgg_blast_results[$fivep_index][SSTART] < $pgg_blast_results[$threep_index][SSTART])) || (!$revcomp5p && ($pgg_blast_results[$fivep_index][SSTART] > $pgg_blast_results[$threep_index][SSTART]))) {
+	    if (($pgg_blast_results[$fivep_index][QLEN] <= 500) && (($qid =~ /_BEG_/) || ($qid =~ /_END_/))) { # do not believe short sequences on the ends of contigs
+		#this could change but for now these seem to be assembly/sequencing errors
+	    } elsif ($repeat || ($revcomp5p != $revcomp3p) || ($revcomp5p && ($pgg_blast_results[$fivep_index][SSTART] < $pgg_blast_results[$threep_index][SSTART])) || (!$revcomp5p && ($pgg_blast_results[$fivep_index][SSTART] > $pgg_blast_results[$threep_index][SSTART]))) {
 		#doesn't work for repeats - need to add check for circular contig causing third or fourth condition
 	    } elsif ((($pgg_blast_results[$threep_index][QSTART] - $pgg_blast_results[$fivep_index][QEND]) >= -10) && (($pgg_blast_results[$threep_index][QSTART] - $pgg_blast_results[$fivep_index][QEND]) <= 10)) {
 		my $fivep_start = $pgg_blast_results[$fivep_index][QSTART];
@@ -681,13 +697,17 @@ while (my $line = <$infile>)  {
 			$deletion = substr($pggdb_contigs{$cur_sid}, ($del_end - 1), (($del_start - $del_end) + 1));
 		    }
 		}
-		if ($tandem_duplication) {
-		    # swap insertion with deletion sequence for tandem duplication - should possibly be grabbing the sequence from the query rather than the matching bit from the subject
-		    $tandem_duplications++;
-		    print CALLS_FILE "$output\tTANDEM_DUPLICATION\t$qid\t$fivep_flank\t$threep_flank\t$insertion\t$deletion\t$cur_sid\t$pid\t$del_start\t$del_end\n";
-		} else {
-		    $deletions++;
-		    print CALLS_FILE "$output\tDELETION\t$qid\t$fivep_flank\t$threep_flank\t$deletion\t$insertion\t$cur_sid\t$pid\t$del_start\t$del_end\n";
+		if (($deletion !~ /NNNNN/) && (length($insertion) <= 200000) && (length($deletion) <= 200000)) { # do not believe sequences with gaps in them or are really long
+		    my $del_len = length($deletion);
+		    my $ins_len = length($insertion);
+		    if ($tandem_duplication) {
+			# swap insertion with deletion sequence for tandem duplication - should possibly be grabbing the sequence from the query rather than the matching bit from the subject
+			$tandem_duplications++;
+			print CALLS_FILE "$output\tTANDEM_DUPLICATION\t$qid\t$fivep_flank\t$threep_flank\t$insertion\t$ins_len\t$deletion\t$del_len\t$cur_sid\t$pid\t$del_start\t$del_end\t$fivep_end\t$threep_start\n";
+		    } else {
+			$deletions++;
+			print CALLS_FILE "$output\tDELETION\t$qid\t$fivep_flank\t$threep_flank\t$deletion\t$del_len\t$insertion\t$ins_len\t$cur_sid\t$pid\t$del_start\t$del_end\t$fivep_end\t$threep_start\n";
+		    }
 		}
 	    } elsif (($pgg_blast_results[$threep_index][QSTART] - $pgg_blast_results[$fivep_index][QEND]) > 10) {
 		my $fivep_start = $pgg_blast_results[$fivep_index][QSTART];
@@ -719,8 +739,12 @@ while (my $line = <$infile>)  {
 			$deletion = substr($pggdb_contigs{$cur_sid}, ($del_start - 1), (($del_end - $del_start) + 1));
 		    }
 		}
-		$insertions++;
-		print CALLS_FILE "$output\tINSERTION\t$qid\t$fivep_flank\t$threep_flank\t$deletion\t$insertion\t$cur_sid\t$pid\t$del_start\t$del_end\n";
+		if (($deletion !~ /NNNNN/) && (length($insertion) <= 200000) && (length($deletion) <= 200000)) { # do not believe sequences with gaps in them or are really long
+		    my $del_len = length($deletion);
+		    my $ins_len = length($insertion);
+		    $insertions++;
+		    print CALLS_FILE "$output\tINSERTION\t$qid\t$fivep_flank\t$threep_flank\t$deletion\t$del_len\t$insertion\t$ins_len\t$cur_sid\t$pid\t$del_start\t$del_end\t$fivep_end\t$threep_start\n";
+		}
 	    }
 	} elsif ($fivep_index >= 0) {# possible deletion
 	    if (($fivep_index > $#pgg_blast_results) || ($fivep_index < 0)) {
@@ -741,13 +765,15 @@ while (my $line = <$infile>)  {
     open(OUT_FEATURES, ">", $out_features) || die ("Couldn't open $out_features for writing\n");
     print OUT_FEATURES "Mutations\tDeletions\tInsertions\tTandem Duplications\n$mutations\t$deletions\t$insertions\t$tandem_duplications\n";
     close (OUT_FEATURES);
-    $cmd = 'export LD_LIBRARY_PATH=/usr/local/packages/glibc-2.14/lib:$LD_LIBRARY_PATH; ' . "/usr/local/projdata/99999/IFX/CommonDB/ncbi-blast+/ncbi-blast-2.9.0+/bin/blastn -num_threads 4 -query $out_fasta_seqs -db $nrdb -out $out_nrdb_blast -task megablast -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\" -culling_limit 2";
-    `$cmd`;
+    #$cmd = 'export LD_LIBRARY_PATH=/usr/local/packages/glibc-2.14/lib:$LD_LIBRARY_PATH; ' . "/usr/local/projdata/99999/IFX/CommonDB/ncbi-blast+/ncbi-blast-2.9.0+/bin/blastn -num_threads 4 -query $out_fasta_seqs -db $nrdb -out $out_nrdb_blast -task megablast -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\" -culling_limit 2";
+    #`$cmd`;
     open(COMBINED_BTAB, ">", $combined_btab) || die ("Couldn't open $combined_btab for writing\n");
     print COMBINED_BTAB "qseqid\tsseqid\tpident\tqstart\tqend\tqlen\tsstart\tsend\tslen\tevalue\tbitscore\tstitle\n";
     close (COMBINED_BTAB);
-    `cat $out_genome_blast $out_nrdb_blast $out_engdb_blast $out_PGG_blast | sort -k1,1 -k11,11nr >> $combined_btab`;
-    `rm $out_genome_blast $out_nrdb_blast $out_engdb_blast $out_PGG_blast`;
+    #`cat $out_genome_blast $out_nrdb_blast $out_engdb_blast $out_PGG_blast | sort -k1,1 -k11,11nr >> $combined_btab`;
+    #`rm $out_genome_blast $out_nrdb_blast $out_engdb_blast $out_PGG_blast`;
+    `cat $out_genome_blast $out_PGG_blast | sort -k1,1 -k11,11nr >> $combined_btab`;
+    `rm $out_genome_blast $out_PGG_blast`;
 }
 
 exit(0);

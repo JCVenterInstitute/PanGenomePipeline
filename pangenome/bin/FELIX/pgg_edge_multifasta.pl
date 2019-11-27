@@ -25,8 +25,8 @@ use strict;
 use warnings;
 use Getopt::Std;
 use File::Basename;
-getopts ('I:RSALlDhb:B:m:p:P:a:g:t:M:s:T:Vk:');
-our ($opt_I,$opt_S,$opt_A,$opt_L,$opt_l,$opt_D,$opt_h,$opt_b,$opt_m,$opt_p,$opt_P,$opt_a,$opt_g,$opt_t,$opt_M,$opt_R,$opt_B,$opt_s,$opt_T,$opt_V,$opt_k);
+getopts ('j:I:RSALlDhb:B:m:p:P:a:g:t:M:s:T:Vk:');
+our ($opt_j, $opt_I,$opt_S,$opt_A,$opt_L,$opt_l,$opt_D,$opt_h,$opt_b,$opt_m,$opt_p,$opt_P,$opt_a,$opt_g,$opt_t,$opt_M,$opt_R,$opt_B,$opt_s,$opt_T,$opt_V,$opt_k);
 
 ## use boolean logic:  TRUE = 1, FALSE = 0
 
@@ -44,6 +44,7 @@ my $DEBUG;
 my $genomes_file_name;
 my @genome_array = ();
 my $genome_number;
+my $max_grid_jobs = 50;
 my $compute_all = 0;
 my $align_all = 0;
 my $align_new = 0;
@@ -56,6 +57,14 @@ my $medoids_path;
 my $single_cores;
 my $topology_file;
 my $strip_version = 0;
+if ($opt_j) { # should really check that this a positive integer
+    if (($opt_j =~ /^\d+$/) && ($opt_j > 0)) {
+	$max_grid_jobs = $opt_j;
+    } else {
+	print STDERR "Error $opt_j for maximum number of grid jobs is not a positive integer\n";
+	&option_help;
+    }
+}
 if ($opt_P) {$project = $opt_P;} else {$project = "8520";}
 if ($opt_M) {$medoids_path = $opt_M;} else {$medoids_path = "";}
 if ($opt_s) {$single_cores = $opt_s;} else {$single_cores = "";}
@@ -114,6 +123,7 @@ if (($opt_a) && (-s "$opt_a")) {$att_file = $opt_a;} else { print STDERR "Error 
 if (($opt_g) && (-s "$opt_g")) {$genomes_file_name = $opt_g;} else { print STDERR "Error with -g\n"; &option_help; } # if no value for option g (genome tags and contig file names input file), quit with help menu
 if (($opt_T) && (-s "$opt_T")) {$topology_file = $opt_T;} else { print STDERR "Error with -T\n"; &option_help; } # if no value for option T (topology input file), quit with help menu
 
+my $cpu_name = "$target_id" . "_pem_cpu_separate_stats";
 my %edge_hash = ();            # Key1 = edge ID Key2 = struct members with their values (5p,3p,gtag, contig)
 my %single_copy_core = ();     # key = cluster number, value is defined if single copy core otherwise undefiend
 my %is_circular = ();          # key1 = genome ID, key2 = contig_name, value = 1 if circular 0 otherwise
@@ -694,9 +704,9 @@ sub process_matchtable {
 					    }
 					}
 					close(STATSFILE);
-					my $seq_file = "$multifastadir/cluster_TMP_$target_id.$cluster_id.fasta";
-					my $combined_file = "$multifastadir/cluster_TMP_$target_id.$cluster_id.afa";
-					my $com_stats_file = "$multifastadir/cluster_TMP_$target_id.$cluster_id.stats";
+					my $seq_file = "$multifastadir/cluster_TMP_" . $$ . "_$target_id.$cluster_id.fasta";
+					my $combined_file = "$multifastadir/cluster_TMP_" . $$ . "_$target_id.$cluster_id.afa";
+					my $com_stats_file = "$multifastadir/cluster_TMP_" . $$ . "_$target_id.$cluster_id.stats";
 					unless (open (OUTFILE, ">", $seq_file) )  {
 					    die ("ERROR: cannot open file $seq_file\n");
 					}
@@ -713,20 +723,29 @@ sub process_matchtable {
 					    my $muscle_path = "/usr/local/bin/muscle";
 					    my $muscle_args = " -profile -in1 $msa_file -in2 $seq_file -out $combined_file -diags -quiet -verbose";
 					    my $muscle_exec = $muscle_path . $muscle_args;
-					    `$muscle_exec`;
+					    `/usr/bin/time -o tmp_cpu_stats -v $muscle_exec`;
+					    `echo "***$muscle_exec***length($seq_len)" >> $cpu_name`;
+					    `cat tmp_cpu_stats >> $cpu_name`;
+					    `rm tmp_cpu_stats`;
 					    &bash_error_check($muscle_exec, $?, $!);
 					} elsif (-s $mf_file) {
 					    `cat $mf_file >> $seq_file`;
 					    my $muscle_path = "/usr/local/bin/muscle";
 					    my $muscle_args = " -in $seq_file -out $combined_file -diags -quiet -verbose";
 					    my $muscle_exec = $muscle_path . $muscle_args;
-					    `$muscle_exec`;
+					    `/usr/bin/time -o tmp_cpu_stats -v $muscle_exec`;
+					    `echo "***$muscle_exec***length($seq_len)" >> $cpu_name`;
+					    `cat tmp_cpu_stats >> $cpu_name`;
+					    `rm tmp_cpu_stats`;
 					    &bash_error_check($muscle_exec, $?, $!);
 					}
 					my $stats_path = "/usr/local/projdata/8520/projects/PANGENOME/pangenome_bin/summarize_alignment.R";
 					my $stats_args = " $combined_file $target_id";
 					my $stats_exec = "Rscript " . $stats_path . $stats_args;
-					`$stats_exec > $com_stats_file`;
+					`/usr/bin/time -o tmp_cpu_stats -v $stats_exec > $com_stats_file`;
+					`echo "***$stats_exec***" >> $cpu_name`;
+					`cat tmp_cpu_stats >> $cpu_name`;
+					`rm tmp_cpu_stats`;
 					&bash_error_check("$stats_exec > $com_stats_file", $?, $!);
 					unless (open (STATSFILE, "<", $com_stats_file) )  {
 					    die ("ERROR: cannot open file $com_stats_file\n");
@@ -1285,9 +1304,9 @@ sub process_pgg {
 						}
 					    }
 					    close(STATSFILE);
-					    my $seq_file = "$multifastadir/edge_TMP_$target_id.$edge_id.fasta";
-					    my $combined_file = "$multifastadir/edge_TMP_$target_id.$edge_id.afa";
-					    my $com_stats_file = "$multifastadir/edge_TMP_$target_id.$edge_id.stats";
+					    my $seq_file = "$multifastadir/edge_TMP_" . $$ . "_$target_id.$edge_id.fasta";
+					    my $combined_file = "$multifastadir/edge_TMP_" . $$ . "_$target_id.$edge_id.afa";
+					    my $com_stats_file = "$multifastadir/edge_TMP_" . $$ . "_$target_id.$edge_id.stats";
 					    unless (open (OUTFILE, ">", $seq_file) )  {
 						die ("ERROR: cannot open file $seq_file\n");
 					    }
@@ -1304,20 +1323,29 @@ sub process_pgg {
 						my $muscle_path = "/usr/local/bin/muscle";
 						my $muscle_args = " -profile -in1 $msa_file -in2 $seq_file -out $combined_file -diags -quiet -verbose";
 						my $muscle_exec = $muscle_path . $muscle_args;
-						`$muscle_exec`;
+						`/usr/bin/time -o tmp_cpu_stats -v $muscle_exec`;
+						`echo "***$muscle_exec***length($seq_len)" >> $cpu_name`;
+						`cat tmp_cpu_stats >> $cpu_name`;
+						`rm tmp_cpu_stats`;
 						&bash_error_check($muscle_exec, $?, $!);
 					    } elsif (-s $mf_file) {
 						`cat $mf_file >> $seq_file`;
 						my $muscle_path = "/usr/local/bin/muscle";
 						my $muscle_args = " -in $seq_file -out $combined_file -diags -quiet -verbose";
 						my $muscle_exec = $muscle_path . $muscle_args;
-						`$muscle_exec`;
+						`/usr/bin/time -o tmp_cpu_stats -v $muscle_exec`;
+						`echo "***$muscle_exec***length($seq_len)" >> $cpu_name`;
+						`cat tmp_cpu_stats >> $cpu_name`;
+						`rm tmp_cpu_stats`;
 						&bash_error_check($muscle_exec, $?, $!);
 					    }
 					    my $stats_path = "/usr/local/projdata/8520/projects/PANGENOME/pangenome_bin/summarize_alignment.R";
 					    my $stats_args = " $combined_file $target_id";
 					    my $stats_exec = "Rscript " . $stats_path . $stats_args;
-					    `$stats_exec > $com_stats_file`;
+					    `/usr/bin/time -o tmp_cpu_stats -v $stats_exec > $com_stats_file`;
+					    `echo "***$stats_exec***" >> $cpu_name`;
+					    `cat tmp_cpu_stats >> $cpu_name`;
+					    `rm tmp_cpu_stats`;
 					    &bash_error_check("$stats_exec > $com_stats_file", $?, $!);
 					    unless (open (STATSFILE, "<", $com_stats_file) )  {
 						die ("ERROR: cannot open file $com_stats_file\n");
@@ -1597,8 +1625,8 @@ sub compute_alignments
 	print STDERR "Launched $muscle_exec\n" if ($DEBUG);
 	$job_ids{&launch_grid_job($job_name, $project, $working_dir, $muscle_exec, $stdoutfile, $stderrfile, $queue)} = 1;
 	$num_jobs++;
-	if ($num_jobs >= 50) {
-	    $num_jobs = &wait_for_grid_jobs($job_name, 40, \%job_ids);
+	if ($num_jobs >= $max_grid_jobs) {
+	    $num_jobs = &wait_for_grid_jobs($job_name, ((($max_grid_jobs - 10) > 0) ? ($max_grid_jobs - 10) : 0), \%job_ids);
 	}
     }
     &wait_for_grid_jobs($job_name, 0, \%job_ids);
@@ -1617,7 +1645,7 @@ sub compute_alignments
 	}
 	$num_jobs++;
     }
-    if ($num_jobs > 50) {
+    if ($num_jobs > ($max_grid_jobs / 2)) {
 	die "Too many Muscle grid jobs failed $num_jobs\n";
     } elsif ($num_jobs > 0) {
 	for (my $k=0; $k <= 2; $k++){ #try a maximum of 3 times on failed jobs
@@ -1680,8 +1708,8 @@ sub compute_alignments
 	print STDERR "Launched $stats_exec\n" if ($DEBUG);
 	$job_ids{&launch_grid_job($job_name, $project, $working_dir, $stats_exec, $stdoutfile, $stderrfile, $queue)} = 1;
 	$num_jobs++;
-	if ($num_jobs >= 50) {
-	    $num_jobs = &wait_for_grid_jobs($job_name, 40, \%job_ids);
+	if ($num_jobs >= $max_grid_jobs) {
+	    $num_jobs = &wait_for_grid_jobs($job_name, ((($max_grid_jobs - 10) > 0) ? ($max_grid_jobs - 10) : 0), \%job_ids);
 	}
     }
     &wait_for_grid_jobs($job_name, 0, \%job_ids);
@@ -1695,7 +1723,7 @@ sub compute_alignments
 	}
 	$num_jobs++;
     }
-    if ($num_jobs > 50) {
+    if ($num_jobs > ($max_grid_jobs / 2)) {
 	die "Too many Alignment Stats grid jobs failed $num_jobs\n";
     } elsif ($num_jobs > 0) {
 	for (my $k=0; $k <= 2; $k++){ #try a maximum of 3 times on failed jobs
@@ -1776,6 +1804,7 @@ Version: $version
      -M: medoids input file name - output will be in -B directory (medoids.fasta)
      -c: output size files in -B directory computed cluster sizes(program  adds cluster_sizes.txt) and edge sizes(program  adds edge_sizes.txt) files
      -P: output files in -B directory new matchtable(matchtable.txt) and pgg(pgg.txt) files
+     -j: the maximum number of grid jobs to run for multiple sequence alignments
      -D: DEBUG MODE (DEFAULT = off)
  Output: All stored within a directory specified using -b
           1) cluster_id.fasta:  a multifasta file containing the sequences in the specified cluster
