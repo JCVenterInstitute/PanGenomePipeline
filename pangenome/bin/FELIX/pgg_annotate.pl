@@ -2419,7 +2419,7 @@ sub output_files
 	    } else {
 		die ("ERROR: Bad edge formatting $edge in hash_edges\n");
 	    }
-	    my $contig_sequence;
+	    my $contig_sequence = "";
 	    if ($cluster1 lt $cluster2) { #only capture one representation of the symmetric edge
 		(my $target, my $contig, my $type, my $edge_end, my $edge_start, my $len) = split(/\t/, $hash_edges{$edge});  # split on tab
 		if ($edge_end < $edge_start) {
@@ -2427,17 +2427,37 @@ sub output_files
 		    $edge_start = $edge_end;
 		    $edge_end = $tmp;
 		}
-		if ($edge_end > $contig_len{$contig}) {
-		    if ($is_circular{$contig}) {
-			$contig_sequence = substr($contigs{$contig}, ($edge_start - 1));
-			$contig_sequence .= substr($contigs{$contig}, 0, ($edge_end - $contig_len{$contig}));
+		if ($is_circular{$contig}) {
+		    if (($edge_start - 100) < 1) {
+			$contig_sequence = substr($contigs{$contig}, ($edge_start - 101));
+			$edge_start = 1;
 		    } else {
-			die ("edge coordinates exceed contig length for nonciruclar contig: $edge_start:$edge_end:$contig_len{$contig}\n");
+			$edge_start = $edge_start - 100
+		    }
+		    if (($edge_end + 100) > $contig_len{$contig}) {
+			$contig_sequence .= substr($contigs{$contig}, ($edge_start - 1));
+			$contig_sequence .= substr($contigs{$contig}, 0, (($edge_end + 100) - $contig_len{$contig}));
+		    } else {
+			$edge_end = $edge_end + 100;
+			$contig_sequence .= substr($contigs{$contig}, ($edge_start - 1), (($edge_end - $edge_start) + 1));
 		    }
 		} else {
-		    $contig_sequence = substr($contigs{$contig}, ($edge_start - 1), $len);
+		    if ($edge_end > $contig_len{$contig}) {
+			die ("edge coordinates exceed contig length for nonciruclar contig: $edge_start:$edge_end:$contig_len{$contig}\n");
+		    }
+		    if (($edge_start - 100) < 1) {
+			$edge_start = 1;
+		    } else {
+			$edge_start = $edge_start - 100
+		    }
+		    if (($edge_end + 100) > $contig_len{$contig}) {
+			$edge_end = $contig_len{$contig};
+		    } else {
+			$edge_end = $edge_end + 100
+		    }
+		    $contig_sequence = substr($contigs{$contig}, ($edge_start - 1), (($edge_end - $edge_start) + 1));
 		}
-		if ($contig_sequence !~ /NNNNNNNNNN/) { # do not output as a unique edge if the sequence contains a gap
+		if ($contig_sequence !~ /NNNNN/) { # do not output as a unique edge if the sequence contains a gap
 		    print $uniqedgefile "$hash_edges{$edge}$edge\n";
 		}
 	    }

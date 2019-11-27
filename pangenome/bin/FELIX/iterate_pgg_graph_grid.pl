@@ -32,6 +32,7 @@ my $matchtable = "matchtable.txt";                                              
 my $id = 95;
 my $debug = 0;
 my $help = 0;
+my $max_grid_jobs = 50;
 my $logfile = "iterate_ppg_graph.logfile";
 my $topology_file = "topology.txt";
 my $cwd = getcwd;
@@ -48,6 +49,7 @@ GetOptions('genomes=s' => \ $genome_list_path,
 	   'match=s' => \ $matchtable,                                                      # [pangenome_dir]/matchtable.txt
 	   'iterations=i' => \ $max_iterate,
 	   'id=i' => \ $id,
+	   'max_grid_jobs=i' => \ $max_grid_jobs,
 	   'strip_version' => \my $strip_version,
 	   'debug' => \ $debug,
 	   'help' => \ $help);
@@ -66,6 +68,7 @@ GetOptions('genomes=s' => \ genome_list_path,
 	   'match=s' => \ matchtable,                                                      # [pangenome_dir]/matchtable.txt
 	   'iterations=i' => \ max_iterate,
 	   'id=i' => \ id,
+	   'max_grid_jobs=i' => \ max_grid_jobs,
 	   'strip_version' => \ strip_version,
 	   'debug' => \ debug,
 	   'help' => \ help);
@@ -349,8 +352,8 @@ sub compute
 	    if ($debug) {print STDERR "qsub $shell_script\n";}
 	    $job_ids{&launch_grid_job($job_name, $project, $working_dir, $shell_script, $stdoutfile, $stderrfile, $queue)} = 1;
 	    $num_jobs++;
-	    if ($num_jobs >= 50) {
-		$num_jobs = &wait_for_grid_jobs($job_name, 40, \%job_ids);
+	    if ($num_jobs >= $max_grid_jobs) {
+		$num_jobs = &wait_for_grid_jobs($job_name, ((($max_grid_jobs - 10) > 0) ? ($max_grid_jobs - 10) : 0), \%job_ids);
 	    }
 	}
 	&wait_for_grid_jobs($job_name, 0, \%job_ids);
@@ -370,7 +373,7 @@ sub compute
 	    }
 	}
 	if ($debug) {print STDERR "$num_jobs FAILED resubmitting\n";}
-	if ($num_jobs > 50) {
+	if ($num_jobs > ($max_grid_jobs / 2)) {
 	    die "Too many grid jobs failed $num_jobs\n";
 	} elsif ($num_jobs > 0) {
 	    for (my $k=0; $k <= 2; $k++){ #try a maximum of 3 times on failed jobs
