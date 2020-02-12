@@ -5,11 +5,13 @@
 
 #You should have received a copy of the GNU General Public License #along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+use Cwd;
 use FileHandle;
 use Getopt::Long;
 use Carp;
 use strict;
 
+my $cwd = getcwd;
 my $help_text = "This program BLASTs a FASTA file of medoids against a database of engineered genes.
 This work is done in a folder called M_BLAST_TMP, which is deleted when the 
 program finishes. This program also takes a cluster sizes/weights file and a
@@ -26,11 +28,15 @@ Input Flags:
 -identitiy - the Blast percent identity threshold
 -length - the Blast percent length threshold (the medoid or the engineered sequence aligned region must be >= this)
 -output - prefix for two output files: one with suspect medoids and one with suspect engineered genes
+-blast_directory - directory name for where blast executables are located - default is not to use a directory
+-ld_load_directory - directory name for where blast libraries are located - default is not to use a directory
 -help - Outputs this help text";
 
 GetOptions('medoids=s' => \my $medoids,
 	'sizes=s' => \my $cluster_sizes,
 	'engineered=s' => \my $engineered,
+	'blast_directory=s' => \my $blast_directory,
+	'ld_load_directory=s' => \my $ld_load_directory,
 	'number=i' => \my $genome_number,
 	'percentage=f' => \my $percentage,
 	'length=f' => \my $per_length,
@@ -41,6 +47,41 @@ GetOptions('medoids=s' => \my $medoids,
 if($help){
     print("$help_text\n");
     exit;
+}
+
+if ($blast_directory) {
+    if (-d $blast_directory) {
+	if (substr($blast_directory, -1, 1) ne "/") {
+	    $blast_directory .= "/";
+	}
+	if (substr($blast_directory, 0, 1) ne "/") {
+	    $blast_directory = $cwd . "/$blast_directory";
+	}
+    } else {
+	print STDERR "Error with -blast_directory $blast_directory\n";
+	print("$help_text\n");
+	exit;
+    } # if no value for option s (seq_file), quit with help menu
+} else {
+    $blast_directory = "";
+}
+
+if ($ld_load_directory) {
+    if (-d $ld_load_directory) {
+	if (substr($ld_load_directory, -1, 1) ne "/") {
+	    $ld_load_directory .= "/";
+	}
+	if (substr($ld_load_directory, 0, 1) ne "/") {
+	    $ld_load_directory = $cwd . "/$ld_load_directory";
+	}
+	$blast_directory = 'export LD_LIBRARY_PATH=' . $ld_load_directory . ':$LD_LIBRARY_PATH; ' . $blast_directory;
+    } else {
+	print STDERR "Error with -ld_load_directory $ld_load_directory\n";
+	print("$help_text\n");
+	exit;
+    }
+} else {
+    $ld_load_directory = "";
 }
 	
 if(!$per_length or !$engineered or !$medoids or !$cluster_sizes or !$genome_number or !$percentage or !$identity or !$out_prefix){
@@ -153,8 +194,10 @@ sub mod_blast { # remove irrelevant matches
     &read_cluster_sizes;
     `mkdir M_BLAST_TMP`;
     `cp $engineered M_BLAST_TMP/temp_fasta.ftmp`;
-    `makeblastdb -in M_BLAST_TMP/temp_fasta.ftmp -dbtype nucl -out M_BLAST_TMP/temp_fasta.ftmp`;
-    `blastn -query $medoids -db M_BLAST_TMP/temp_fasta.ftmp -out M_BLAST_TMP/temp_results.ftmp -task blastn -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore\"`;
+    my $makeblastdb = $blast_directory . "makeblastdb";
+    `$makeblastdb -in M_BLAST_TMP/temp_fasta.ftmp -dbtype nucl -out M_BLAST_TMP/temp_fasta.ftmp`;
+    my $blastn = $blast_directory . "blastn";
+    `$blastn -query $medoids -db M_BLAST_TMP/temp_fasta.ftmp -out M_BLAST_TMP/temp_results.ftmp -task blastn -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore\"`;
     &mod_blast("M_BLAST_TMP/temp_results.ftmp");
     `rm -r M_BLAST_TMP`;
 }

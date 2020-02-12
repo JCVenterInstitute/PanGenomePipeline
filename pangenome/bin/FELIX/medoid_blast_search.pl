@@ -5,11 +5,13 @@
 
 #You should have received a copy of the GNU General Public License #along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+use Cwd;
 use FileHandle;
 use Getopt::Long;
 use Carp;
 use strict;
 
+my $cwd = getcwd;
 my $help_text = "This program BLASTs a FASTA file of medoids against a genome.
 This work is done in a folder called C_BLAST_TMP, which is deleted when the 
 program finishes.
@@ -18,10 +20,14 @@ Input Flags:
 -medoids - The nucleotide multiFASTA file containing the medoids centroids.fasta for PanOCT (required)
 -genome - A nucleotide multiFASTA file with of a target genome (required)
 -blastout - The output file for the blast results (required)
+-blast_directory - directory name for where blast executables are located - default is not to use a directory
+-ld_load_directory - directory name for where blast libraries are located - default is not to use a directory
 -help - Outputs this help text";
 
 GetOptions('medoids=s' => \my $medoids,
 	   'genome=s' => \my $genome,
+	   'blast_directory=s' => \my $blast_directory,
+	   'ld_load_directory=s' => \my $ld_load_directory,
 	   'topology=s' => \my $topology_file,
 	   'blastout=s' => \my $blastout,
 	   'strip_version' => \my $strip_version,
@@ -30,6 +36,41 @@ GetOptions('medoids=s' => \my $medoids,
 if($help){
     print("$help_text\n");
     exit;
+}
+
+if ($blast_directory) {
+    if (-d $blast_directory) {
+	if (substr($blast_directory, -1, 1) ne "/") {
+	    $blast_directory .= "/";
+	}
+	if (substr($blast_directory, 0, 1) ne "/") {
+	    $blast_directory = $cwd . "/$blast_directory";
+	}
+    } else {
+	print STDERR "Error with -blast_directory $blast_directory\n";
+	print("$help_text\n");
+	exit;
+    } # if no value for option s (seq_file), quit with help menu
+} else {
+    $blast_directory = "";
+}
+
+if ($ld_load_directory) {
+    if (-d $ld_load_directory) {
+	if (substr($ld_load_directory, -1, 1) ne "/") {
+	    $ld_load_directory .= "/";
+	}
+	if (substr($ld_load_directory, 0, 1) ne "/") {
+	    $ld_load_directory = $cwd . "/$ld_load_directory";
+	}
+	$blast_directory = 'export LD_LIBRARY_PATH=' . $ld_load_directory . ':$LD_LIBRARY_PATH; ' . $blast_directory;
+    } else {
+	print STDERR "Error with -ld_load_directory $ld_load_directory\n";
+	print("$help_text\n");
+	exit;
+    }
+} else {
+    $ld_load_directory = "";
 }
 	
 if(!$genome or !$medoids or !$blastout){
@@ -311,8 +352,10 @@ sub mod_blast { # eliminate blast matches to the added regions but keep one copy
     &read_genome;
     &read_topology;
     &write_genome("C_BLAST_TMP/temp_fasta.ftmp");
-    `makeblastdb -in C_BLAST_TMP/temp_fasta.ftmp -dbtype nucl -out C_BLAST_TMP/temp_fasta.ftmp`;
-    `blastn -query $medoids -db C_BLAST_TMP/temp_fasta.ftmp -out C_BLAST_TMP/temp_results.ftmp -task blastn -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore\"`;
+    my $makeblastdb = $blast_directory . "makeblastdb";
+    `$makeblastdb -in C_BLAST_TMP/temp_fasta.ftmp -dbtype nucl -out C_BLAST_TMP/temp_fasta.ftmp`;
+    my $blastn = $blast_directory . "blastn";
+    `$blastn -query $medoids -db C_BLAST_TMP/temp_fasta.ftmp -out C_BLAST_TMP/temp_results.ftmp -task blastn -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore\"`;
     &mod_blast("C_BLAST_TMP/temp_results.ftmp");
     `rm -r C_BLAST_TMP`;
 }

@@ -12,6 +12,9 @@ use Carp;
 use strict;
 use File::Compare;
 
+my $blast_directory = "";
+my $ld_load_directory = "";
+my $muscle_path = "";
 my $bin_directory = "/usr/local/projdata/8520/projects/PANGENOME/pangenome_bin/";
 my $input_bin_directory = "";
 my $single_copy = "single_copy_clusters.txt";
@@ -24,6 +27,8 @@ my $medoids = "medoids.fasta";
 my $debug = 0;
 my $help = 0;
 my $duplicate = 0;
+my $reannotate = 0;
+my $strip_version = 0;
 my $dup_genome_name = "";
 my $target_genome_name = "";
 my $cwd = getcwd;
@@ -42,13 +47,62 @@ GetOptions('genome=s' => \ $genome_path,
 	   'engdb=s' => \ $engdb,
 	   'nrdb=s' => \ $nrdb,
 	   'bin_directory=s' => \ $input_bin_directory,
+	   'blast_directory=s' => \ $blast_directory,
+	   'ld_load_directory=s' => \ $ld_load_directory,
+	   'muscle_path=s' => \ $muscle_path,
 	   'multifastadir=s' => \ $multifastadir,
 	   'alignments=s' => \ $keep_divergent_alignments,
 	   'duplicate=i' => \ $duplicate,
-	   'strip_version' => \my $strip_version,
-	   'reannotate' => \my $reannotate,
+	   'strip_version' => \ $strip_version,
+	   'reannotate' => \ $reannotate,
 	   'debug' => \ $debug,
 	   'help' => \ $help);
+
+if ($muscle_path) {
+    if (-x $muscle_path) {
+	if (substr($muscle_path, 0, 1) ne "/") {
+	    $muscle_path = $cwd . "/$muscle_path";
+	}
+    } else {
+	print STDERR "Error with -muscle_path $muscle_path\n";
+	$help = 1;
+    }
+} else {
+    $muscle_path = "";
+}
+
+if ($blast_directory) {
+    if (-d $blast_directory) {
+	if (substr($blast_directory, -1, 1) ne "/") {
+	    $blast_directory .= "/";
+	}
+	if (substr($blast_directory, 0, 1) ne "/") {
+	    $blast_directory = $cwd . "/$blast_directory";
+	}
+    } else {
+	print STDERR "Error with -blast_directory $blast_directory\n";
+	$help = 1;
+    }
+} else {
+    $blast_directory = "";
+}
+
+if ($ld_load_directory) {
+    if (-d $ld_load_directory) {
+	if (substr($ld_load_directory, -1, 1) ne "/") {
+	    $ld_load_directory .= "/";
+	}
+	if (substr($ld_load_directory, 0, 1) ne "/") {
+	    $ld_load_directory = $cwd . "/$ld_load_directory";
+	}
+    } else {
+	print STDERR "Error with -ld_load_directory $ld_load_directory\n";
+	$help = 1;
+    }
+} else {
+    $ld_load_directory = "";
+}
+
 if ($help) {
    system("clear");
    print STDERR <<_EOB_;
@@ -61,6 +115,9 @@ GetOptions('genome=s' => \ genome_path,
 	   'engdb=s' => \ engdb,
 	   'nrdb=s' => \ nrdb,
 	   'bin_directory=s' => \ input_bin_directory,
+	   'blast_directory=s' => \ blast_directory,
+	   'ld_load_directory=s' => \ ld_load_directory,
+	   'muscle_path=s' => \ muscle_path,
 	   'multifastadir=s' => \ multifastadir,
 	   'alignments=s' => \ keep_divergent_alignments,
 	   'duplicate=i' => \ duplicate,
@@ -137,18 +194,29 @@ sub compute
     
     if ($debug) {print STDERR "Starting compute ...\n\n";}
     if ($debug) {print STDERR "\ngenome_name: $genome_name \t path: $genome_path\n\n";}
+    if ($muscle_path ne "") {
+	$pgg_multifasta_path .= " -C $muscle_path ";
+    }
     if ($keep_divergent_alignments) {
 	$pgg_multifasta_path .= " -k $keep_divergent_alignments ";
     }
+    if ($blast_directory) {
+	$medoid_blast_path .= " -blast_directory $blast_directory ";
+	$filter_anomalies_path .= " -blast_directory $blast_directory ";
+    }	
+    if ($ld_load_directory) {
+	$medoid_blast_path .= " -ld_load_directory $ld_load_directory ";
+	$filter_anomalies_path .= " -ld_load_directory $ld_load_directory ";
+    }	
     if ($strip_version) {
 	$medoid_blast_path .= " -strip_version ";
     }	
-    if ($debug) {print STDERR "/usr/bin/time -o tmp_cpu_stats -v $medoid_blast_path -topology $topology_name -m $medoids -g $genome_path -b $blast_name\n";}  # BLAST genome against medoids
-    `/usr/bin/time -o tmp_cpu_stats -v $medoid_blast_path -topology $topology_name -m $medoids -g $genome_path -b $blast_name`;  # BLAST genome against medoids
+    if ($debug) {print STDERR "/usr/bin/time -o tmp_cpu_stats -v $medoid_blast_path -topology $topology_name -m $medoids -g $genome_path -blastout $blast_name\n";}  # BLAST genome against medoids
+    `/usr/bin/time -o tmp_cpu_stats -v $medoid_blast_path -topology $topology_name -m $medoids -g $genome_path -blastout $blast_name`;  # BLAST genome against medoids
     `echo "***$medoid_blast_path***" >> $cpu_name`;
     `cat tmp_cpu_stats >> $cpu_name`;
     `rm tmp_cpu_stats`;
-    &bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $medoid_blast_path -topology $topology_name -m $medoids -g $genome_path -b $blast_name", $?, $!);
+    &bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $medoid_blast_path -topology $topology_name -m $medoids -g $genome_path -blastout $blast_name", $?, $!);
     if ($strip_version) {
 	$pgg_annotate_path .= " -strip_version ";
     }	
