@@ -25,8 +25,8 @@ use warnings;
 use Getopt::Std;
 use Data::Dumper;
 use Scalar::Util qw(looks_like_number);
-getopts ('DhM:m:C:c:I:');#M is max, m is min, C is centroids file, c is cluster weights file - all required unless -I is used which is a file of cluster_ids
-our ($opt_D, $opt_h, $opt_M, $opt_m, $opt_C, $opt_c, $opt_I);
+getopts ('DhM:m:C:c:I:r');#M is max, m is min, C is centroids file, c is cluster weights file - all required unless -I is used which is a file of cluster_ids
+our ($opt_D, $opt_h, $opt_M, $opt_m, $opt_C, $opt_c, $opt_I, $opt_r);
 
 my $max_cutoff;
 my $min_cutoff;
@@ -37,8 +37,10 @@ my %cluster_size = ();
 my %cluster_ids =();
 my $use_cluster_ids = 0;
 my $DEBUG = 0;
+my $renumber = 0;
 
 if ($opt_D) {$DEBUG = 1;} else { $DEBUG = 0; } # Debug mode is off as default.
+if ($opt_r) {$renumber = 1;} else { $renumber = 0; } # renumber mode is off as default.
 if ($opt_h) { &option_help; } # quit with help menu
 if (($opt_C) && (-s "$opt_C")) {
     $centroid_file_name = $opt_C;
@@ -133,7 +135,7 @@ _EOB_
    exit:
 }
 
-sub get_cluster_ids {  # obtain list of genomes to compareread cluster ids into a hash
+sub get_cluster_ids {  # obtain list of  cluster ids into a hash
    
     open (my $infile, "<", "$cluster_ids_file_name") || die ("ERROR: can't open file $cluster_ids_file_name\n");
     while (<$infile>)  {
@@ -146,7 +148,7 @@ sub get_cluster_ids {  # obtain list of genomes to compareread cluster ids into 
                die ("ERROR:  You have more than one occurance of $cluster_id in $cluster_ids_file_name!\n");
 	}
 	else  {
-	    $cluster_ids{$cluster_id} = 1; # used to be genome_hash
+	    $cluster_ids{$cluster_id} = 1; # to be extracted
 	}
     }  
     close($infile);
@@ -200,6 +202,7 @@ sub select_centroids {
   my $id;
   my $title = "";
   my $sequence = "";
+  my $new_cluster_number = 1;
 
   unless (open (CENTROIDFILE, $centroid_file_name) )  {
     die ("can't open file $centroid_file_name.\n");
@@ -214,17 +217,23 @@ sub select_centroids {
     if ($centroid_id[0] ne "centroid") {
 	die ("ERROR: centroid fasta header line id: $id - not in expected format of >centroid_\n");
     }
+    if ($renumber) {
+	$line[0] = "centroid_" . $new_cluster_number;
+	$title = join("\t", @line);
+    }
     $centroid_num = $centroid_id[1];
     if ($use_cluster_ids) {
 	if (defined $cluster_ids{$centroid_num})  {
 	    print STDOUT ">$title\n";
-	    print STDOUT $sequence
+	    print STDOUT $sequence;
+	    $new_cluster_number++;
 	}
     } else {
 	$size = $cluster_size{$centroid_num};
 	if (($size >= $min_cutoff) && ($size <= $max_cutoff)) {
 	    print STDOUT ">$title\n";
-	    print STDOUT $sequence
+	    print STDOUT $sequence;
+	    $new_cluster_number++;
 	}
     }
     $title = ""; # clear the title for the next round.

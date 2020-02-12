@@ -15,6 +15,9 @@ use Carp;
 use strict;
 use File::Compare;
 
+my $blast_directory = "";
+my $ld_load_directory = "";
+my $muscle_path = "";
 my $bin_directory = "/usr/local/projdata/8520/projects/PANGENOME/pangenome_bin/";
 my $input_bin_directory = "";
 my @genomes = ();
@@ -53,6 +56,9 @@ GetOptions('genomes=s' => \ $genome_list_path,
 	   'new_topology=s' => \ $new_topology_file,
 	   'single_copy=s' => \ $input_single_copy,
 	   'bin_directory=s' => \ $input_bin_directory,
+	   'blast_directory=s' => \ $blast_directory,
+	   'ld_load_directory=s' => \ $ld_load_directory,
+	   'muscle_path=s' => \ $muscle_path,
 	   'multifastadir=s' => \ $input_multifastadir,
 	   'alignments=s' => \ $keep_divergent_alignments,
 	   'attributes=s' => \ $attributes,
@@ -71,6 +77,39 @@ GetOptions('genomes=s' => \ $genome_list_path,
 	   'strip_version' => \my $strip_version,
 	   'help' => \ $help,
 	   'debug' => \ $debug);
+
+if ($blast_directory) {
+    if (-d $blast_directory) {
+	if (substr($blast_directory, -1, 1) ne "/") {
+	    $blast_directory .= "/";
+	}
+	if (substr($blast_directory, 0, 1) ne "/") {
+	    $blast_directory = $cwd . "/$blast_directory";
+	}
+    } else {
+	print STDERR "Error with -blast_directory $blast_directory\n";
+	$help = 1;
+    }
+} else {
+    $blast_directory = "";
+}
+
+if ($ld_load_directory) {
+    if (-d $ld_load_directory) {
+	if (substr($ld_load_directory, -1, 1) ne "/") {
+	    $ld_load_directory .= "/";
+	}
+	if (substr($ld_load_directory, 0, 1) ne "/") {
+	    $ld_load_directory = $cwd . "/$ld_load_directory";
+	}
+    } else {
+	print STDERR "Error with -ld_load_directory $ld_load_directory\n";
+	$help = 1;
+    }
+} else {
+    $ld_load_directory = "";
+}
+
 if ($help) {
    system("clear");
    print STDERR <<_EOB_;
@@ -80,6 +119,9 @@ GetOptions('genomes=s' => \ genome_list_path,
 	   'new_topology=s' => \ new_topology_file,
 	   'single_copy=s' => \ input_single_copy,
 	   'bin_directory=s' => \ input_bin_directory,
+	   'blast_directory=s' => \ blast_directory,
+	   'ld_load_directory=s' => \ ld_load_directory,
+	   'muscle_path=s' => \ muscle_path,
 	   'multifastadir=s' => \ input_multifastadir,
 	   'alignments=s' => \ keep_divergent_alignments,
 	   'attributes=s' => \ attributes,
@@ -164,9 +206,6 @@ if ($debug) {print STDERR "Parameters:\ngenomes: $genome_list_path\nnew_genomes:
 ######################################COMPONENT PROGRAM PATHS################################
 my $single_copy_path = "$bin_directory/single_copy_core.pl";
 my $core_neighbor_path = "$bin_directory/core_neighbor_finder.pl";
-my $medoid_blast_path = "$bin_directory/medoid_blast_search.pl";
-my $pgg_annotate_path = "$bin_directory/pgg_annotate.pl";
-my $pgg_multifasta_path = "$bin_directory/pgg_edge_multifasta.pl";
 my $compute_path = "$bin_directory/compute_pgg_graph.pl";
 #############################################################################################
 
@@ -376,6 +415,15 @@ sub compute
     my $num_jobs = 0;
     my $duplicate;
     if ($debug) {print STDERR "Starting grid genome processing\n\n";}
+    if ($muscle_path ne "") {
+	$compute_path .= " -muscle_path $muscle_path ";
+    }
+    if ($blast_directory) {
+	$compute_path .= " -blast_directory $blast_directory ";
+    }	
+    if ($ld_load_directory) {
+	$compute_path .= " -ld_load_directory $ld_load_directory ";
+    }	
     for (my $j=0; $j <= $#genomes; $j++)
     {
 	my $identifier = $genomes[$j][0];                                                 # get genome name
@@ -389,7 +437,7 @@ sub compute
 	} else {
 	    $duplicate = 0;
 	}
-	my $shell_script = "/usr/bin/time -o $cpu_name -v $compute_path -multifastadir $multifastadir -duplicate $duplicate -name $identifier -genome $genome_path -weights $weights -medoids $medoids -pgg $pgg -debug -engdb $engdb -nrdb $nrdb -pggdb $pggdb";
+	my $shell_script = "/usr/bin/time -o $cpu_name -v $compute_path -bin_directory $bin_directory -multifastadir $multifastadir -duplicate $duplicate -name $identifier -genome $genome_path -weights $weights -medoids $medoids -pgg $pgg -debug -engdb $engdb -nrdb $nrdb -pggdb $pggdb";
 	if ($strip_version) {
 	    $shell_script .= " -strip_version";
 	}
@@ -475,7 +523,7 @@ sub compute
 		    } else {
 			$duplicate = 0;
 		    }
-		    my $shell_script = "/usr/bin/time -o $cpu_name -v $compute_path -multifastadir $multifastadir -duplicate $duplicate -name $identifier -genome $genome_path -weights $weights -medoids $medoids -pgg $pgg -debug -engdb $engdb -nrdb $nrdb -pggdb $pggdb";
+		    my $shell_script = "/usr/bin/time -o $cpu_name -v $compute_path -bin_directory $bin_directory -multifastadir $multifastadir -duplicate $duplicate -name $identifier -genome $genome_path -weights $weights -medoids $medoids -pgg $pgg -debug -engdb $engdb -nrdb $nrdb -pggdb $pggdb";
 		    if ($strip_version) {
 			$shell_script .= " -strip_version";
 		    }

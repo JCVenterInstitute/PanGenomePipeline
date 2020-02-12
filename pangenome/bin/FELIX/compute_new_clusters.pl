@@ -19,20 +19,24 @@ my $commandline = join (" ", @ARGV);
 my $prog = $0;
 $prog =~ s/.*\///;
 
+use Cwd;
 use strict;
 use warnings;
 use Getopt::Std;
 use Data::Dumper;
 use Scalar::Util qw(looks_like_number);
-getopts ('hDc:n:b:i:M:m:g:s:');
-our ($opt_h,$opt_D,$opt_c,$opt_n,$opt_i,$opt_M,$opt_m,$opt_g,$opt_s);
+getopts ('hDc:n:b:i:M:m:g:s:B:L:');
+our ($opt_h,$opt_D,$opt_c,$opt_n,$opt_i,$opt_M,$opt_m,$opt_g,$opt_s,$opt_B,$opt_L);
 
 my ($cluster_file,$start_cluster,$index_file,$match_file,$medoid_file,$gtag_file,$seq_file);
+my $blast_directory = "";
+my $ld_load_directory = "";
 #set defaults
 
 ## use boolean logic:  TRUE = 1, FALSE = 0
 my $DEBUG;
 my $version = "1.0";
+my $cwd = getcwd;
 if ($opt_D) {$DEBUG = 1;} else { $DEBUG = 0; } # Debug mode is off as default.
 if ($opt_h) { &option_help; } # quit with help menu
 if ($opt_i) {$index_file = $opt_i;} else { $index_file = "gene_cluster_index.txt"; } # Read in index_file name or set default.
@@ -41,6 +45,35 @@ if ($opt_m) {$medoid_file = $opt_m;} else { $medoid_file = "new_medoids.fasta"; 
 if (($opt_c) && (-s $opt_c)) {$cluster_file = $opt_c;} else { print STDERR "Error with -c $opt_c\n"; &option_help; } # if no value for option c (cluster_file), quit with help menu
 if (($opt_g) && (-s $opt_g)) {$gtag_file = $opt_g;} else { print STDERR "Error with -g $opt_g\n"; &option_help; } # if no value for option g (gtab_file), quit with help menu
 if (($opt_s) && (-s $opt_s)) {$seq_file = $opt_s;} else { print STDERR "Error with -s $opt_s\n"; &option_help; } # if no value for option s (seq_file), quit with help menu
+if ($opt_B) {
+    if (-d $opt_B) {
+	$blast_directory = $opt_B;
+	if (substr($blast_directory, -1, 1) ne "/") {
+	    $blast_directory .= "/";
+	}
+	if (substr($blast_directory, 0, 1) ne "/") {
+	    $blast_directory = $cwd . "/$blast_directory";
+	}
+    } else {
+	print STDERR "Error with -B $opt_B\n";
+	&option_help;
+    }
+}
+if ($opt_L) {
+    if (-d $opt_L) {
+	$ld_load_directory = $opt_L;
+	if (substr($ld_load_directory, -1, 1) ne "/") {
+	    $ld_load_directory .= "/";
+	}
+	if (substr($ld_load_directory, 0, 1) ne "/") {
+	    $ld_load_directory = $cwd . "/$ld_load_directory";
+	}
+	$blast_directory = 'export LD_LIBRARY_PATH=' . $ld_load_directory . ':$LD_LIBRARY_PATH; ' . $blast_directory;
+    } else {
+	print STDERR "Error with -L $opt_L\n";
+	&option_help;
+    }
+}
 if ($opt_n) {
     $start_cluster = $opt_n;
     if (($start_cluster !~ /^\d+$/) || ($start_cluster <= 0)){
@@ -1071,6 +1104,8 @@ Options:
      -i: file name for outputting the index of gene to cluster [REQUIRED]
      -m: file name for outputting the medoids of the new clusters [REQUIRED]
      -M: file name for outputting the new clusters [REQUIRED]
+     -B: directory name for where blast executables are located - default is not to use a directory
+     -L: directory name for where blast libraries are located - default is not to use a directory
      -D: no argument, DEBUG MODE (DEFAULT = off)
 
  Authors: Granger Sutton, Ph.D.
@@ -1090,8 +1125,10 @@ print STDERR "Gathering information from new cluster file: $cluster_file\n";
 print STDERR "blasting all versus all of $seq_file";
 `mkdir M_BLAST_TMP`;
 `cp $seq_file M_BLAST_TMP/temp_fasta.ftmp`;
-`makeblastdb -in M_BLAST_TMP/temp_fasta.ftmp -dbtype nucl -out M_BLAST_TMP/temp_fasta.ftmp`;
-`blastn -query $seq_file -db M_BLAST_TMP/temp_fasta.ftmp -out M_BLAST_TMP/temp_results.ftmp -task blastn -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore\"`;
+my $makeblastdb = $blast_directory . "makeblastdb";
+`$makeblastdb -in M_BLAST_TMP/temp_fasta.ftmp -dbtype nucl -out M_BLAST_TMP/temp_fasta.ftmp`;
+my $blastn = $blast_directory . "blastn";
+`$blastn -query $seq_file -db M_BLAST_TMP/temp_fasta.ftmp -out M_BLAST_TMP/temp_results.ftmp -task blastn -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore\"`;
 print STDERR "Getting data from blast .btab file: M_BLAST_TMP/temp_results.ftmp\n";
 &select_max_scores_from_btab("M_BLAST_TMP/temp_results.ftmp");
 &select_data_from_btab("M_BLAST_TMP/temp_results.ftmp");

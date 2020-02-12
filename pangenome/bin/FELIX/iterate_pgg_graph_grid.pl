@@ -13,6 +13,9 @@ use Carp;
 use strict;
 use File::Compare;
 
+my $blast_directory = "";
+my $ld_load_directory = "";
+my $muscle_path = "";
 my $bin_directory = "/usr/local/projdata/8520/projects/PANGENOME/pangenome_bin/";
 my $input_bin_directory = "";
 my @genomes = ();                                                                              
@@ -32,6 +35,8 @@ my $matchtable = "matchtable.txt";                                              
 my $id = 95;
 my $debug = 0;
 my $help = 0;
+my $from_medoids = 0;
+my $strip_version = 0;
 my $max_grid_jobs = 50;
 my $logfile = "iterate_ppg_graph.logfile";
 my $topology_file = "topology.txt";
@@ -44,15 +49,52 @@ GetOptions('genomes=s' => \ $genome_list_path,
 	   'topology=s' => \ $topology_file,
 	   'single_copy=s' => \ $input_single_copy,
 	   'bin_directory=s' => \ $input_bin_directory,
+	   'blast_directory=s' => \ $blast_directory,
+	   'ld_load_directory=s' => \ $ld_load_directory,
+	   'muscle_path=s' => \ $muscle_path,
 	   'pgg=s' => \ $pgg,                                                               # [pangenome_dir]/0_core_adjacency_vector.txt
 	   'medoids=s' => \ $input_medoids,
 	   'match=s' => \ $matchtable,                                                      # [pangenome_dir]/matchtable.txt
 	   'iterations=i' => \ $max_iterate,
 	   'id=i' => \ $id,
 	   'max_grid_jobs=i' => \ $max_grid_jobs,
-	   'strip_version' => \my $strip_version,
+	   'strip_version' => \ $strip_version,
+	   'from_medoids' => \ $from_medoids,
 	   'debug' => \ $debug,
 	   'help' => \ $help);
+
+if ($blast_directory) {
+    if (-d $blast_directory) {
+	if (substr($blast_directory, -1, 1) ne "/") {
+	    $blast_directory .= "/";
+	}
+	if (substr($blast_directory, 0, 1) ne "/") {
+	    $blast_directory = $cwd . "/$blast_directory";
+	}
+    } else {
+	print STDERR "Error with -blast_directory $blast_directory\n";
+	$help = 1;
+    }
+} else {
+    $blast_directory = "";
+}
+
+if ($ld_load_directory) {
+    if (-d $ld_load_directory) {
+	if (substr($ld_load_directory, -1, 1) ne "/") {
+	    $ld_load_directory .= "/";
+	}
+	if (substr($ld_load_directory, 0, 1) ne "/") {
+	    $ld_load_directory = $cwd . "/$ld_load_directory";
+	}
+    } else {
+	print STDERR "Error with -ld_load_directory $ld_load_directory\n";
+	$help = 1;
+    }
+} else {
+    $ld_load_directory = "";
+}
+
 if ($help) {
    system("clear");
    print STDERR <<_EOB_;
@@ -63,6 +105,9 @@ GetOptions('genomes=s' => \ genome_list_path,
 	   'topology=s' => \ topology_file,
 	   'single_copy=s' => \ input_single_copy,
 	   'bin_directory=s' => \ input_bin_directory,
+	   'blast_directory=s' => \ blast_directory,
+	   'ld_load_directory=s' => \ ld_load_directory,
+	   'muscle_path=s' => \ muscle_path,
 	   'pgg=s' => \ pgg,                                                               # [pangenome_dir]/0_core_adjacency_vector.txt
 	   'medoids=s' => \ input_medoids,
 	   'match=s' => \ matchtable,                                                      # [pangenome_dir]/matchtable.txt
@@ -70,6 +115,7 @@ GetOptions('genomes=s' => \ genome_list_path,
 	   'id=i' => \ id,
 	   'max_grid_jobs=i' => \ max_grid_jobs,
 	   'strip_version' => \ strip_version,
+	   'from_medoids' => \ from_medoids,
 	   'debug' => \ debug,
 	   'help' => \ help);
 _EOB_
@@ -111,8 +157,6 @@ if ($debug) {print STDERR "Parameters:\ngenomes: $genome_list_path\nweights: $we
 ######################################COMPONENT PROGRAM PATHS################################
 my $single_copy_path = "$bin_directory/single_copy_core.pl";
 my $core_neighbor_path = "$bin_directory/core_neighbor_finder.pl";
-my $medoid_blast_path = "$bin_directory/medoid_blast_search.pl";
-my $pgg_annotate_path = "$bin_directory/pgg_annotate.pl";
 my $pgg_multifasta_path = "$bin_directory/pgg_edge_multifasta.pl";
 my $pgg_combine_edges_path = "$bin_directory/pgg_combine_edges.pl";
 my $compute_path = "$bin_directory/compute_pgg_graph.pl";
@@ -305,6 +349,18 @@ sub compute
 {
     `cut -f 1 $genome_list_path > Genomes.List`;
     if ($debug) {print STDERR "Starting compute ...\n\n";}
+    if ($muscle_path ne "") {
+	$compute_path .= " -muscle_path $muscle_path ";
+	$pgg_multifasta_path .= " -C $muscle_path ";
+    }
+    if ($blast_directory) {
+	$compute_path .= " -blast_directory $blast_directory ";
+	$compute_new_clusters_path .= " -B $blast_directory ";
+    }	
+    if ($ld_load_directory) {
+	$compute_path .= " -ld_load_directory $ld_load_directory ";
+	$compute_new_clusters_path .= " -L $ld_load_directory ";
+    }	
     for (my $i=1; $i <= $max_iterate; $i++)
     {
 	my $job_name = "cpgg_" . $$ . "$i"; #use a common job name so that qacct can access all of them together
@@ -313,8 +369,8 @@ sub compute
 	my $pgg_old = $pgg;
 	if ($debug) {print STDERR "Iteration $i\n";}
 	&do_neighbors;                                                                                 # run core_neighbor_finder
-	`cut $matchtable -f1 > matchtable.col`;                                                        # get first line of existing matchtable file, use that as first column of new file
-	`cut $pgg -f1 > pgg.col`;                
+	`cut -f 1 $matchtable > matchtable.col`;                                                        # get first column of existing matchtable file, use that as first column of new file
+	`cut -f 1 $pgg > pgg.col`;                
 	open(GENEANI, ">", "gene_ANI");
 	open(REARRANGE, ">", "rearrange");
 	open(SPLITGENE, ">", "SplitGene");
@@ -331,7 +387,7 @@ sub compute
 	    if (substr($genome_path, 0, 1) ne "/") {
 		$genome_path = $cwd . "/$genome_path";
 	    }
-	    my $shell_script = "$compute_path -reannotate -name $identifier -genome $genome_path -weights $weights -medoids $medoids -pgg $pgg -debug";
+	    my $shell_script = "$compute_path -bin_directory $bin_directory -reannotate -name $identifier -genome $genome_path -weights $weights -medoids $medoids -pgg $pgg -debug";
 	    if ($strip_version) {
 		$shell_script .= " -strip_version";
 	    }
@@ -391,7 +447,7 @@ sub compute
 		    my $pgg_name = ("$identifier" . "_pgg.col");
 		    my $att_name = ("$identifier" . "_attributes.txt");
 		    if (!(-e $match_name) || !(-e $pgg_name) || !(-e $att_name)){
-			my $shell_script = "$compute_path -reannotate -name $identifier -genome $genome_path -weights $weights -medoids $medoids -pgg $pgg -debug";
+			my $shell_script = "$compute_path -bin_directory $bin_directory -reannotate -name $identifier -genome $genome_path -weights $weights -medoids $medoids -pgg $pgg -debug";
 			if ($strip_version) {
 			    $shell_script .= " -strip_version";
 			}
@@ -499,6 +555,7 @@ sub compute
 	    `rm *_alledges.txt`; # can remove these files now
 	}
 	`rm new_gene_seqs.fasta new_clusters.txt`;
+	`rm output/* multifasta/*`; # clean up any multifasta files from previous iteration
 	if ($strip_version) {
 	    if ($debug) {print STDERR "\nperl $pgg_multifasta_path -V -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -A -S -R\n";}    # run pgg edge multi_fasta
 	    `perl $pgg_multifasta_path -V -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1`;    # run pgg edge multi_fasta
@@ -555,6 +612,7 @@ sub compute
 {#main
     `echo "Starting" > $logfile`;
     if ($debug) {print STDERR "Starting ...\n\n";}
+    if ($from_medoids) {print STDERR "Starting from just medoids ...\n\n";}
     if ($paralogs ne "") {
 	&do_core_list;                                                                                 # run single_copy_core
     }
