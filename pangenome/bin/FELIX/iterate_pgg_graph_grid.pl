@@ -37,6 +37,7 @@ my $debug = 0;
 my $help = 0;
 my $from_medoids = 0;
 my $strip_version = 0;
+my $less_memory = 0;
 my $max_grid_jobs = 50;
 my $logfile = "iterate_ppg_graph.logfile";
 my $topology_file = "topology.txt";
@@ -60,6 +61,7 @@ GetOptions('genomes=s' => \ $genome_list_path,
 	   'max_grid_jobs=i' => \ $max_grid_jobs,
 	   'strip_version' => \ $strip_version,
 	   'from_medoids' => \ $from_medoids,
+	   'less_memory' => \ $less_memory,
 	   'debug' => \ $debug,
 	   'help' => \ $help);
 
@@ -116,6 +118,7 @@ GetOptions('genomes=s' => \ genome_list_path,
 	   'max_grid_jobs=i' => \ max_grid_jobs,
 	   'strip_version' => \ strip_version,
 	   'from_medoids' => \ from_medoids,
+	   'less_memory' => \ less_memory,
 	   'debug' => \ debug,
 	   'help' => \ help);
 _EOB_
@@ -349,6 +352,9 @@ sub compute
 {
     `cut -f 1 $genome_list_path > Genomes.List`;
     if ($debug) {print STDERR "Starting compute ...\n\n";}
+    if ($less_memory) {
+	$pgg_multifasta_path .= " -f -F ";
+    }
     if ($muscle_path ne "") {
 	$compute_path .= " -muscle_path $muscle_path ";
 	$pgg_multifasta_path .= " -C $muscle_path ";
@@ -557,14 +563,15 @@ sub compute
 	`rm new_gene_seqs.fasta new_clusters.txt`;
 	`rm output/* multifasta/*`; # clean up any multifasta files from previous iteration
 	if ($strip_version) {
-	    if ($debug) {print STDERR "\nperl $pgg_multifasta_path -V -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -A -S -R\n";}    # run pgg edge multi_fasta
+	    if ($debug) {print STDERR "\nperl $pgg_multifasta_path -V -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R\n";}    # run pgg edge multi_fasta
 	    `perl $pgg_multifasta_path -V -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1`;    # run pgg edge multi_fasta
+	    &bash_error_check("perl $pgg_multifasta_path -V -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1", $?, $!);
 	} else {
-	    if ($debug) {print STDERR "\nperl $pgg_multifasta_path -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -A -S -R\n";}    # run pgg edge multi_fasta
+	    if ($debug) {print STDERR "\nperl $pgg_multifasta_path -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R\n";}    # run pgg edge multi_fasta
 	    `perl $pgg_multifasta_path -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1`;    # run pgg edge multi_fasta
+	    &bash_error_check("perl $pgg_multifasta_path -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1", $?, $!);
 	}
 	die ("output/pgg.txt is zero size \n") unless (-s "output/pgg.txt");
-	&bash_error_check("perl $pgg_multifasta_path -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -A -S -R >> $logfile 2>&1", $?, $!);
 	
 	$pgg = 'output/pgg.txt';
 	if(compare("$pgg","$pgg_old") == 0)
@@ -584,6 +591,7 @@ sub compute
 	}
 	else
 	{
+	    print STDERR "\nDifferences found in last iteration - PGG is not stable :-(\n";
 	    `paste $stats gene_ANI rearrange SplitGene wgs_ANI > PGG_stats_$i.txt`;                  #add in all columns that contain their own header (new columns)
 	    `mv output/pgg.txt pgg.txt`;                                                   # set the current iteration as "old"
 	    `mv output/matchtable.txt matchtable.txt`;                                     # set the current iteration as "old"
@@ -599,11 +607,11 @@ sub compute
 	    $single_copy = $cwd . "/single_copy_clusters.txt";
 	    $matchtable = $cwd . "/matchtable.txt";                                                # After first iteration, we need to update location of matchtable and pgg files
 	    $pgg = $cwd . "/pgg.txt";
-	    if ($debug) {print STDERR "\nDifferences found in last iteration - PGG is not stable :-(\n";}
 	}
 	if ($debug) {print STDERR "Ending iteration $i\n\n";}
     }
     `rm *_topology.txt`;
+    `mv old.combined.att combined.att`;                                            # save a copy of attributes
     if ($debug) {print STDERR "Ending compute\n";}
 }
 
