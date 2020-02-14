@@ -357,7 +357,7 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 	    my $seq_len;
 	    my $sequence;
 	    if (!defined $feat_hash{$feat_name}) { # should not happen
-		die ("ERROR: gene identifier $feat_name in $matchtable_file is not in $att_file!\n");
+		die ("ERROR: output_multifasta: gene identifier $feat_name in $matchtable_file is not in $att_file!\n");
 	    }
 	    if ($genome_tag ne $feat_hash{$feat_name}->{'gtag'}) {
 		die ("ERROR: genome tag in $att_file ($feat_hash{$feat_name}->{'gtag'}) not the same as expected column in $matchtable_file ($genome_tag)");
@@ -371,6 +371,7 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 	    if (!defined $genseq_hash{$genome_tag}->{$feat_hash{$feat_name}->{'contig'}}) { # should not happen
 		die ("ERROR: contig sequence was not assigned for $feat_name in $matchtable_file should have come from $att_file!\n");
 	    }
+	    $cluster_to_feat_hash{$genome_tag}->{$cluster_id} = $feat_name;
 	    my $fivep = $feat_hash{$feat_name}->{'5p'};
 	    my $threep = $feat_hash{$feat_name}->{'3p'};
 	    my $contig_len = $genseq_len{$genome_tag}->{$feat_hash{$feat_name}->{'contig'}};
@@ -471,7 +472,7 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 	    my $end1;
 	    my $end2;
 	    if ((!defined $feat_name1) || (!defined $feat_name2) || (!defined $contig1) || (!defined $contig2)) { # should not happen
-		die ("ERROR: cluster to feat_name mapping is in conflict $genome_tag $cluster1 $cluster2!\n");
+		die ("ERROR: output:multifasta cluster to feat_name mapping is in conflict $genome_tag $cluster1 $cluster2!\n");
 	    }
 	    if ($contig1 ne $contig2) { # should not happen
 		die ("ERROR: for edge $edge_value cluster features $feat_name1:$feat_name2 are not on the same contig $contig1:$contig2");
@@ -646,9 +647,9 @@ sub get_attributes {
 	    #print STDERR "$ignore_id:$ignore_index:$tag:$feat_name\n" if ($DEBUG);
 	    next; #skip over the genome to be ignored
 	}
-	if ($use_multifasta && ($target_id ne $tag)) { #only read in the target genome - will use multiple fasta files for edges and clusters instead
-	    next; #skip over the genome to be ignored
-	}
+	#if ($use_multifasta && ($target_id ne $tag)) { #only read in the target genome - will use multiple fasta files for edges and clusters instead
+	#    next; #skip over the genome to be ignored
+	#}
 	if ($asmbl_id eq "") {
 	    print STDERR "ERROR: assembly id/contig id must not be empty/null in the gene attribute file\n$_\n";
 	    $failed = 1;
@@ -718,48 +719,46 @@ sub process_matchtable {
 	my $div_by_three = 0;
 	my $seen = 0;
 	if ($use_multifasta) {
-	    unless (open (CLUSTERFILE, "<$multifastadir/cluster_full_$cluster_id.fasta") )  {
-		die ("ERROR: cannot open file $multifastadir/cluster_full_$cluster_id.fasta\n");
-	    }
-	    my ($save_input_separator) = $/;
-	    $/="\n>";
-	    while (my $line2 = <CLUSTERFILE>) {
-		(my $title, my $sequence) = split(/\n/, $line2, 2); # split the header line and sequence (very cool)
-		my @fields = split(/\t/, $title);  # split the scalar $line on space or tab (to separate the identifier from the header and store in array @line
-		$genome_tag = $fields[0]; # unique orf identifier is in column 0, com_name is in rest
-		$genome_tag =~ s/>\s*//; # remove leading > and spaces
-		if ($strip_version) {
-		    $genome_tag =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
-		}
-		my $feat_name = $fields[1];
-		$sequence =~ s/[^a-zA-Z]//g; # remove any non-alphabet characters
-		my $seq_len = length($sequence);
-		if (!$seen && ($ignore_index == $index)) {
-		    $seen = 1;
-		    next; # ignore the column corresponding to the genome to be ignored
-		}
-		my $tag = shift @tmp_array;
-		while ($tag ne $genome_tag) {
-		    $index++;
-		    $tag = shift @tmp_array;
-		}
-		if (!defined $feat_hash{$feat_name}) { # should not happen
-		    die ("ERROR: gene identifier $feat_name in $matchtable_file is not in $att_file!\n");
-		}
-		if ($genome_tag ne $feat_hash{$feat_name}->{'gtag'}) {
-		    die ("ERROR: genome tag in $att_file ($feat_hash{$feat_name}->{'gtag'}) not the same as expected column in $matchtable_file ($genome_tag)");
-		}
-		if (!defined $feat_hash{$feat_name}->{'contig'}) { # should not happen
-		    die ("ERROR: contig identifier was not assigned for $feat_name in $matchtable_file should have come from $att_file!\n");
-		}
-		if (!defined $genseq_hash{$genome_tag}) { # should not happen
-		    die ("ERROR: genome tag identifier was not assigned for $feat_name in $matchtable_file should have come from $att_file!\n");
-		}
-		$cluster_to_feat_hash{$genome_tag}->{$cluster_id} = $feat_name;
-		$feat_hash{$feat_name}->{'len'} = $seq_len;
-		if ($seq_len <= 0) { #should not happen
-		    die ("ERROR: from multifasta file seq_len $seq_len for $feat_name!\n");
-		} else {
+	    if (open (CLUSTERFILE, "<$multifastadir/cluster_full_$cluster_id.fasta") )  { #if the file isn't there it's because the cluster was empty and going away on the next iteration
+		my ($save_input_separator) = $/;
+		$/="\n>";
+		while (my $line2 = <CLUSTERFILE>) {
+		    (my $title, my $sequence) = split(/\n/, $line2, 2); # split the header line and sequence (very cool)
+		    my @fields = split(/\t/, $title);  # split the scalar $line on space or tab (to separate the identifier from the header and store in array @line
+		    $genome_tag = $fields[0]; # unique orf identifier is in column 0, com_name is in rest
+		    $genome_tag =~ s/>\s*//; # remove leading > and spaces
+		    if ($strip_version) {
+			$genome_tag =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
+		    }
+		    my $feat_name = $fields[1];
+		    $sequence =~ s/[^a-zA-Z]//g; # remove any non-alphabet characters
+		    my $seq_len = length($sequence);
+		    if (!$seen && ($ignore_index == $index)) {
+			$seen = 1;
+			next; # ignore the column corresponding to the genome to be ignored
+		    }
+		    my $tag = shift @tmp_array;
+		    while ($tag ne $genome_tag) {
+			$index++;
+			$tag = shift @tmp_array;
+		    }
+		    if (!defined $feat_hash{$feat_name}) { # should not happen
+			die ("ERROR: process_amtchtable:cluster gene identifier $feat_name in $matchtable_file is not in $att_file!\n");
+		    }
+		    if ($genome_tag ne $feat_hash{$feat_name}->{'gtag'}) {
+			die ("ERROR: genome tag in $att_file ($feat_hash{$feat_name}->{'gtag'}) not the same as expected column in $matchtable_file ($genome_tag)");
+		    }
+		    if (!defined $feat_hash{$feat_name}->{'contig'}) { # should not happen
+			die ("ERROR: contig identifier was not assigned for $feat_name in $matchtable_file should have come from $att_file!\n");
+		    }
+		    if (!defined $genseq_hash{$genome_tag}) { # should not happen
+			die ("ERROR: genome tag identifier was not assigned for $feat_name in $matchtable_file should have come from $att_file!\n");
+		    }
+		    $cluster_to_feat_hash{$genome_tag}->{$cluster_id} = $feat_name;
+		    $feat_hash{$feat_name}->{'len'} = $seq_len;
+		    if ($seq_len <= 0) { #should not happen
+			die ("ERROR: from multifasta file seq_len $seq_len for $feat_name!\n");
+		    }
 		    my $bad_count = $sequence =~ tr/AGCTYRWSKMDVHBNagctyrwskmdvhbn//c;
 		    if ($bad_count > 0) {
 			die ("ERROR: Unexpected character not in [AGCTYRWSKMDVHBNagctyrwskmdvhbn] found in genome fasta sequence!\n$sequence\n");
@@ -776,27 +775,27 @@ sub process_matchtable {
 			    $target_sequence = $sequence;
 			}
 		    }
-		}
-		if (($genome_tag ne $target_id) && ($align_all || $remake_files || $compute_all || ($target_id ne ""))) {
-		    if ($seq_len > $max) {
-			$max = $seq_len;
+		    if (($genome_tag ne $target_id) && ($align_all || $remake_files || $compute_all || ($target_id ne ""))) {
+			if ($seq_len > $max) {
+			    $max = $seq_len;
+			}
+			if ($seq_len < $min) {
+			    $min = $seq_len;
+			}
+			$sum += $seq_len;
+			$sumsquared += $seq_len * $seq_len;
+			push @sizes, $seq_len;
 		    }
-		    if ($seq_len < $min) {
-			$min = $seq_len;
+		    if ($genome_tag ne $target_id) {
+			$gene_count++;
 		    }
-		    $sum += $seq_len;
-		    $sumsquared += $seq_len * $seq_len;
-		    push @sizes, $seq_len;
+		    $index++;
+		    $title = ""; # clear the title for the next contig
+		    $sequence = ""; #clear out the sequence for the next contig
 		}
-		if ($genome_tag ne $target_id) {
-		    $gene_count++;
-		}
-		$index++;
-		$title = ""; # clear the title for the next contig
-		$sequence = ""; #clear out the sequence for the next contig
+		$/ = $save_input_separator; # restore the input separator
+		close (CLUSTERFILE);
 	    }
-	    $/ = $save_input_separator; # restore the input separator
-	    close (CLUSTERFILE);
 	}
 	@tmp_array = @genome_array;
 	$index = 0;
@@ -817,7 +816,7 @@ sub process_matchtable {
 	    my $seq_len;
 	    my $sequence;
 	    if (!defined $feat_hash{$feat_name}) { # should not happen
-		die ("ERROR: gene identifier $feat_name in $matchtable_file is not in $att_file!\n");
+		die ("ERROR: process_matchtable:genome gene identifier $feat_name in $matchtable_file is not in $att_file!\n");
 	    }
 	    if ($genome_tag ne $feat_hash{$feat_name}->{'gtag'}) {
 		die ("ERROR: genome tag in $att_file ($feat_hash{$feat_name}->{'gtag'}) not the same as expected column in $matchtable_file ($genome_tag)");
@@ -915,22 +914,21 @@ sub process_matchtable {
 	    $feat_hash{$feat_name}->{'len'} = $seq_len;
 	    if ($seq_len <= 0) { #should not happen
 		die ("ERROR: coordinates on contig sequence resulted in negative seq_len $seq_len for $feat_name!\n");
-	    } else {
-		my $bad_count = $sequence =~ tr/AGCTYRWSKMDVHBNagctyrwskmdvhbn//c;
-		if ($bad_count > 0) {
-		    die ("ERROR: Unexpected character not in [AGCTYRWSKMDVHBNagctyrwskmdvhbn] found in genome fasta sequence!\n$sequence\n");
+	    }
+	    my $bad_count = $sequence =~ tr/AGCTYRWSKMDVHBNagctyrwskmdvhbn//c;
+	    if ($bad_count > 0) {
+		die ("ERROR: Unexpected character not in [AGCTYRWSKMDVHBNagctyrwskmdvhbn] found in genome fasta sequence!\n$sequence\n");
+	    }
+	    if (($seq_len % 3) == 0) {
+		$div_by_three++;
+	    }
+	    $genome_seqs[$index] = $sequence;
+	    if ($compute_all || ($target_id ne "")) {
+		if (!$gene_count) {
+		    $single_genome = $genome_tag;
 		}
-		if (($seq_len % 3) == 0) {
-		    $div_by_three++;
-		}
-		$genome_seqs[$index] = $sequence;
-		if ($compute_all || ($target_id ne "")) {
-		    if (!$gene_count) {
-			$single_genome = $genome_tag;
-		    }
-		    if ($genome_tag eq $target_id) {
-			$target_sequence = $sequence;
-		    }
+		if ($genome_tag eq $target_id) {
+		    $target_sequence = $sequence;
 		}
 	    }
 	    if (($genome_tag ne $target_id) && ($align_all || $remake_files || $compute_all || ($target_id ne ""))) {
@@ -1322,96 +1320,97 @@ sub process_pgg {
 	my @sizes = ();
 	my $seen = 0;
 	if ($use_multifasta) {
-	    unless (open (EDGEFILE, "<$multifastadir/full_$edge_id.fasta") )  {
-		die ("ERROR: cannot open file $multifastadir/full_$edge_id.fasta\n");
-	    }
-	    my ($save_input_separator) = $/;
-	    $/="\n>";
-	    while (my $line2 = <EDGEFILE>) {
-		(my $title, my $sequence) = split(/\n/, $line2, 2); # split the header line and sequence (very cool)
-		my @fields = split(/\t/, $title);  # split the scalar $line on space or tab (to separate the identifier from the header and store in array @line
-		$genome_tag = $fields[0]; # unique orf identifier is in column 0, com_name is in rest
-		$genome_tag =~ s/>\s*//; # remove leading > and spaces
-		if ($strip_version) {
-		    $genome_tag =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
-		}
-		my $edge_5p = $fields[1];
-		my $edge_3p = $fields[2];
-		$sequence =~ s/[^a-zA-Z]//g; # remove any non-alphabet characters
-		my $seq_len = length($sequence);
-		if (!$seen && ($ignore_id eq $genome_tag)) {
-		    #print STDERR "$ignore_id:$ignore_index:$index:$feat_name\n" if ($DEBUG);
-		    $seen =1;
-		    next; # ignore the column corresponding to the genome to be ignored
-		}
-		my $tag = shift @tmp_array;
-		while ($tag ne $genome_tag) {
+	    if (open (EDGEFILE, "<$multifastadir/full_$edge_id.fasta") )  { #if the file isn't there it's because the cluster was empty and going away on the next iteration
+		my ($save_input_separator) = $/;
+		$/="\n>";
+		while (my $line2 = <EDGEFILE>) {
+		    (my $title, my $sequence) = split(/\n/, $line2, 2); # split the header line and sequence (very cool)
+		    my @fields = split(/\t/, $title);  # split the scalar $line on space or tab (to separate the identifier from the header and store in array @line
+		    $genome_tag = $fields[0]; # unique orf identifier is in column 0, com_name is in rest
+		    $genome_tag =~ s/>\s*//; # remove leading > and spaces
+		    if ($strip_version) {
+			$genome_tag =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
+		    }
+		    my $edge_5p = $fields[1];
+		    my $edge_3p = $fields[2];
+		    $sequence =~ s/[^a-zA-Z]//g; # remove any non-alphabet characters
+		    my $seq_len = length($sequence);
+		    if (!$seen && ($ignore_id eq $genome_tag)) {
+			#print STDERR "$ignore_id:$ignore_index:$index:$feat_name\n" if ($DEBUG);
+			$seen =1;
+			next; # ignore the column corresponding to the genome to be ignored
+		    }
+		    my $tag = shift @tmp_array;
+		    while ($tag ne $genome_tag) {
+			$index++;
+			$tag = shift @tmp_array;
+		    }
+		    my $feat_name1 = $cluster_to_feat_hash{$genome_tag}->{$cluster1};
+		    my $feat_name2 = $cluster_to_feat_hash{$genome_tag}->{$cluster2};
+		    my $contig1 = $feat_hash{$feat_name1}->{'contig'};
+		    my $contig2 = $feat_hash{$feat_name2}->{'contig'};
+		    if ((!defined $feat_name1) || (!defined $feat_name2) || (!defined $contig1) || (!defined $contig2)) { # should not happen
+			die ("ERROR: process_pgg:edge cluster to feat_name mapping is in conflict $genome_tag $cluster1 $cluster2!\n");
+		    }
+		    if ($contig1 ne $contig2) { # should not happen
+			die ("ERROR: for edge $edge_id cluster features $feat_name1:$feat_name2 are not on the same contig $contig1:$contig2");
+		    }
+		    if (($genome_tag ne $feat_hash{$feat_name1}->{'gtag'}) || ($genome_tag ne $feat_hash{$feat_name2}->{'gtag'})) { # should not happen
+			die ("ERROR: Inconsistency in genome tag between $att_file, $matchtable_file, and $pgg_file for $feat_name1 and $feat_name2");
+		    }
+		    if (!defined $genseq_hash{$genome_tag}) { # should not happen
+			die ("ERROR: genome tag identifier was not assigned for $pgg_file should have come from $att_file!\n");
+		    }
+		    $edge_hash{$genome_tag . $edge_id} = {};
+		    $edge_hash{$genome_tag . $edge_id}->{'gtag'} = $genome_tag;
+		    $edge_hash{$genome_tag . $edge_id}->{'contig'} = $contig1;
+		    if ($sequence eq "EMPTY") {
+			$seq_len = 0;
+		    }
+		    $edge_hash{$genome_tag . $edge_id}->{'len'} = $seq_len;
+		    $edge_hash{$genome_tag . $edge_id}->{'5p'} = $edge_5p;
+		    $edge_hash{$genome_tag . $edge_id}->{'3p'} = $edge_3p;
+		    if (($genome_tag ne $target_id) && ($align_all || $remake_files || $compute_all || ($target_id ne ""))) {
+			if ($seq_len > $max) {
+			    $max = $seq_len;
+			}
+			if ($seq_len < $min) {
+			    $min = $seq_len;
+			}
+			$sum += $seq_len;
+			$sumsquared += $seq_len * $seq_len;
+			push @sizes, $seq_len;
+		    }
+		    if ($cluster1 <= $cluster2) { # only need to do this for one orientation of the edge - not sure if the clusters can be equal or if there are two edges in this case - do a 3' 5' test?
+			if ($seq_len < 0) { #should not happen
+			    die ("ERROR: zero seq_len $seq_len for $edge_id $feat_name1 $edge_5p $feat_name2 $edge_3p!\n");
+			}
+			if ($sequence ne "EMPTY") {
+			    my $bad_count = $sequence =~ tr/AGCTYRWSKMDVHBNagctyrwskmdvhbn//c;
+			    if ($bad_count > 0) {
+				die ("ERROR: Unexpected character not in [AGCTYRWSKMDVHBNagctyrwskmdvhbn] found in genome fasta sequence!\n$sequence\n");
+			    }
+			}
+			$genome_seqs[$index] = $sequence;
+			if ($compute_all || ($target_id ne "")) {
+			    if (!$gene_count) {
+				$single_genome = $genome_tag;
+			    }
+			    if ($genome_tag eq $target_id) {
+				$target_sequence = $sequence;
+			    }
+			}
+		    }
+		    if ($genome_tag ne $target_id) {
+			$gene_count++;
+		    }
 		    $index++;
-		    $tag = shift @tmp_array;
+		    $title = ""; # clear the title for the next contig
+		    $sequence = ""; #clear out the sequence for the next contig
 		}
-		my $feat_name1 = $cluster_to_feat_hash{$genome_tag}->{$cluster1};
-		my $feat_name2 = $cluster_to_feat_hash{$genome_tag}->{$cluster2};
-		my $contig1 = $feat_hash{$feat_name1}->{'contig'};
-		my $contig2 = $feat_hash{$feat_name2}->{'contig'};
-		if ((!defined $feat_name1) || (!defined $feat_name2) || (!defined $contig1) || (!defined $contig2)) { # should not happen
-		    die ("ERROR: cluster to feat_name mapping is in conflict $genome_tag $cluster1 $cluster2!\n");
-		}
-		if ($contig1 ne $contig2) { # should not happen
-		    die ("ERROR: for edge $edge_id cluster features $feat_name1:$feat_name2 are not on the same contig $contig1:$contig2");
-		}
-		if (($genome_tag ne $feat_hash{$feat_name1}->{'gtag'}) || ($genome_tag ne $feat_hash{$feat_name2}->{'gtag'})) { # should not happen
-		    die ("ERROR: Inconsistency in genome tag between $att_file, $matchtable_file, and $pgg_file for $feat_name1 and $feat_name2");
-		}
-		if (!defined $genseq_hash{$genome_tag}) { # should not happen
-		    die ("ERROR: genome tag identifier was not assigned for $pgg_file should have come from $att_file!\n");
-		}
-		$edge_hash{$genome_tag . $edge_id} = {};
-		$edge_hash{$genome_tag . $edge_id}->{'gtag'} = $genome_tag;
-		$edge_hash{$genome_tag . $edge_id}->{'contig'} = $contig1;
-		if ($sequence eq "EMPTY") {
-		    $seq_len = 0;
-		}
-		$edge_hash{$genome_tag . $edge_id}->{'len'} = $seq_len;
-		$edge_hash{$genome_tag . $edge_id}->{'5p'} = $edge_5p;
-		$edge_hash{$genome_tag . $edge_id}->{'3p'} = $edge_3p;
-		if (($genome_tag ne $target_id) && ($align_all || $remake_files || $compute_all || ($target_id ne ""))) {
-		    if ($seq_len > $max) {
-			$max = $seq_len;
-		    }
-		    if ($seq_len < $min) {
-			$min = $seq_len;
-		    }
-		    $sum += $seq_len;
-		    $sumsquared += $seq_len * $seq_len;
-		    push @sizes, $seq_len;
-		}
-		if ($cluster1 <= $cluster2) { # only need to do this for one orientation of the edge - not sure if the clusters can be equal or if there are two edges in this case - do a 3' 5' test?
-		    if ($seq_len < 0) { #should not happen
-			die ("ERROR: zero seq_len $seq_len for $edge_id $feat_name1 $edge_5p $feat_name2 $edge_3p!\n");
-		    }
-		    my $bad_count = $sequence =~ tr/AGCTYRWSKMDVHBNagctyrwskmdvhbn//c;
-		    if ($bad_count > 0) {
-			die ("ERROR: Unexpected character not in [AGCTYRWSKMDVHBNagctyrwskmdvhbn] found in genome fasta sequence!\n$sequence\n");
-		    }
-		    $genome_seqs[$index] = $sequence;
-		    if ($compute_all || ($target_id ne "")) {
-			if (!$gene_count) {
-			    $single_genome = $genome_tag;
-			}
-			if ($genome_tag eq $target_id) {
-			    $target_sequence = $sequence;
-			}
-		    }
-		}
-		if ($genome_tag ne $target_id) {
-		    $gene_count++;
-		}
-		$index++;
-		$title = ""; # clear the title for the next contig
-		$sequence = ""; #clear out the sequence for the next contig
+		$/ = $save_input_separator; # restore the input separator
+		close (EDGEFILE);
 	    }
-	    $/ = $save_input_separator; # restore the input separator
-	    close (EDGEFILE);
 	}
 	@tmp_array = @genome_array;
 	$index = 0;
@@ -1438,7 +1437,7 @@ sub process_pgg {
 	    my $end1;
 	    my $end2;
 	    if ((!defined $feat_name1) || (!defined $feat_name2) || (!defined $contig1) || (!defined $contig2)) { # should not happen
-		die ("ERROR: cluster to feat_name mapping is in conflict $genome_tag $cluster1 $cluster2!\n");
+		die ("ERROR: process_pgg:pgg cluster to feat_name mapping is in conflict $genome_tag $cluster1 $cluster2!\n");
 	    }
 	    if ($contig1 ne $contig2) { # should not happen
 		die ("ERROR: for edge $edge_value cluster features $feat_name1:$feat_name2 are not on the same contig $contig1:$contig2");
