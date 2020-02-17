@@ -14,6 +14,7 @@ use File::Compare;
 
 my $blast_directory = "";
 my $ld_load_directory = "";
+my $blast_task = "blastn";
 my $muscle_path = "";
 my $bin_directory = "/usr/local/projdata/8520/projects/PANGENOME/pangenome_bin/";
 my $input_bin_directory = "";
@@ -37,6 +38,7 @@ my $keep_divergent_alignments = "";
 my $engdb = "";
 my $nrdb = "";
 my $pggdb = "";
+my $less_memory = 0;
 
 GetOptions('genome=s' => \ $genome_path,
 	   'weights=s' => \ $weights,
@@ -49,11 +51,13 @@ GetOptions('genome=s' => \ $genome_path,
 	   'bin_directory=s' => \ $input_bin_directory,
 	   'blast_directory=s' => \ $blast_directory,
 	   'ld_load_directory=s' => \ $ld_load_directory,
+	   'blast_task=s' => \ $blast_task,
 	   'muscle_path=s' => \ $muscle_path,
 	   'multifastadir=s' => \ $multifastadir,
 	   'alignments=s' => \ $keep_divergent_alignments,
 	   'duplicate=i' => \ $duplicate,
 	   'strip_version' => \ $strip_version,
+	   'less_memory' => \ $less_memory,
 	   'reannotate' => \ $reannotate,
 	   'debug' => \ $debug,
 	   'help' => \ $help);
@@ -117,11 +121,13 @@ GetOptions('genome=s' => \ genome_path,
 	   'bin_directory=s' => \ input_bin_directory,
 	   'blast_directory=s' => \ blast_directory,
 	   'ld_load_directory=s' => \ ld_load_directory,
+	   'blast_task=s' => \ blast_task,
 	   'muscle_path=s' => \ muscle_path,
 	   'multifastadir=s' => \ multifastadir,
 	   'alignments=s' => \ keep_divergent_alignments,
 	   'duplicate=i' => \ duplicate,
 	   'strip_version' => \ strip_version,
+	   'less_memory' => \ less_memory,
 	   'reannotate' => \ reannotate,
 	   'debug' => \ debug,
 	   'help' => \ help);
@@ -194,6 +200,9 @@ sub compute
     
     if ($debug) {print STDERR "Starting compute ...\n\n";}
     if ($debug) {print STDERR "\ngenome_name: $genome_name \t path: $genome_path\n\n";}
+    if ($less_memory) {
+	$pgg_multifasta_path .= " -F ";
+    }
     if ($muscle_path ne "") {
 	$pgg_multifasta_path .= " -C $muscle_path ";
     }
@@ -203,6 +212,10 @@ sub compute
     if ($blast_directory) {
 	$medoid_blast_path .= " -blast_directory $blast_directory ";
 	$filter_anomalies_path .= " -blast_directory $blast_directory ";
+    }	
+    if ($blast_task) {
+	$medoid_blast_path .= " -blast_task $blast_task ";
+	$filter_anomalies_path .= " -blast_task $blast_task ";
     }	
     if ($ld_load_directory) {
 	$medoid_blast_path .= " -ld_load_directory $ld_load_directory ";

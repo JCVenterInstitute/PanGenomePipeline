@@ -15,6 +15,7 @@ use File::Compare;
 
 my $blast_directory = "";
 my $ld_load_directory = "";
+my $blast_task = "blastn";
 my $muscle_path = "";
 my $bin_directory = "/usr/local/projdata/8520/projects/PANGENOME/pangenome_bin/";
 my $input_bin_directory = "";
@@ -42,6 +43,7 @@ my $max_grid_jobs = 50;
 my $logfile = "iterate_ppg_graph.logfile";
 my $topology_file = "topology.txt";
 my $cwd = getcwd;
+my $qsub_queue = "himem";
 
 GetOptions('genomes=s' => \ $genome_list_path,
 	   'weights=s' => \ $weights,
@@ -50,8 +52,10 @@ GetOptions('genomes=s' => \ $genome_list_path,
 	   'topology=s' => \ $topology_file,
 	   'single_copy=s' => \ $input_single_copy,
 	   'bin_directory=s' => \ $input_bin_directory,
+	   'qsub_queue=s' => \ $qsub_queue,
 	   'blast_directory=s' => \ $blast_directory,
 	   'ld_load_directory=s' => \ $ld_load_directory,
+	   'blast_task=s' => \ $blast_task,
 	   'muscle_path=s' => \ $muscle_path,
 	   'pgg=s' => \ $pgg,                                                               # [pangenome_dir]/0_core_adjacency_vector.txt
 	   'medoids=s' => \ $input_medoids,
@@ -107,8 +111,10 @@ GetOptions('genomes=s' => \ genome_list_path,
 	   'topology=s' => \ topology_file,
 	   'single_copy=s' => \ input_single_copy,
 	   'bin_directory=s' => \ input_bin_directory,
+	   'qsub_queue=s' => \ qsub_queue,
 	   'blast_directory=s' => \ blast_directory,
 	   'ld_load_directory=s' => \ ld_load_directory,
+	   'blast_task=s' => \ blast_task,
 	   'muscle_path=s' => \ muscle_path,
 	   'pgg=s' => \ pgg,                                                               # [pangenome_dir]/0_core_adjacency_vector.txt
 	   'medoids=s' => \ input_medoids,
@@ -363,6 +369,10 @@ sub compute
 	$compute_path .= " -blast_directory $blast_directory ";
 	$compute_new_clusters_path .= " -B $blast_directory ";
     }	
+    if ($blast_task) {
+	$compute_path .= " -blast_task $blast_task ";
+	$compute_new_clusters_path .= " -T $blast_task ";
+    }	
     if ($ld_load_directory) {
 	$compute_path .= " -ld_load_directory $ld_load_directory ";
 	$compute_new_clusters_path .= " -L $ld_load_directory ";
@@ -400,7 +410,6 @@ sub compute
 	    my $stdoutfile = $cwd . "/" . $identifier . "_stdout";
 	    my $stderrfile = $cwd . "/" . $identifier . "_stderr";
 	    my $working_dir = $cwd . "/TMP_" . $identifier;
-	    my $queue = "himem";
 	    my $match_name = ("$identifier" . "_match.col");
 	    my $pgg_name = ("$identifier" . "_pgg.col");
 	    my $att_name = ("$identifier" . "_attributes.txt");
@@ -412,7 +421,7 @@ sub compute
 	    `ln $topology_name $single_copy $core_neighbors TMP_$identifier`;
 	    if ($debug) {print STDERR "\nidentifier: $identifier \t path: $genome_path\n\n";}
 	    if ($debug) {print STDERR "qsub $shell_script\n";}
-	    $job_ids{&launch_grid_job($job_name, $project, $working_dir, $shell_script, $stdoutfile, $stderrfile, $queue)} = 1;
+	    $job_ids{&launch_grid_job($job_name, $project, $working_dir, $shell_script, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
 	    $num_jobs++;
 	    if ($num_jobs >= $max_grid_jobs) {
 		$num_jobs = &wait_for_grid_jobs($job_name, ((($max_grid_jobs - 10) > 0) ? ($max_grid_jobs - 10) : 0), \%job_ids);
@@ -461,12 +470,11 @@ sub compute
 			my $stderrfile = $cwd . "/" . $identifier . "_stderr";
 			my $working_dir = $cwd . "/TMP_" . $identifier;
 			my $topology_name = ("$identifier" . "_topology.txt");
-			my $queue = "himem";
 			`mkdir TMP_$identifier`;
 			`ln $topology_name $single_copy $core_neighbors TMP_$identifier`;
 			if ($debug) {print STDERR "\nidentifier: $identifier \t path: $genome_path\n\n";}
 			if ($debug) {print STDERR "resubmit qsub $shell_script\n";}
-			$job_ids{&launch_grid_job($job_name, $project, $working_dir, $shell_script, $stdoutfile, $stderrfile, $queue)} = 1;
+			$job_ids{&launch_grid_job($job_name, $project, $working_dir, $shell_script, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
 			$num_jobs++;
 		    }
 		}
@@ -563,13 +571,13 @@ sub compute
 	`rm new_gene_seqs.fasta new_clusters.txt`;
 	`rm output/* multifasta/*`; # clean up any multifasta files from previous iteration
 	if ($strip_version) {
-	    if ($debug) {print STDERR "\nperl $pgg_multifasta_path -V -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R\n";}    # run pgg edge multi_fasta
-	    `perl $pgg_multifasta_path -V -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1`;    # run pgg edge multi_fasta
-	    &bash_error_check("perl $pgg_multifasta_path -V -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1", $?, $!);
+	    if ($debug) {print STDERR "\nperl $pgg_multifasta_path -Q $qsub_queue -V -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R\n";}    # run pgg edge multi_fasta
+	    `perl $pgg_multifasta_path -Q $qsub_queue -V -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1`;    # run pgg edge multi_fasta
+	    &bash_error_check("perl $pgg_multifasta_path -Q $qsub_queue -V -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1", $?, $!);
 	} else {
-	    if ($debug) {print STDERR "\nperl $pgg_multifasta_path -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R\n";}    # run pgg edge multi_fasta
-	    `perl $pgg_multifasta_path -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1`;    # run pgg edge multi_fasta
-	    &bash_error_check("perl $pgg_multifasta_path -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1", $?, $!);
+	    if ($debug) {print STDERR "\nperl $pgg_multifasta_path -Q $qsub_queue -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R\n";}    # run pgg edge multi_fasta
+	    `perl $pgg_multifasta_path -Q $qsub_queue -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1`;    # run pgg edge multi_fasta
+	    &bash_error_check("perl $pgg_multifasta_path -Q $qsub_queue -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1", $?, $!);
 	}
 	die ("output/pgg.txt is zero size \n") unless (-s "output/pgg.txt");
 	

@@ -25,8 +25,8 @@ use warnings;
 use Getopt::Std;
 use Data::Dumper;
 use Scalar::Util qw(looks_like_number);
-getopts ('hDc:n:b:i:M:m:g:s:B:L:');
-our ($opt_h,$opt_D,$opt_c,$opt_n,$opt_i,$opt_M,$opt_m,$opt_g,$opt_s,$opt_B,$opt_L);
+getopts ('hDc:n:b:i:M:m:g:s:B:L:T:');
+our ($opt_h,$opt_D,$opt_c,$opt_n,$opt_i,$opt_M,$opt_m,$opt_g,$opt_s,$opt_B,$opt_L,$opt_T);
 
 my ($cluster_file,$start_cluster,$index_file,$match_file,$medoid_file,$gtag_file,$seq_file);
 my $blast_directory = "";
@@ -37,8 +37,10 @@ my $ld_load_directory = "";
 my $DEBUG;
 my $version = "1.0";
 my $cwd = getcwd;
+my $blast_task = "blastn";
 if ($opt_D) {$DEBUG = 1;} else { $DEBUG = 0; } # Debug mode is off as default.
 if ($opt_h) { &option_help; } # quit with help menu
+if ($opt_T) {$blast_task = $opt_T;} else { $blast_task = "blastn"; } # Read in blast task or set default.
 if ($opt_i) {$index_file = $opt_i;} else { $index_file = "gene_cluster_index.txt"; } # Read in index_file name or set default.
 if ($opt_M) {$match_file = $opt_M;} else { $match_file = "new_matchtable.txt"; } # Read in match_file name or set default.
 if ($opt_m) {$medoid_file = $opt_m;} else { $medoid_file = "new_medoids.fasta"; } # Read in medoid_file name or set default.
@@ -1106,6 +1108,7 @@ Options:
      -M: file name for outputting the new clusters [REQUIRED]
      -B: directory name for where blast executables are located - default is not to use a directory
      -L: directory name for where blast libraries are located - default is not to use a directory
+     -T: blast "task" to use, typically blastn or megablast - default is blastn
      -D: no argument, DEBUG MODE (DEFAULT = off)
 
  Authors: Granger Sutton, Ph.D.
@@ -1128,7 +1131,7 @@ print STDERR "blasting all versus all of $seq_file";
 my $makeblastdb = $blast_directory . "makeblastdb";
 `$makeblastdb -in M_BLAST_TMP/temp_fasta.ftmp -dbtype nucl -out M_BLAST_TMP/temp_fasta.ftmp`;
 my $blastn = $blast_directory . "blastn";
-`$blastn -query $seq_file -db M_BLAST_TMP/temp_fasta.ftmp -out M_BLAST_TMP/temp_results.ftmp -task blastn -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore\"`;
+`$blastn -query $seq_file -db M_BLAST_TMP/temp_fasta.ftmp -out M_BLAST_TMP/temp_results.ftmp -task $blast_task -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore\"`;
 print STDERR "Getting data from blast .btab file: M_BLAST_TMP/temp_results.ftmp\n";
 &select_max_scores_from_btab("M_BLAST_TMP/temp_results.ftmp");
 &select_data_from_btab("M_BLAST_TMP/temp_results.ftmp");
