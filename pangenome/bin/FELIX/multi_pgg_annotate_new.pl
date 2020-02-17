@@ -17,6 +17,7 @@ use File::Compare;
 
 my $blast_directory = "";
 my $ld_load_directory = "";
+my $blast_task = "blastn";
 my $muscle_path = "";
 my $bin_directory = "/usr/local/projdata/8520/projects/PANGENOME/pangenome_bin/";
 my $input_bin_directory = "";
@@ -44,11 +45,13 @@ my $keep_divergent_alignments = "";
 my $input_multifastadir = "";
 my $cwd = getcwd;
 my %old_genomes = ();
+my $less_memory = 0;
 my $max_grid_jobs = 50;
 my $engdb = "";
 my $nrdb = "";
 my $pggdb = "";
-my $grid_queue = "";
+my $qsub_queue = "himem";
+my $strip_version = 0;
 
 GetOptions('genomes=s' => \ $genome_list_path,
 	   'new_genomes=s' => \ $new_genomes,
@@ -58,6 +61,7 @@ GetOptions('genomes=s' => \ $genome_list_path,
 	   'bin_directory=s' => \ $input_bin_directory,
 	   'blast_directory=s' => \ $blast_directory,
 	   'ld_load_directory=s' => \ $ld_load_directory,
+	   'blast_task=s' => \ $blast_task,
 	   'muscle_path=s' => \ $muscle_path,
 	   'multifastadir=s' => \ $input_multifastadir,
 	   'alignments=s' => \ $keep_divergent_alignments,
@@ -72,9 +76,10 @@ GetOptions('genomes=s' => \ $genome_list_path,
 	   'engdb=s' => \ $engdb,
 	   'nrdb=s' => \ $nrdb,
 	   'id=i' => \ $id,
-	   'queue=s' => \ $grid_queue,
+	   'qsub_queue=s' => \ $qsub_queue,
 	   'max_grid_jobs=i' => \ $max_grid_jobs,
-	   'strip_version' => \my $strip_version,
+	   'strip_version' => \ $strip_version,
+	   'less_memory' => \ $less_memory,
 	   'help' => \ $help,
 	   'debug' => \ $debug);
 
@@ -121,6 +126,7 @@ GetOptions('genomes=s' => \ genome_list_path,
 	   'bin_directory=s' => \ input_bin_directory,
 	   'blast_directory=s' => \ blast_directory,
 	   'ld_load_directory=s' => \ ld_load_directory,
+	   'blast_task=s' => \ blast_task,
 	   'muscle_path=s' => \ muscle_path,
 	   'multifastadir=s' => \ input_multifastadir,
 	   'alignments=s' => \ keep_divergent_alignments,
@@ -135,9 +141,10 @@ GetOptions('genomes=s' => \ genome_list_path,
 	   'engdb=s' => \ engdb,
 	   'nrdb=s' => \ nrdb,
 	   'id=i' => \ id,
-	   'queue=s' => \ grid_queue,
+	   'qsub_queue=s' => \ qsub_queue,
 	   'max_grid_jobs=i' => \ max_grid_jobs,
 	   'strip_version' => \ strip_version,
+	   'less_memory' => \ less_memory,
 	   'help' => \ help,
 	   'debug' => \ debug);
 _EOB_
@@ -421,8 +428,14 @@ sub compute
     if ($blast_directory) {
 	$compute_path .= " -blast_directory $blast_directory ";
     }	
+    if ($blast_task) {
+	$compute_path .= " -blast_task $blast_task ";
+    }	
     if ($ld_load_directory) {
 	$compute_path .= " -ld_load_directory $ld_load_directory ";
+    }	
+    if ($less_memory) {
+	$compute_path .= " -less_memory ";
     }	
     for (my $j=0; $j <= $#genomes; $j++)
     {
@@ -447,10 +460,6 @@ sub compute
 	my $stdoutfile = $cwd . "/" . $identifier . "_stdout";
 	my $stderrfile = $cwd . "/" . $identifier . "_stderr";
 	my $working_dir = $cwd . "/TMP_" . $identifier;
-	my $queue = "himem";
-	if ($grid_queue ne "") {
-	    $queue = $grid_queue;
-	}
 	my $match_name = "$identifier" . "_match.col";
 	my $pgg_name = "$identifier" . "_pgg.col";
 	my $att_name = "$identifier" . "_attributes.txt";
@@ -472,7 +481,7 @@ sub compute
 	`cp $genome_list_path $working_dir/combined_genome_list`;
 	if ($debug) {print STDERR "\nidentifier: $identifier \t path: $genome_path\n\n";}
 	if ($debug) {print STDERR "qsub $shell_script\n";}
-	$job_ids{&launch_grid_job($job_name, $project, $working_dir, $shell_script, $stdoutfile, $stderrfile, $queue)} = 1;
+	$job_ids{&launch_grid_job($job_name, $project, $working_dir, $shell_script, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
 	$num_jobs++;
 	if ($num_jobs >= $max_grid_jobs) {
 	    $num_jobs = &wait_for_grid_jobs($job_name, ((($max_grid_jobs - 10) > 0) ? ($max_grid_jobs - 10) : 0), \%job_ids);
@@ -534,10 +543,6 @@ sub compute
 		    my $stderrfile = $cwd . "/" . $identifier . "_stderr";
 		    my $working_dir = $cwd . "/TMP_" . $identifier;
 		    my $topology_name = "$identifier" . "_topology.txt";
-		    my $queue = "himem";
-		    if ($grid_queue ne "") {
-			$queue = $grid_queue;
-		    }
 		    `mkdir $working_dir`;
 		    `cp $topology_name $single_copy $core_neighbors $working_dir`;
 		    `cp $attributes $working_dir/combined.att`; 
@@ -547,7 +552,7 @@ sub compute
 		    `cp $genome_list_path $working_dir/combined_genome_list`;
 		    if ($debug) {print STDERR "\nidentifier: $identifier \t path: $genome_path\n\n";}
 		    if ($debug) {print STDERR "resubmit qsub $shell_script\n";}
-		    $job_ids{&launch_grid_job($job_name, $project, $working_dir, $shell_script, $stdoutfile, $stderrfile, $queue)} = 1;
+		    $job_ids{&launch_grid_job($job_name, $project, $working_dir, $shell_script, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
 		    $num_jobs++;
 		}
 	    }

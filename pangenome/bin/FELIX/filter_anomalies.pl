@@ -16,6 +16,7 @@ use warnings;
 use List::Util qw[min max];
 
 my $cwd = getcwd;
+my $blast_task = "blastn";
 my @annotations = ();  # These are the lines of the attribute files but with 3 changes: 1) there BEST, VALUE, and TYPE fields 2) coordinates are now smallest then largest, not start then stop 3) there is an INVERT field to indicate strand rather than STOP being smaller than START
 my @pgg_blast_results = ();  # These are the blast results of the query sequences against the PGG genomes
 my @ordered = ();      # Same as above but sorted by CONTIG then START
@@ -68,6 +69,7 @@ GetOptions('genomes=s' => \my $genomes,
 	'debug' => \my $debug,
 	'blast_directory=s' => \my $blast_directory,
 	'ld_load_directory=s' => \my $ld_load_directory,
+	'blast_task=s' => \ $blast_task,
 	'nrdb=s' => \my $nrdb,
 	'pggdb=s' => \my $PGGdb,
 	'engdb=s' => \my $engdb);
@@ -113,6 +115,7 @@ GetOptions('genomes=s' => genomes,
 	'debug' => debug,
 	'blast_directory=s' => \ blast_directory,
 	'ld_load_directory=s' => \ ld_load_directory,
+	'blast_task=s' => \ blast_task,
 	'nrdb=s' => nrdb,
 	'pggdb=s' => PGGdb,
 	'engdb=s' => engdb);
@@ -490,12 +493,12 @@ while (my $line = <$infile>)  {
     `cp $genome $out_genome`;
     $cmd = "$makeblastdb -in $out_genome -dbtype nucl";
     `$cmd`;
-    $cmd = "$blastn -query $out_fasta_seqs -db $out_genome -out $out_genome_blast -task blastn -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\" -culling_limit 3";
+    $cmd = "$blastn -query $out_fasta_seqs -db $out_genome -out $out_genome_blast -task $blast_task -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\" -culling_limit 3";
     `$cmd`;
     `rm $out_genome $out_genome_nsq $out_genome_nin $out_genome_nhr`;
-    #$cmd = "$blastn -query $out_fasta_seqs -db $engdb -out $out_engdb_blast -task blastn -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\" -culling_limit 2";
+    #$cmd = "$blastn -query $out_fasta_seqs -db $engdb -out $out_engdb_blast -task $blast_task -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\" -culling_limit 2";
     #`$cmd`;
-    $cmd = "$blastn -query $out_fasta_seqs -db $PGGdb -out $out_PGG_blast -task blastn -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\"";
+    $cmd = "$blastn -query $out_fasta_seqs -db $PGGdb -out $out_PGG_blast -task $blast_task -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\"";
     `$cmd`;
     # read in anomalies file
     open(PGG_BLAST_FILE, "<", $out_PGG_blast) || die ("Couldn't open $out_PGG_blast for reading\n");
@@ -806,7 +809,7 @@ while (my $line = <$infile>)  {
     open(OUT_FEATURES, ">", $out_features) || die ("Couldn't open $out_features for writing\n");
     print OUT_FEATURES "Mutations\tDeletions\tInsertions\tTandem Duplications\n$mutations\t$deletions\t$insertions\t$tandem_duplications\n";
     close (OUT_FEATURES);
-    #$cmd = "$blastn -num_threads 4 -query $out_fasta_seqs -db $nrdb -out $out_nrdb_blast -task megablast -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\" -culling_limit 2";
+    #$cmd = "$blastn -num_threads 4 -query $out_fasta_seqs -db $nrdb -out $out_nrdb_blast -task $blast_task -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\" -culling_limit 2";
     #`$cmd`;
     open(COMBINED_BTAB, ">", $combined_btab) || die ("Couldn't open $combined_btab for writing\n");
     print COMBINED_BTAB "qseqid\tsseqid\tpident\tqstart\tqend\tqlen\tsstart\tsend\tslen\tevalue\tbitscore\tstitle\n";

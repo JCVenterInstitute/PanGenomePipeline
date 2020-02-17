@@ -25,8 +25,8 @@ use strict;
 use warnings;
 use Getopt::Std;
 use File::Basename;
-getopts ('j:I:RSALlDhb:B:m:p:P:a:g:t:M:s:T:Vk:FfC:');
-our ($opt_j, $opt_I,$opt_S,$opt_A,$opt_L,$opt_l,$opt_D,$opt_h,$opt_b,$opt_m,$opt_p,$opt_P,$opt_a,$opt_g,$opt_t,$opt_M,$opt_R,$opt_B,$opt_s,$opt_T,$opt_V,$opt_k,$opt_F,$opt_f,$opt_C);
+getopts ('j:I:RSALlDhb:B:m:p:P:a:g:t:M:s:T:Vk:FfC:Q:');
+our ($opt_j, $opt_I,$opt_S,$opt_A,$opt_L,$opt_l,$opt_D,$opt_h,$opt_b,$opt_m,$opt_p,$opt_P,$opt_a,$opt_g,$opt_t,$opt_M,$opt_R,$opt_B,$opt_s,$opt_T,$opt_V,$opt_k,$opt_F,$opt_f,$opt_C,$opt_Q);
 
 ## use boolean logic:  TRUE = 1, FALSE = 0
 
@@ -60,6 +60,7 @@ my $medoids_path;
 my $single_cores;
 my $topology_file;
 my $strip_version = 0;
+my $qsub_queue = "himem";
 if ($opt_j) { # should really check that this a positive integer
     if (($opt_j =~ /^\d+$/) && ($opt_j > 0)) {
 	$max_grid_jobs = $opt_j;
@@ -69,6 +70,7 @@ if ($opt_j) { # should really check that this a positive integer
     }
 }
 if ($opt_P) {$project = $opt_P;} else {$project = "8520";}
+if ($opt_Q) {$qsub_queue = $opt_Q;} else {$qsub_queue = "himem";}
 if ($opt_M) {$medoids_path = $opt_M;} else {$medoids_path = "";}
 if ($opt_s) {$single_cores = $opt_s;} else {$single_cores = "";}
 if ($opt_F) {$use_multifasta = 1;} else {$use_multifasta = 0;}
@@ -2154,9 +2156,8 @@ sub compute_alignments
 	my $stdoutfile = $cwd . "/" . $identifier . "_stdout";
 	my $stderrfile = $cwd . "/" . $identifier . "_stderr";
 	my $working_dir = $cwd;
-	my $queue = "himem";
 	print STDERR "Launched $muscle_exec\n" if ($DEBUG);
-	$job_ids{&launch_grid_job($job_name, $project, $working_dir, $muscle_exec, $stdoutfile, $stderrfile, $queue)} = 1;
+	$job_ids{&launch_grid_job($job_name, $project, $working_dir, $muscle_exec, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
 	$num_jobs++;
 	if ($num_jobs >= $max_grid_jobs) {
 	    $num_jobs = &wait_for_grid_jobs($job_name, ((($max_grid_jobs - 10) > 0) ? ($max_grid_jobs - 10) : 0), \%job_ids);
@@ -2205,9 +2206,8 @@ sub compute_alignments
 		my $stdoutfile = $cwd . "/" . $identifier . "_stdout";
 		my $stderrfile = $cwd . "/" . $identifier . "_stderr";
 		my $working_dir = $cwd;
-		my $queue = "himem";
 		print STDERR "Relaunched $muscle_exec\n" if ($DEBUG);
-		$job_ids{&launch_grid_job($job_name, $project, $working_dir, $muscle_exec, $stdoutfile, $stderrfile, $queue)} = 1;
+		$job_ids{&launch_grid_job($job_name, $project, $working_dir, $muscle_exec, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
 		$num_jobs++;
 	    }
 	    if ($num_jobs == 0) {
@@ -2237,9 +2237,8 @@ sub compute_alignments
 	my $stdoutfile = $stats_file;
 	my $stderrfile = $cwd . "/" . $identifier . "_stderr";
 	my $working_dir = $cwd;
-	my $queue = "himem";
 	print STDERR "Launched $stats_exec\n" if ($DEBUG);
-	$job_ids{&launch_grid_job($job_name, $project, $working_dir, $stats_exec, $stdoutfile, $stderrfile, $queue)} = 1;
+	$job_ids{&launch_grid_job($job_name, $project, $working_dir, $stats_exec, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
 	$num_jobs++;
 	if ($num_jobs >= $max_grid_jobs) {
 	    $num_jobs = &wait_for_grid_jobs($job_name, ((($max_grid_jobs - 10) > 0) ? ($max_grid_jobs - 10) : 0), \%job_ids);
@@ -2277,9 +2276,8 @@ sub compute_alignments
 		my $stdoutfile = $stats_file;
 		my $stderrfile = $cwd . "/" . $identifier . "_stderr";
 		my $working_dir = $cwd;
-		my $queue = "himem";
 		print STDERR "Relaunched $stats_exec\n";
-		$job_ids{&launch_grid_job($job_name, $project, $working_dir, $stats_exec, $stdoutfile, $stderrfile, $queue)} = 1;
+		$job_ids{&launch_grid_job($job_name, $project, $working_dir, $stats_exec, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
 		$num_jobs++;
 	    }
 	    if ($num_jobs == 0) {
@@ -2341,6 +2339,7 @@ Version: $version
      -f: generate multifasta files with all alleles for clusters and edges
      -F: use multifasta files with all alleles for clusters and edges instead of extracting them directly from genome fasta files
      -C: path to the Muslce executable for multiple sequence alignments - default /usr/local/bin/muscle
+     -Q: name of qsub queue to use for Muscle jobs - default himem
      -D: DEBUG MODE (DEFAULT = off)
  Output: All stored within a directory specified using -b
           1) cluster_id.fasta:  a multifasta file containing the sequences in the specified cluster

@@ -12,6 +12,7 @@ use Carp;
 use strict;
 
 my $cwd = getcwd;
+my $blast_task = "blastn";
 my $help_text = "This program BLASTs a FASTA file of medoids against a genome.
 This work is done in a folder called C_BLAST_TMP, which is deleted when the 
 program finishes.
@@ -22,12 +23,14 @@ Input Flags:
 -blastout - The output file for the blast results (required)
 -blast_directory - directory name for where blast executables are located - default is not to use a directory
 -ld_load_directory - directory name for where blast libraries are located - default is not to use a directory
+-blast_task - blast task to use, typically blastn or megablast - default is blastn
 -help - Outputs this help text";
 
 GetOptions('medoids=s' => \my $medoids,
 	   'genome=s' => \my $genome,
 	   'blast_directory=s' => \my $blast_directory,
 	   'ld_load_directory=s' => \my $ld_load_directory,
+	   'blast_task=s' => \ $blast_task,
 	   'topology=s' => \my $topology_file,
 	   'blastout=s' => \my $blastout,
 	   'strip_version' => \my $strip_version,
@@ -355,7 +358,7 @@ sub mod_blast { # eliminate blast matches to the added regions but keep one copy
     my $makeblastdb = $blast_directory . "makeblastdb";
     `$makeblastdb -in C_BLAST_TMP/temp_fasta.ftmp -dbtype nucl -out C_BLAST_TMP/temp_fasta.ftmp`;
     my $blastn = $blast_directory . "blastn";
-    `$blastn -query $medoids -db C_BLAST_TMP/temp_fasta.ftmp -out C_BLAST_TMP/temp_results.ftmp -task blastn -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore\"`;
+    `$blastn -query $medoids -db C_BLAST_TMP/temp_fasta.ftmp -out C_BLAST_TMP/temp_results.ftmp -task $blast_task -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore\"`;
     &mod_blast("C_BLAST_TMP/temp_results.ftmp");
     `rm -r C_BLAST_TMP`;
 }
