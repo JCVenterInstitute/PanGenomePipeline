@@ -39,6 +39,7 @@ my $engdb = "";
 my $nrdb = "";
 my $pggdb = "";
 my $less_memory = 0;
+my $project = "8520";
 
 GetOptions('genome=s' => \ $genome_path,
 	   'weights=s' => \ $weights,
@@ -48,6 +49,7 @@ GetOptions('genome=s' => \ $genome_path,
 	   'pggdb=s' => \ $pggdb,
 	   'engdb=s' => \ $engdb,
 	   'nrdb=s' => \ $nrdb,
+	   'project=s' => \ $project,
 	   'bin_directory=s' => \ $input_bin_directory,
 	   'blast_directory=s' => \ $blast_directory,
 	   'ld_load_directory=s' => \ $ld_load_directory,
@@ -118,6 +120,7 @@ GetOptions('genome=s' => \ genome_path,
 	   'pggdb=s' => \ pggdb,
 	   'engdb=s' => \ engdb,
 	   'nrdb=s' => \ nrdb,
+	   'project=s' => \ project,
 	   'bin_directory=s' => \ input_bin_directory,
 	   'blast_directory=s' => \ blast_directory,
 	   'ld_load_directory=s' => \ ld_load_directory,
@@ -167,7 +170,7 @@ if ($keep_divergent_alignments) {
 ######################################COMPONENT PROGRAM PATHS################################
 my $medoid_blast_path = "$bin_directory/medoid_blast_search.pl";
 my $pgg_annotate_path = "$bin_directory/pgg_annotate.pl";
-my $pgg_multifasta_path = "$bin_directory/pgg_edge_multifasta.pl";
+my $pgg_multifasta_path = "$bin_directory/pgg_edge_multifasta.pl -P $project ";
 my $filter_anomalies_path = "$bin_directory/filter_anomalies.pl";
 #############################################################################################
 
