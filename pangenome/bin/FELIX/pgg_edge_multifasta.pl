@@ -25,11 +25,12 @@ use strict;
 use warnings;
 use Getopt::Std;
 use File::Basename;
-getopts ('j:I:RSALlDhb:B:m:p:P:a:g:t:M:s:T:Vk:FfC:Q:');
-our ($opt_j, $opt_I,$opt_S,$opt_A,$opt_L,$opt_l,$opt_D,$opt_h,$opt_b,$opt_m,$opt_p,$opt_P,$opt_a,$opt_g,$opt_t,$opt_M,$opt_R,$opt_B,$opt_s,$opt_T,$opt_V,$opt_k,$opt_F,$opt_f,$opt_C,$opt_Q);
+getopts ('j:I:RSALlDhb:B:m:p:P:a:g:t:M:s:T:Vk:FfC:Q:N:');
+our ($opt_j, $opt_I,$opt_S,$opt_A,$opt_L,$opt_l,$opt_D,$opt_h,$opt_b,$opt_m,$opt_p,$opt_P,$opt_a,$opt_g,$opt_t,$opt_M,$opt_R,$opt_B,$opt_s,$opt_T,$opt_V,$opt_k,$opt_F,$opt_f,$opt_C,$opt_Q,$opt_N);
 
 ## use boolean logic:  TRUE = 1, FALSE = 0
 
+my $bin_directory = "/usr/local/projdata/8520/projects/PANGENOME/pangenome_bin/";
 my $cwd = getcwd;
 my $muscle_path = "/usr/local/bin/muscle";
 my $version = "ver1.0";
@@ -104,6 +105,16 @@ if ($opt_k) {
 	&option_help;
     } elsif (!(-e $keep_divergent_alignments)) {
 	mkdir($keep_divergent_alignments) or die "Could not create directory $keep_divergent_alignments\n";
+    }
+}
+if ($opt_N) {
+    $bin_directory = $opt_N;
+    if ((-e $bin_directory) && !(-d $bin_directory)) {
+	print STDERR "Error with -N $bin_directory - file exists but is not a directory\n";
+	&option_help;
+    } elsif (!(-e $bin_directory)) {
+	print STDERR "Error with -N $bin_directory - does not exist\n";
+	&option_help;
     }
 }
 if ($opt_b) {
@@ -1179,7 +1190,7 @@ sub process_matchtable {
 					    `rm tmp_cpu_stats`;
 					    &bash_error_check($muscle_exec, $?, $!);
 					}
-					my $stats_path = "/usr/local/projdata/8520/projects/PANGENOME/pangenome_bin/summarize_alignment.R";
+					my $stats_path = "$bin_directory/summarize_alignment.R";
 					my $stats_args = " $combined_file $target_id";
 					my $stats_exec = "Rscript " . $stats_path . $stats_args;
 					`/usr/bin/time -o tmp_cpu_stats -v $stats_exec > $com_stats_file`;
@@ -1875,7 +1886,7 @@ sub process_pgg {
 						`rm tmp_cpu_stats`;
 						&bash_error_check($muscle_exec, $?, $!);
 					    }
-					    my $stats_path = "/usr/local/projdata/8520/projects/PANGENOME/pangenome_bin/summarize_alignment.R";
+					    my $stats_path = "$bin_directory/summarize_alignment.R";
 					    my $stats_args = " $combined_file $target_id";
 					    my $stats_exec = "Rscript " . $stats_path . $stats_args;
 					    `/usr/bin/time -o tmp_cpu_stats -v $stats_exec > $com_stats_file`;
@@ -2218,7 +2229,7 @@ sub compute_alignments
 	}
     }
     print STDERR "$num_jobs failed Muscle jobs\n";
-    my $stats_path = "/usr/local/projdata/8520/projects/PANGENOME/pangenome_bin/summarize_alignment.R";
+    my $stats_path = "$bin_directory/summarize_alignment.R";
     $job_name = "pggstat_" . $$; #use a common job name so that qacct can access all of them together
     %job_ids = ();
     $num_jobs = 0;
@@ -2321,6 +2332,7 @@ Version: $version
      -h: print this help page
      -b: directory path for where to put output multifasta files[DEFAULT = PWD]
      -B: directory path for where to put other output files[DEFAULT = PWD]
+     -N: directory path for where to find executables for pan-genome tools
      -g: two colums tab delimited file (input): col1 genome_tag used in panoct in same order as panoct; col2 file name for the fasta contig file for this genome
      -m: panoct matchtable file (input)
      -a: combined panoct attribute file (input)
@@ -2334,7 +2346,7 @@ Version: $version
      -S: suppress multifasta output
      -M: medoids input file name - output will be in -B directory (medoids.fasta)
      -c: output size files in -B directory computed cluster sizes(program  adds cluster_sizes.txt) and edge sizes(program  adds edge_sizes.txt) files
-     -P: output files in -B directory new matchtable(matchtable.txt) and pgg(pgg.txt) files
+     -P: project code for qsub jobs
      -j: the maximum number of grid jobs to run for multiple sequence alignments
      -f: generate multifasta files with all alleles for clusters and edges
      -F: use multifasta files with all alleles for clusters and edges instead of extracting them directly from genome fasta files
