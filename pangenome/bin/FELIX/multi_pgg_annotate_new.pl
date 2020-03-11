@@ -15,6 +15,8 @@ use Carp;
 use strict;
 use File::Compare;
 
+my $commandline = join (" ", @ARGV);
+print STDERR "$commandline\n";
 my $blast_directory = "";
 my $ld_load_directory = "";
 my $blast_task = "blastn";
@@ -214,6 +216,7 @@ if ($debug) {print STDERR "Parameters:\ngenomes: $genome_list_path\nnew_genomes:
 my $single_copy_path = "$bin_directory/single_copy_core.pl";
 my $core_neighbor_path = "$bin_directory/core_neighbor_finder.pl";
 my $compute_path = "$bin_directory/compute_pgg_graph.pl";
+my $filter_anomalies_path = "$bin_directory/filter_anomalies.pl";
 #############################################################################################
 
 sub bash_error_check {
@@ -590,6 +593,8 @@ sub compute
     `echo "rearrange" > rearrange`;
     `echo "SplitGene" > SplitGene`;
     `echo "wgsANI" > wgs_ANI`;
+    my $filter_genomes_file = "FILTER_GENOMES_FILE";
+    open(FGLIST, ">", $filter_genomes_file);
     for (my $j=0; $j <= $#genomes; $j++)
     {
 	if ($debug) {print STDERR "Genome $j\n\n";}
@@ -610,11 +615,15 @@ sub compute
 	my $new_att_name = "$identifier" . "_attributes_new.txt";
 	my $new_match_name = "$identifier" . "_match_new.col";
 	my $new_pgg_name = "$identifier" . "_pgg_new.col";
+	my $new_clus_name = "$identifier" . "_new_clus.txt";
 	my $uniq_clus_name = "$identifier" . "_uniq_clus.txt";
 	my $uniq_edge_name = "$identifier" . "_uniq_edge.txt";
 	my $anomalies_name = "$identifier" . "_anomalies.txt";
 	my $stats_name = "$identifier" . "_cluster_stats.txt";
 	my $topology_name = "$identifier" . "_topology.txt";
+	my $genome_path = $genomes[$j][1];
+	my $anomalies_name_genome = "$identifier" . "_anomalies.txt";
+	print FGLIST "$identifier\t$genome_path\t$topology_name\t$anomalies_name_genome\n";
 	if ($debug) {print STDERR "matchname: $match_name \t pggname: $pgg_name \n";}
 	die ("$match_name doesn't exist \n") unless (-e $match_name);
 	die ("$pgg_name doesn't exist \n") unless (-e $pgg_name);
@@ -627,7 +636,9 @@ sub compute
 	`wc -l < $rearrange_name >> rearrange`;
 	`wc -l < $split_gene_name >> SplitGene`;
 	`cat $wgs_ani_name >> wgs_ANI`;                                                    # we don't need to do a line-count here, we just copy over the entire one-line file
-	`rm $match_name $pgg_name $wgs_ani_name $att_name $new_match_name $new_pgg_name $new_att_name $topology_name`;
+	`rm $match_name $pgg_name $wgs_ani_name $att_name $new_match_name $new_pgg_name $new_att_name $new_clus_name $topology_name`;
+	#`rm $match_name $pgg_name $wgs_ani_name $att_name $new_match_name $new_pgg_name $new_att_name $new_clus_name`;
+	#`rm $pgg_name $wgs_ani_name $new_match_name $new_pgg_name $new_att_name $new_clus_name`;
 	`rm $gene_ani_name $rearrange_name $split_gene_name $uniq_clus_name $uniq_edge_name`;
 	# Divide cluster_stats.txt into 5 files 
 	# 1: All lines before first new genome [stats.head]
@@ -646,13 +657,54 @@ sub compute
 	`paste stats.tail.col1  uniq_clus stats.tail.col345 uniq_edge stats.tail.col7plus >> PGG_stats.txt`;
 	`rm stats.tail stats.tail.col1 stats.tail.col345 stats.tail.col7plus uniq_clus uniq_edge $stats_name`;
     }
+    close(FGLIST);
+    if ($blast_directory) {
+	$filter_anomalies_path .= " -blast_directory $blast_directory ";
+    }	
+    if ($blast_task) {
+	$filter_anomalies_path .= " -blast_task $blast_task ";
+    }	
+    if ($ld_load_directory) {
+	$filter_anomalies_path .= " -ld_load_directory $ld_load_directory ";
+    }	
+    if ($strip_version) {
+	$filter_anomalies_path .= " -strip_version ";
+    }
+    if ($debug) {print STDERR "\n/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -PGG_topology $topology_file -genomes $filter_genomes_file -engdb $engdb -nrdb $nrdb -pggdb $pggdb\n";}
+    `/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -PGG_topology $topology_file -genomes $filter_genomes_file -engdb $engdb -nrdb $nrdb -pggdb $pggdb`;
+    `echo "***$filter_anomalies_path***" >> overhead_cpustats`;
+    `cat tmp_cpu_stats >> overhead_cpustats`;
+    `rm tmp_cpu_stats`;
+    &bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -PGG_topology $topology_file -genomes $filter_genomes_file -engdb $engdb -nrdb $nrdb -pggdb $pggdb", $?, $!);
+    `rm $filter_genomes_file`;
+    for (my $j=0; $j <= $#genomes; $j++)
+    {
+	if ($debug) {print STDERR "Genome $j\n\n";}
+	my $identifier = $genomes[$j][0];                                                 # get genome name
+	my $filter_features_name = "$identifier" . "_FEATURES";
+	my $topology_name = "$identifier" . "_topology.txt";
+	if ($debug) {print STDERR "Genome $identifier $filter_features_name \n\n";}
+	if ($j == 0) {
+	    `cat $filter_features_name > ALL_FILTER_FEATURES`;
+	} else {
+	    `tail -n 1 $filter_features_name >> ALL_FILTER_FEATURES`;                                                      # generate file 2
+	}
+	`rm $topology_name`;
+    }
     if ($duplicate) {
-	`paste PGG_stats.txt gene_ANI rearrange SplitGene wgs_ANI | sed -e 's/_ReDoDuP\t/\t/' > tmp.PGG_stats.txt`;                             #add in all columns that contain their own header (new columns)
+	`paste PGG_stats.txt gene_ANI rearrange SplitGene wgs_ANI ALL_FILTER_FEATURES | sed -e 's/_ReDoDuP\t/\t/' > tmp.PGG_stats.txt`;                             #add in all columns that contain their own header (new columns)
     } else {
-	`paste PGG_stats.txt gene_ANI rearrange SplitGene wgs_ANI > tmp.PGG_stats.txt`;                             #add in all columns that contain their own header (new columns)
+	`paste PGG_stats.txt gene_ANI rearrange SplitGene wgs_ANI ALL_FILTER_FEATURES > tmp.PGG_stats.txt`;                             #add in all columns that contain their own header (new columns)
     }
     `mv tmp.PGG_stats.txt PGG_stats.txt`;
-    `rm core_neighbors $single_copy gene_ANI rearrange SplitGene wgs_ANI`;
+    `rm core_neighbors $single_copy gene_ANI rearrange SplitGene wgs_ANI ALL_FILTER_FEATURES *_ce_sizes.txt`;
+    `mkdir Anomalies CPU CALLS CoreRegions Stderr Stdout`;
+    `mv *_anomalies.txt Anomalies`;
+    `mv *_cpu* CPU`;
+    `mv *_core_clus.txt CoreRegions`;
+    `mv *_GENOME.btab *_QUERY_SEQS.fasta *_ranges.txt *_CALLS *_FEATURES *_COMBINED.btab CALLS`;
+    `mv *_stderr Stderr`;
+    `mv *_stdout Stdout`;
 }
 
 ############################################### main

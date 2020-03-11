@@ -13,6 +13,8 @@ use Carp;
 use strict;
 use File::Compare;
 
+my $commandline = join (" ", @ARGV);
+print STDERR "$commandline\n";
 my $blast_directory = "";
 my $ld_load_directory = "";
 my $blast_task = "blastn";
@@ -505,6 +507,8 @@ sub compute
 	    my $att_name_new = ("$identifier" . "_attributes_new.txt");
 	    my $new_seqs_name = ("$identifier" . "_seqs.fasta");
 	    my $new_clusters_name = ("$identifier" . "_new_clus.txt");
+	    my $uniq_clus_name = "$identifier" . "_uniq_clus.txt";
+	    my $uniq_edge_name = "$identifier" . "_uniq_edge.txt";
 	    my $gene_ani = `wc -l < $gene_ani_name`;
 	    my $rearrange = `wc -l < $rearrange_name`;
 	    my $splitgene = `wc -l < $split_gene_name`;
@@ -539,7 +543,7 @@ sub compute
 		`cat $att_name >> combined.att`;                                      # add to combined file
 	    }
 	    # clean up
-	    `rm $match_name $pgg_name $att_name $gene_ani_name $rearrange_name $split_gene_name $wgs_ani_name $match_name_new $pgg_name_new $att_name_new $stdoutfile $stderrfile`;
+	    `rm $match_name $pgg_name $att_name $gene_ani_name $rearrange_name $split_gene_name $wgs_ani_name $match_name_new $pgg_name_new $att_name_new $uniq_clus_name $uniq_edge_name $stdoutfile $stderrfile`;
 	}
 	close(ALLEDGES);
 	close(GENEANI);
@@ -571,13 +575,13 @@ sub compute
 	`rm new_gene_seqs.fasta new_clusters.txt`;
 	`rm output/* multifasta/*`; # clean up any multifasta files from previous iteration
 	if ($strip_version) {
-	    if ($debug) {print STDERR "\nperl $pgg_multifasta_path -Q $qsub_queue -V -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R\n";}    # run pgg edge multi_fasta
-	    `perl $pgg_multifasta_path -Q $qsub_queue -V -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1`;    # run pgg edge multi_fasta
-	    &bash_error_check("perl $pgg_multifasta_path -Q $qsub_queue -V -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1", $?, $!);
+	    if ($debug) {print STDERR "\nperl $pgg_multifasta_path -X -Q $qsub_queue -V -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R\n";}    # run pgg edge multi_fasta
+	    `perl $pgg_multifasta_path -X -Q $qsub_queue -V -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1`;    # run pgg edge multi_fasta
+	    &bash_error_check("perl $pgg_multifasta_path -X -Q $qsub_queue -V -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1", $?, $!);
 	} else {
-	    if ($debug) {print STDERR "\nperl $pgg_multifasta_path -Q $qsub_queue -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R\n";}    # run pgg edge multi_fasta
-	    `perl $pgg_multifasta_path -Q $qsub_queue -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1`;    # run pgg edge multi_fasta
-	    &bash_error_check("perl $pgg_multifasta_path -Q $qsub_queue -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1", $?, $!);
+	    if ($debug) {print STDERR "\nperl $pgg_multifasta_path -X -Q $qsub_queue -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R\n";}    # run pgg edge multi_fasta
+	    `perl $pgg_multifasta_path -X -Q $qsub_queue -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1`;    # run pgg edge multi_fasta
+	    &bash_error_check("perl $pgg_multifasta_path -X -Q $qsub_queue -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1", $?, $!);
 	}
 	die ("output/pgg.txt is zero size \n") unless (-s "output/pgg.txt");
 	
@@ -585,7 +589,8 @@ sub compute
 	if(compare("$pgg","$pgg_old") == 0)
 	{
 	    print STDERR "\nNo differences found in last iteration - PGG is stable!\n";
-	    `paste $stats gene_ANI rearrange SplitGene wgs_ANI > PGG_stats_$i.txt`;                  #add in all columns that contain their own header (new columns)
+	    `paste $stats gene_ANI rearrange SplitGene wgs_ANI > PGG_stats_$i.txt`;        #add in all columns that contain their own header (new columns)
+	    `mv output/ce_sizes.txt CE_sizes_$i.txt`;                                      # keep iterations of cluster and edge sizes
 	    `mv output/pgg.txt pgg.txt`;                                                   # set the current iteration as "old"
 	    `mv output/matchtable.txt matchtable.txt`;                                     # set the current iteration as "old"
 	    `mv combined.att old.combined.att`;                                            # save a copy of attributes
@@ -600,7 +605,8 @@ sub compute
 	else
 	{
 	    print STDERR "\nDifferences found in last iteration - PGG is not stable :-(\n";
-	    `paste $stats gene_ANI rearrange SplitGene wgs_ANI > PGG_stats_$i.txt`;                  #add in all columns that contain their own header (new columns)
+	    `paste $stats gene_ANI rearrange SplitGene wgs_ANI > PGG_stats_$i.txt`;        #add in all columns that contain their own header (new columns)
+	    `mv output/ce_sizes.txt CE_sizes_$i.txt`;                                      # keep iterations of cluster and edge sizes
 	    `mv output/pgg.txt pgg.txt`;                                                   # set the current iteration as "old"
 	    `mv output/matchtable.txt matchtable.txt`;                                     # set the current iteration as "old"
 	    `mv combined.att old.combined.att`;                                            # save a copy of attributes
@@ -618,8 +624,14 @@ sub compute
 	}
 	if ($debug) {print STDERR "Ending iteration $i\n\n";}
     }
+    `rm core_neighbors gene_ANI rearrange SplitGene wgs_ANI`;
     `rm *_topology.txt`;
     `mv old.combined.att combined.att`;                                            # save a copy of attributes
+    `mkdir CPU CoreRegions Stderr Stdout`;
+    `mv *_cpu* CPU`;
+    `mv *_core_clus.txt CoreRegions`;
+    `mv *_stderr Stderr`;
+    `mv *_stdout Stdout`;
     if ($debug) {print STDERR "Ending compute\n";}
 }
 
@@ -632,8 +644,7 @@ sub compute
     if ($paralogs ne "") {
 	&do_core_list;                                                                                 # run single_copy_core
     }
-    `mkdir output`;                                                                                # first time - create necessary directories for pgg_edge_multifasta
-    `mkdir multifasta`;
+    `mkdir output multifasta`;                                                                                # first time - create necessary directories for pgg_edge_multifasta
     &load_genomes;                                                                                 # read genome list (we only want to do this once, not each iteration)
     &read_topology;
     &compute;                                                                                      # for all genomes, run blast, run pgg_annotate, concatenate as we go using paste

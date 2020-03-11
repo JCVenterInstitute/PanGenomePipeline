@@ -17,6 +17,7 @@
 
 #Revision notes
 my $commandline = join (" ", @ARGV);
+print STDERR "$commandline\n";
 my $prog = $0;
 $prog =~ s/.*\///;
 
@@ -25,8 +26,8 @@ use strict;
 use warnings;
 use Getopt::Std;
 use File::Basename;
-getopts ('j:I:RSALlDhb:B:m:p:P:a:g:t:M:s:T:Vk:FfC:Q:N:');
-our ($opt_j, $opt_I,$opt_S,$opt_A,$opt_L,$opt_l,$opt_D,$opt_h,$opt_b,$opt_m,$opt_p,$opt_P,$opt_a,$opt_g,$opt_t,$opt_M,$opt_R,$opt_B,$opt_s,$opt_T,$opt_V,$opt_k,$opt_F,$opt_f,$opt_C,$opt_Q,$opt_N);
+getopts ('j:I:RSALlDhb:B:m:p:P:a:g:t:M:s:T:Vk:FfC:Q:N:X');
+our ($opt_j, $opt_I,$opt_S,$opt_A,$opt_L,$opt_l,$opt_D,$opt_h,$opt_b,$opt_m,$opt_p,$opt_P,$opt_a,$opt_g,$opt_t,$opt_M,$opt_R,$opt_B,$opt_s,$opt_T,$opt_V,$opt_k,$opt_F,$opt_f,$opt_C,$opt_Q,$opt_N,$opt_X);
 
 ## use boolean logic:  TRUE = 1, FALSE = 0
 
@@ -41,6 +42,7 @@ my $basedir;
 my $multifastadir;
 my $use_multifasta = 0;
 my $write_multifasta = 0;
+my $no_stats = 0;
 my $matchtable_file;
 my $att_file;
 my $pgg_file;
@@ -74,8 +76,9 @@ if ($opt_P) {$project = $opt_P;} else {$project = "8520";}
 if ($opt_Q) {$qsub_queue = $opt_Q;} else {$qsub_queue = "himem";}
 if ($opt_M) {$medoids_path = $opt_M;} else {$medoids_path = "";}
 if ($opt_s) {$single_cores = $opt_s;} else {$single_cores = "";}
+if ($opt_X) {$no_stats = 1;} else {$no_stats = 0;}
 if ($opt_F) {$use_multifasta = 1;} else {$use_multifasta = 0;}
-if ($opt_F) {$write_multifasta = 1;} else {$write_multifasta = 0;}
+if ($opt_f) {$write_multifasta = 1;} else {$write_multifasta = 0;}
 if ($opt_R) {$remake_files = 1;} else {$remake_files = 0;}
 if ($opt_V) {$strip_version = 1;} else {$strip_version = 0;}
 if ($opt_A) {$compute_all = 1;} else {$compute_all = 0;} # flag to compute statistics for all
@@ -150,6 +153,14 @@ if ($opt_C) {
     $muscle_path = "/usr/local/bin/muscle";
 }
 
+my $num_size_one_clus = 0;
+my $num_shared_clus = 0;
+my $num_core_clus = 0;
+my $num_reduced_clus = 0;
+my $num_size_one_edge = 0;
+my $num_shared_edge = 0;
+my $num_core_edge = 0;
+my $num_reduced_edge = 0;
 my $cpu_name = "$target_id" . "_pem_cpu_separate_stats";
 my %edge_hash = ();            # Key1 = edge ID Key2 = struct members with their values (5p,3p,gtag, contig)
 my %single_copy_core = ();     # key = cluster number, value is defined if single copy core otherwise undefiend
@@ -161,8 +172,8 @@ my %genseq_len = ();           # Key1 = genome tag Key2 = contig_name Value = le
 my %total_clus = ();           # key = genome ID, value = total number of nonsingleton clusters
 my %total_edge = ();           # key = genome ID, value = total number of nonsingleton edges
 my $total_clus_pgg = 0;        # number of nonsingleton clusters
-my $total_edge_pgg = 0;        # number of nonsingleton edges
-my $total_clus_alle_pgg = 0;   # number of alleles in nonsingleton clusters
+my $total_edge_pgg = 0;        # number of nonsingleton edges - only count one direction
+my $total_clus_alle_pgg = 0;   # number of alleles in nonsingleton clusters - only count one direction
 my $total_edge_alle_pgg = 0;   # number of alleles in nonsingleton edges
 my %distant_clus_alle = ();    # key = genome ID, value = number of distant cluster alleles
 my %distant_edge_alle = ();    # key = genome ID, value = number of distant edge alleles
@@ -290,6 +301,43 @@ sub get_genomes {  # obtain list of genomes - must be in the same order as the m
 		$genseq_hash{$name}->{"Placeholder"} = "EMPTY"; #this is just here to allow checking for duplicate genome names
 	}
     }
+    if (($target_id ne "") && !$target_found) {
+	die ("ERROR: Did not find target genome: $target_id in genome list file: $genomes_file_name.\n");
+    }
+    close($infile);
+    print  STDERR "$genome_number genomes\n\n";
+}
+
+sub get_genome_names {  # obtain list of genome names - must be in the same order as the matchtable columns
+   
+    $genome_number = 0;     # total number of genomes to be processed
+
+    open (my $infile, "<", "$genomes_file_name") || die ("ERROR: cannot open file $genomes_file_name\n");
+    print  STDERR "Order of genomes in $genomes_file_name with array index\n" if ($DEBUG);
+    my $target_found = 0;
+    while (my $line1 = <$infile>)  {
+	chomp $line1;
+	(my $name, my $contig_file) = split(/\t/, $line1);  # split the scalar $line on tab
+
+	if ($ignore_id eq $name) {
+	    $ignore_index = $genome_number;
+	    print  STDERR "Ignoring genome $ignore_id with index $ignore_index\n";
+	    next; #skip over the genome to be ignored
+	}
+	if (defined $genseq_hash{$name})  {
+	    die ("ERROR:  You have more than one occurance of $name in $genomes_file_name!\n");
+	} else  {
+	    $genseq_hash{$name}->{"Placeholder"} = "EMPTY"; #this is just here to allow checking for duplicate genome names
+	    push (@genome_array, $name); # populate the genome_array in the order of the genome file
+	    print  STDERR "$name\t$genome_number\n" if ($DEBUG);
+	    $genome_number++;
+	    if ($target_id ne "") {
+		if ($target_id eq $name) {
+		    $target_found = 1;
+		}
+	    }
+	}
+   }
     if (($target_id ne "") && !$target_found) {
 	die ("ERROR: Did not find target genome: $target_id in genome list file: $genomes_file_name.\n");
     }
@@ -519,83 +567,145 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 	    my $edge_5p;
 	    my $edge_3p;
 	    my $contig_len = $genseq_len{$genome_tag}->{$contig1};
-	    if ((abs($start2 - $end1) > (0.9 * $contig_len)) && $is_circular{$genome_tag}->{$contig1}) {
-		#print STDERR "$genome_tag-$contig1($contig_len) $start1:$end1 - $start2:$end2\n" if ($DEBUG);
-		if ($start1 < $end2) {
-		    my $tmp_seq = "";
-		    my $beg_offset = 0;
-		    my $end_offset = $contig_len - $start2;
-		    if ($start2 > $contig_len) {
-			$beg_offset = $start2 - $contig_len;
+	    if ($start1 < $end1) { # forward strand
+		if ((($start1 > $end2) || ($start2 <= 0) || ($end1 <= 0) || ($start2 > $contig_len) || ($end1 > $contig_len)) && !$is_circular{$genome_tag}->{$contig1}) {
+		    die ("ERROR: bad edge coordinates for noncircular contig: $genome_tag $contig1($contig_len) $edge_id $edge_value $feat_name1 $feat_name2 $start1 $end1 $start2 $end2\n");
+		}
+		if ((($start1 > $end2) || ($start2 <= 0) || ($end1 <= 0) || ($start2 > $contig_len) || ($end1 > $contig_len)) && $is_circular{$genome_tag}->{$contig1}) { # this is a circular contig
+		    #print STDERR "$genome_tag-$contig1($contig_len) $start1:$end1 - $start2:$end2\n" if ($DEBUG);
+		    if (($start1 <= 0) || ($end1 <= 0)) {
+			$start1 += $contig_len; # normalize edge coordinates to be > 0
+			$end1 += $contig_len; # normalize edge coordinates to be > 0
 		    }
-		    if ($end1 <= 0) {
-			$end_offset += ($end1 - 1);
+		    if (($start2 <= 0) || ($end2 <= 0)) {
+			$start2 += $contig_len; # normalize edge coordinates to be > 0
+			$end2 += $contig_len; # normalize edge coordinates to be > 0
 		    }
-		    $seq_len = ($contig_len - $start2) + ($end1 - 1);
-		    $edge_5p = $end1 - 1;
-		    $edge_3p = $start2 + 1;
-		    #print STDERR "if $seq_len:$start2:$end1:$beg_offset:$end_offset\n" if ($DEBUG);
-		    if ($seq_len <= 0) {
-			$seq_len = 0;
-			$sequence = "";
-		    } else {
-			if ($end_offset > 0) {
-			    $tmp_seq = substr($genseq_hash{$genome_tag}->{$contig1}, $start2, $end_offset);
+		    if ($start1 > $end2) { # the contigs on either side of the edge are on opposite ends of the contig
+			if ($end1 <= $contig_len) {
+			    $seq_len = ($contig_len - $end1) + ($start2 - 1);
+			    $edge_5p = ($end1 < $contig_len) ? ($end1 + 1) : 1;
+			    $edge_3p = ($end1 < $contig_len) ? (($start2 - 1) + $contig_len) : ($start2 - 1);
+			    #print STDERR "if $seq_len:$start2:$end1:$beg_offset:$end_offset\n" if ($DEBUG);
+			} else {
+			    my $extra = $end1 - $contig_len;
+			    $seq_len = ($start2 - 1) - $extra;
+			    $edge_5p = $extra + 1;
+			    $edge_3p = $start2 - 1;
+			    #print STDERR "if $seq_len:$start2:$end1:$beg_offset:$end_offset\n" if ($DEBUG);
 			}
-			if ($end1 > 1) {
-			    $tmp_seq .= substr($genseq_hash{$genome_tag}->{$contig1}, $beg_offset, (($end1 - 1) - $beg_offset));
+			if ($seq_len <= 0) {
+			    $seq_len = 0;
+			    $sequence = "";
+			} else {
+			    if ($end1 < $contig_len) {
+				$sequence = substr($genseq_hash{$genome_tag}->{$contig1}, ($end1 - $contig_len));
+				$sequence .= substr($genseq_hash{$genome_tag}->{$contig1}, 0, ($start2 - 1));
+			    } else {
+				$sequence = substr($genseq_hash{$genome_tag}->{$contig1}, ($end1 - $contig_len), $seq_len);
+			    }
 			}
-			$sequence = reverse($tmp_seq);
-			$sequence =~ tr/AGCTYRWSKMDVHBagctyrwskmdvhb/TCGARYWSMKHBDVtcgarywsmkhbdv/;
-		    }
-		} else {
-		    $sequence = "";
-		    my $beg_offset = 0;
-		    my $end_offset = $contig_len - $end1;
-		    if ($end1 > $contig_len) {
-			$beg_offset = $end1 - $contig_len;
-		    }
-		    if ($start2 <= 0) {
-			$end_offset += ($start2 - 1);
-		    }
-		    $seq_len = ($contig_len - $end1) + ($start2 - 1);
-		    $edge_5p = $end1 + 1;
-		    $edge_3p = $start2 - 1;
-		    #print STDERR "else $seq_len:$end1:$start2:$beg_offset:$end_offset\n" if ($DEBUG);
-		    if ($seq_len <= 0) {
-			$seq_len = 0;
-			$sequence = "";
-		    } else {
-			if ($end_offset > 0) {
-			    $sequence = substr($genseq_hash{$genome_tag}->{$contig1}, $end1, $end_offset);
+		    } else { #contigs on either end of the edge are on the same end of the contig
+			$seq_len = ($start2 - $end1) - 1;
+			$edge_5p = $end1 + 1;
+			$edge_3p = $start2 - 1;
+			#print STDERR "if $seq_len:$start2:$end1:$beg_offset:$end_offset\n" if ($DEBUG);
+			if ($seq_len <= 0) {
+			    $seq_len = 0;
+			    $sequence = "";
+			} else {
+			    $sequence = substr($genseq_hash{$genome_tag}->{$contig1}, $end1, $seq_len);
 			}
-			if ($start2 > 1) {
-			    $sequence .= substr($genseq_hash{$genome_tag}->{$contig1}, $beg_offset, (($start2 - 1) - $beg_offset));
+		    }
+		} else { # contig is not circular
+		    #print STDERR "$genome_tag-$contig1($contig_len) $start1:$end1 - $start2:$end2\n" if ($DEBUG);
+		    if ($start1 > $end2) { # this should never happen for linear contigs
+			die ("ERROR: bad edge coordinates for noncircular contig: $genome_tag $contig1($contig_len) $edge_id $edge_value $feat_name1 $feat_name2 $start1 $end1 $start2 $end2\n");
+		    } else { #contigs on either end of the edge are on the same end of the contig as expected
+			$seq_len = ($start2 - $end1) - 1;
+			$edge_5p = $end1 + 1;
+			$edge_3p = $start2 - 1;
+			#print STDERR "if $seq_len:$start2:$end1:$beg_offset:$end_offset\n" if ($DEBUG);
+			if ($seq_len <= 0) {
+			    $seq_len = 0;
+			    $sequence = "";
+			} else {
+			    $sequence = substr($genseq_hash{$genome_tag}->{$contig1}, $end1, $seq_len);
 			}
 		    }
 		}
-	    } else {
-		if ($start1 < $end2) {
-		    $seq_len = ($start2 - $end1) - 1;
-		    $edge_5p = $end1 + 1;
-		    $edge_3p = $start2 - 1;
-		    if ($seq_len > 0) {
-			$sequence = substr($genseq_hash{$genome_tag}->{$contig1}, $end1, $seq_len);
-		    } else {
-			$seq_len = 0;
-			$sequence = "";
+	    } else { # reverse strand
+		if ((($start1 < $end2) || ($start2 <= 0) || ($end1 <= 0) || ($start2 > $contig_len) || ($end1 > $contig_len)) && !$is_circular{$genome_tag}->{$contig1}) {
+		    die ("ERROR: bad edge coordinates for noncircular contig: $genome_tag $contig1($contig_len) $edge_id $edge_value $feat_name1 $feat_name2 $start1 $end1 $start2 $end2\n");
+		}
+		if ((($start1 < $end2) || ($start2 <= 0) || ($end1 <= 0) || ($start2 > $contig_len) || ($end1 > $contig_len)) && $is_circular{$genome_tag}->{$contig1}) { # this is a circular contig
+		    #print STDERR "$genome_tag-$contig1($contig_len) $start1:$end1 - $start2:$end2\n" if ($DEBUG);
+		    if (($start1 <= 0) || ($end1 <= 0)) {
+			$start1 += $contig_len; # normalize edge coordinates to be > 0
+			$end1 += $contig_len; # normalize edge coordinates to be > 0
 		    }
-		} else {
-		    $seq_len = ($end1 - $start2) - 1;
-		    $edge_5p = $end1 - 1;
-		    $edge_3p = $start2 + 1;
-		    if ($seq_len > 0) {
-			my $tmp_seq = substr($genseq_hash{$genome_tag}->{$contig1}, $start2, $seq_len);
-			$sequence = reverse($tmp_seq);
-			$sequence =~ tr/AGCTYRWSKMDVHBagctyrwskmdvhb/TCGARYWSMKHBDVtcgarywsmkhbdv/;
-		    } else {
-			$seq_len = 0;
-			$sequence = "";
+		    if (($start2 <= 0) || ($end2 <= 0)) {
+			$start2 += $contig_len; # normalize edge coordinates to be > 0
+			$end2 += $contig_len; # normalize edge coordinates to be > 0
+		    }
+		    if ($start1 < $end2) { # the contigs on either side of the edge are on opposite ends of the contig
+			if ($start2 <= $contig_len) {
+			    $seq_len = ($contig_len - $start2) + ($end1 - 1);
+			    $edge_5p = ($start2 < $contig_len) ? (($end1 - 1) + $contig_len) : ($end1 - 1);
+			    $edge_3p = ($start2 < $contig_len) ? ($start2 + 1) : 1;
+			    #print STDERR "if $seq_len:$start2:$end1:$beg_offset:$end_offset\n" if ($DEBUG);
+			} else {
+			    my $extra = $start2 - $contig_len;
+			    $seq_len = ($end1 - 1) - $extra;
+			    $edge_5p = $end1 - 1;
+			    $edge_3p = $extra + 1;
+			    #print STDERR "if $seq_len:$start2:$end1:$beg_offset:$end_offset\n" if ($DEBUG);
+			}
+			if ($seq_len <= 0) {
+			    $seq_len = 0;
+			    $sequence = "";
+			} else {
+			    my $tmp_seq = "";
+			    if ($start2 < $contig_len) {
+				$tmp_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($start2 - $contig_len));
+				$tmp_seq .= substr($genseq_hash{$genome_tag}->{$contig1}, 0, ($end1 - 1));
+			    } else {
+				$tmp_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($start2 - $contig_len), $seq_len);
+			    }
+			    $sequence = reverse($tmp_seq);
+			    $sequence =~ tr/AGCTYRWSKMDVHBagctyrwskmdvhb/TCGARYWSMKHBDVtcgarywsmkhbdv/;
+			}
+		    } else { #contigs on either end of the edge are on the same end of the contig
+			$seq_len = ($end1 - $start2) - 1;
+			$edge_5p = $end1 - 1;
+			$edge_3p = $start2 + 1;
+			#print STDERR "if $seq_len:$start2:$end1:$beg_offset:$end_offset\n" if ($DEBUG);
+			if ($seq_len <= 0) {
+			    $seq_len = 0;
+			    $sequence = "";
+			} else {
+			    my $tmp_seq = substr($genseq_hash{$genome_tag}->{$contig1}, $start2, $seq_len);
+			    $sequence = reverse($tmp_seq);
+			    $sequence =~ tr/AGCTYRWSKMDVHBagctyrwskmdvhb/TCGARYWSMKHBDVtcgarywsmkhbdv/;
+			}
+		    }
+		} else { # contig is not circular
+		    #print STDERR "$genome_tag-$contig1($contig_len) $start1:$end1 - $start2:$end2\n" if ($DEBUG);
+		    if ($start1 < $end2) { # this should never happen for linear contigs
+			die ("ERROR: bad edge coordinates for noncircular contig: $genome_tag $contig1($contig_len) $edge_id $edge_value $feat_name1 $feat_name2 $start1 $end1 $start2 $end2\n");
+		    } else { #contigs on either end of the edge are on the same end of the contig as expected
+			$seq_len = ($end1 - $start2) - 1;
+			$edge_5p = $end1 - 1;
+			$edge_3p = $start2 + 1;
+			#print STDERR "if $seq_len:$start2:$end1:$beg_offset:$end_offset\n" if ($DEBUG);
+			if ($seq_len <= 0) {
+			    $seq_len = 0;
+			    $sequence = "";
+			} else {
+			    my $tmp_seq = substr($genseq_hash{$genome_tag}->{$contig1}, $start2, $seq_len);
+			    $sequence = reverse($tmp_seq);
+			    $sequence =~ tr/AGCTYRWSKMDVHBagctyrwskmdvhb/TCGARYWSMKHBDVtcgarywsmkhbdv/;
+			}
 		    }
 		}
 	    }
@@ -731,7 +841,7 @@ sub process_matchtable {
 	my @sizes = ();
 	my $div_by_three = 0;
 	my $seen = 0;
-	if ($use_multifasta) {
+	if ($use_multifasta && !$no_stats) {
 	    if (open (CLUSTERFILE, "<$multifastadir/cluster_full_$cluster_id.fasta") )  { #if the file isn't there it's because the cluster was empty and going away on the next iteration
 		my ($save_input_separator) = $/;
 		$/="\n>";
@@ -746,14 +856,19 @@ sub process_matchtable {
 		    my $feat_name = $fields[1];
 		    $sequence =~ s/[^a-zA-Z]//g; # remove any non-alphabet characters
 		    my $seq_len = length($sequence);
-		    if (!$seen && ($ignore_index == $index)) {
-			$seen = 1;
-			next; # ignore the column corresponding to the genome to be ignored
+		    if ($genome_tag eq $ignore_id) {
+			next; # need to get target genome info from actual fasta file not from multifasta file
+		    }
+		    if ($genome_tag eq $target_id) {
+			die ("ERROR: $target_id is the target genome and should not be in the multifasta files\n"); # need to get target genome info from actual fasta file not from multifasta file
 		    }
 		    my $tag = shift @tmp_array;
 		    while ($tag ne $genome_tag) {
 			$index++;
 			$tag = shift @tmp_array;
+			if (!defined $tag) {
+			    die ("ERROR: shifted off the end of the genome tag array while looking for $genome_tag with featname $feat_name for cluster $cluster_id and target $target_id\n");
+			}
 		    }
 		    if (!defined $feat_hash{$feat_name}) { # should not happen
 			die ("ERROR: process_amtchtable:cluster gene identifier $feat_name in $matchtable_file is not in $att_file!\n");
@@ -805,10 +920,12 @@ sub process_matchtable {
 		    $index++;
 		    $title = ""; # clear the title for the next contig
 		    $sequence = ""; #clear out the sequence for the next contig
-		}
-		$/ = $save_input_separator; # restore the input separator
+		}		$/ = $save_input_separator; # restore the input separator
 		close (CLUSTERFILE);
+	    } else {
+		print STDERR "cluster_full_$cluster_id.fasta not found\n";
 	    }
+
 	}
 	@tmp_array = @genome_array;
 	$index = 0;
@@ -823,7 +940,13 @@ sub process_matchtable {
 		$index++;
 		next;
 	    }
+	    if ($no_stats) {
+		$gene_count++;
+		$index++;
+		next;
+	    }
 	    if ($use_multifasta && ($genome_tag ne $target_id)) {
+		$index++;
 		next; # processed these from multifasta file
 	    }
 	    my $seq_len;
@@ -967,23 +1090,39 @@ sub process_matchtable {
 	my $stddev;
 	if ($align_all || $remake_files || $compute_all || ($target_id ne "")) {
 	    if ($gene_count > 0) {
-		$mean = $sum / $gene_count;
-		@sizes = sort {$a <=> $b} @sizes;
-		$median = ($gene_count % 2) ? $sizes[($gene_count / 2)] : (($sizes[(($gene_count / 2) - 1)] + $sizes[($gene_count / 2)]) / 2);
-		if ($gene_count < 4) {
-		    $median_25 = $median_75 = $median;
+		if (((100 * $gene_count) / $genome_number) >= 95) {
+		    $num_core_clus++;
+		} elsif ($gene_count > 1) {
+		    $num_shared_clus++;
 		} else {
-		    $median_25 = $sizes[int(($gene_count + 1) / 4)];
-		    $median_75 = $sizes[($gene_count - 1) - int(($gene_count + 1) / 4)];
+		    $num_size_one_clus++;
 		}
-		$stddev = sqrt(($sumsquared - ($mean * $mean * $gene_count)) / (($gene_count > 1) ? ($gene_count - 1) : 1));
+		if ($no_stats) {
+		    $max = $min = $mean = $median = $median_25 = $median_75 = $stddev = 0; # the cluster_sizes file will have less useful information in this case
+		} else {
+		    $mean = $sum / $gene_count;
+		    @sizes = sort {$a <=> $b} @sizes;
+		    $median = ($gene_count % 2) ? $sizes[($gene_count / 2)] : (($sizes[(($gene_count / 2) - 1)] + $sizes[($gene_count / 2)]) / 2);
+		    if ($gene_count < 4) {
+			$median_25 = $median_75 = $median;
+		    } else {
+			$median_25 = $sizes[int(($gene_count + 1) / 4)];
+			$median_75 = $sizes[($gene_count - 1) - int(($gene_count + 1) / 4)];
+		    }
+		    $stddev = sqrt(($sumsquared - ($mean * $mean * $gene_count)) / (($gene_count > 1) ? ($gene_count - 1) : 1));
+		}
 		if ($remake_files) {
-		    print SIZEFILE "$reduced_cluster_num\t$gene_count\t\t$min\t$max\t$median\t$mean\t$stddev\t\t$median_25\t$median_75\n"; # need to add st. dev. do not have "connectivity" or average %identity at this point
+		    print SIZEFILE "$reduced_cluster_num\t$gene_count\t\t$min\t$max\t$median\t$mean\t$stddev\t\t$median_25\t$median_75\n"; # do not have "connectivity" or average %identity at this point
 		    print OUTMATCHFILE "$reduced_cluster_num\t$out_line\n";
 		}
-	    } elsif ($target_sequence ne "") {
-		$max = $min = $mean = $median = $median_25 = $median_75 = length($target_sequence);
-		$stddev = 0;
+	    } else {
+		if ($target_sequence ne "") {
+		    $max = $min = $mean = $median = $median_25 = $median_75 = length($target_sequence);
+		    $stddev = 0;
+		    $num_size_one_clus++;
+		} else {
+		    $num_reduced_clus++;
+		}
 	    }
 	}
 	if (!$suppress) {
@@ -1042,6 +1181,16 @@ sub process_matchtable {
 	if ($gene_count > 1) {
 	    $total_clus_pgg++;
 	    $total_clus_alle_pgg += $gene_count;
+	}
+	if ($no_stats) {
+	    if ($gene_count > 0) {
+		$renumber[$cluster_num] = $reduced_cluster_num;
+		$reduced_cluster_num++;
+	    } else {
+		$renumber[$cluster_num] = 0;
+	    }
+	    $cluster_num++;
+	    next; # do not generate the anomalies file or multiple sequence alignments
 	}
 	if ($compute_all || ($target_id ne "")) {
 	    if ($compute_all && ($gene_count > 0)) {
@@ -1302,12 +1451,14 @@ sub process_pgg {
 	my $whichend2;
 	my @edge_values = split(/\t/, $line);  # split the scalar $line on tab
 	my $edge_id = shift @edge_values;
+	my $alt_edge_id;
 	my $edge_name = $edge_id;
 	my $out_line = join("\t", @edge_values);
 	my $out_cluster1;
 	my $out_cluster2;
 	if ($edge_id =~ /\((\d+)_([35]),(\d+)_([35])\)/) {
 	    $edge_id = "edge".$1."_".$2."to".$3."_".$4;
+	    $alt_edge_id = "edge".$3."_".$4."to".$1."_".$2;
 	    $cluster1 = $1;
 	    $cluster2 = $3;
 	    $whichend1 = $2;
@@ -1317,7 +1468,7 @@ sub process_pgg {
 	} else {
 	    die ("ERROR: Bad edge formatting $edge_id in file $pgg_file.\n");
 	}
-	    
+	#print STDERR "$edge_name:$edge_id\n";
 	my %feat_pres = (); # key = sequence of feature, value = number of features with this sequence
 	my $target_sequence = ""; # sequence for the target genome if specified
 	my $gene_count = 0;
@@ -1332,8 +1483,9 @@ sub process_pgg {
 	my $sumsquared = 0;
 	my @sizes = ();
 	my $seen = 0;
-	if ($use_multifasta) {
-	    if (open (EDGEFILE, "<$multifastadir/full_$edge_id.fasta") )  { #if the file isn't there it's because the cluster was empty and going away on the next iteration
+	if ($use_multifasta && !$no_stats) {
+	    my $edge_file = ($cluster1 < $cluster2) ? "full_$edge_id.fasta" : "full_$alt_edge_id.fasta";
+	    if (open (EDGEFILE, "<$multifastadir/$edge_file") )  { #if the file isn't there it's because the edge was empty and going away on the next iteration
 		my ($save_input_separator) = $/;
 		$/="\n>";
 		while (my $line2 = <EDGEFILE>) {
@@ -1348,15 +1500,19 @@ sub process_pgg {
 		    my $edge_3p = $fields[2];
 		    $sequence =~ s/[^a-zA-Z]//g; # remove any non-alphabet characters
 		    my $seq_len = length($sequence);
-		    if (!$seen && ($ignore_id eq $genome_tag)) {
-			#print STDERR "$ignore_id:$ignore_index:$index:$feat_name\n" if ($DEBUG);
-			$seen =1;
-			next; # ignore the column corresponding to the genome to be ignored
+		    if ($genome_tag eq $ignore_id) {
+			next; # need to get target genome info from actual fasta file not from multifasta file
+		    }
+		    if ($genome_tag eq $target_id) {
+			die ("ERROR: $target_id is the target genome and should not be in the multifasta files\n"); # need to get target genome info from actual fasta file not from multifasta file
 		    }
 		    my $tag = shift @tmp_array;
 		    while ($tag ne $genome_tag) {
 			$index++;
 			$tag = shift @tmp_array;
+			if (!defined $tag) {
+			    die ("ERROR: shifted off the end of the genome tag array while looking for $genome_tag with edge $edge_name $edge_5p $edge_3p and target $target_id\n");
+			}
 		    }
 		    my $feat_name1 = $cluster_to_feat_hash{$genome_tag}->{$cluster1};
 		    my $feat_name2 = $cluster_to_feat_hash{$genome_tag}->{$cluster2};
@@ -1420,10 +1576,12 @@ sub process_pgg {
 		    $index++;
 		    $title = ""; # clear the title for the next contig
 		    $sequence = ""; #clear out the sequence for the next contig
-		}
-		$/ = $save_input_separator; # restore the input separator
+		}		$/ = $save_input_separator; # restore the input separator
 		close (EDGEFILE);
+	    } else {
+		print STDERR "$edge_file not found\n";
 	    }
+
 	}
 	@tmp_array = @genome_array;
 	$index = 0;
@@ -1438,7 +1596,13 @@ sub process_pgg {
 		$index++;
 		next;
 	    }
+	    if ($no_stats) {
+		$gene_count++;
+		$index++;
+		next;
+	    }
 	    if ($use_multifasta && ($genome_tag ne $target_id)) {
+		$index++;
 		next; # processed these from multifasta file
 	    }
 	    my $feat_name1 = $cluster_to_feat_hash{$genome_tag}->{$cluster1};
@@ -1487,125 +1651,220 @@ sub process_pgg {
 	    my $seq_len;
 	    my $sequence;
 	    my $contig_len = $genseq_len{$genome_tag}->{$contig1};
-	    if ((abs($start2 - $end1) > (0.9 * $contig_len)) && $is_circular{$genome_tag}->{$contig1}) {
-		#print STDERR "$genome_tag-$contig1($contig_len) $start1:$end1 - $start2:$end2\n" if ($DEBUG);
-		if ($start1 < $end2) {
-		    my $tmp_seq = "";
-		    my $beg_offset = 0;
-		    my $end_offset = $contig_len - $start2;
-		    if ($start2 > $contig_len) {
-			$beg_offset = $start2 - $contig_len;
-			if ($beg_offset >= $Gapped_Context) {
-			    $threep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($beg_offset - $Gapped_Context), $Gapped_Context);
+	    if ($start1 < $end1) { # forward strand
+		if ((($start1 > $end2) || ($start2 <= 0) || ($end1 <= 0) || ($start2 > $contig_len) || ($end1 > $contig_len)) && !$is_circular{$genome_tag}->{$contig1}) {
+		    die ("ERROR: bad edge coordinates for noncircular contig: $genome_tag $contig1($contig_len) $edge_id $edge_value $feat_name1 $feat_name2 $start1 $end1 $start2 $end2\n");
+		}
+		if ((($start1 > $end2) || ($start2 <= 0) || ($end1 <= 0) || ($start2 > $contig_len) || ($end1 > $contig_len)) && $is_circular{$genome_tag}->{$contig1}) { # this is a circular contig
+		    #print STDERR "$genome_tag-$contig1($contig_len) $start1:$end1 - $start2:$end2\n" if ($DEBUG);
+		    if (($start1 <= 0) || ($end1 <= 0)) {
+			$start1 += $contig_len; # normalize edge coordinates to be > 0
+			$end1 += $contig_len; # normalize edge coordinates to be > 0
+		    }
+		    if (($start2 <= 0) || ($end2 <= 0)) {
+			$start2 += $contig_len; # normalize edge coordinates to be > 0
+			$end2 += $contig_len; # normalize edge coordinates to be > 0
+		    }
+		    if ($start1 > $end2) { # the contigs on either side of the edge are on opposite ends of the contig
+			if ($end1 <= $contig_len) {
+			    $threep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($start2 - 1), $Gapped_Context);
+			    $fivep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($end1 - $Gapped_Context), $Gapped_Context);
+			    $seq_len = ($contig_len - $end1) + ($start2 - 1);
+			    $edge_hash{$genome_tag . $edge_id}->{'len'} = $seq_len;
+			    $edge_hash{$genome_tag . $edge_id}->{'5p'} = ($end1 < $contig_len) ? ($end1 + 1) : 1;
+			    $edge_hash{$genome_tag . $edge_id}->{'3p'} = ($end1 < $contig_len) ? (($start2 - 1) + $contig_len) : ($start2 - 1);
+			    #print STDERR "if $seq_len:$start2:$end1:$beg_offset:$end_offset\n" if ($DEBUG);
 			} else {
-			    $threep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($beg_offset - $Gapped_Context));
-			    $threep_seq .= substr($genseq_hash{$genome_tag}->{$contig1}, 0, $beg_offset);
+			    $threep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($start2 -1), $Gapped_Context);
+			    my $extra = $end1 - $contig_len;
+			    if ($extra >= $Gapped_Context) {
+				$fivep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($extra - $Gapped_Context), $Gapped_Context);
+			    } else {
+				$fivep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($extra - $Gapped_Context));
+				$fivep_seq .= substr($genseq_hash{$genome_tag}->{$contig1}, 0, $extra);
+			    }
+			    $seq_len = ($start2 - 1) - $extra;
+			    $edge_hash{$genome_tag . $edge_id}->{'len'} = $seq_len;
+			    $edge_hash{$genome_tag . $edge_id}->{'5p'} = $extra + 1;
+			    $edge_hash{$genome_tag . $edge_id}->{'3p'} = $start2 - 1;
+			    #print STDERR "if $seq_len:$start2:$end1:$beg_offset:$end_offset\n" if ($DEBUG);
 			}
-		    } else {
-			$threep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($start2 - $Gapped_Context), $Gapped_Context);
-		    }
-		    if ($end1 <= 0) {
-			$end_offset += ($end1 - 1);
-			if ($end1 < -18) {
-			    $fivep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, (($contig_len + $end1) - 1), $Gapped_Context);
+			if ($seq_len <= 0) {
+			    $seq_len = 0;
+			    $sequence = "";
 			} else {
-			    $fivep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, (($contig_len + $end1) - 1));
-			    $fivep_seq .= substr($genseq_hash{$genome_tag}->{$contig1}, 0, (19 + $end1));
+			    if ($end1 < $contig_len) {
+				$sequence = substr($genseq_hash{$genome_tag}->{$contig1}, ($end1 - $contig_len));
+				$sequence .= substr($genseq_hash{$genome_tag}->{$contig1}, 0, ($start2 - 1));
+			    } else {
+				$sequence = substr($genseq_hash{$genome_tag}->{$contig1}, ($end1 - $contig_len), $seq_len);
+			    }
 			}
-		    } else {
-			$fivep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($end1 - 1), $Gapped_Context);
-		    }
-		    $seq_len = ($contig_len - $start2) + ($end1 - 1);
-		    $edge_hash{$genome_tag . $edge_id}->{'len'} = $seq_len;
-		    $edge_hash{$genome_tag . $edge_id}->{'5p'} = $end1 - 1;
-		    $edge_hash{$genome_tag . $edge_id}->{'3p'} = $start2 + 1;
-		    #print STDERR "if $seq_len:$start2:$end1:$beg_offset:$end_offset\n" if ($DEBUG);
-		    if ($seq_len <= 0) {
-			$seq_len = 0;
-			$sequence = "";
-		    } else {
-			if ($end_offset > 0) {
-			    $tmp_seq = substr($genseq_hash{$genome_tag}->{$contig1}, $start2, $end_offset);
-			}
-			if ($end1 > 1) {
-			    $tmp_seq .= substr($genseq_hash{$genome_tag}->{$contig1}, $beg_offset, (($end1 - 1) - $beg_offset));
-			}
-			$sequence = reverse($tmp_seq);
-			$sequence =~ tr/AGCTYRWSKMDVHBagctyrwskmdvhb/TCGARYWSMKHBDVtcgarywsmkhbdv/;
-		    }
-		    $threep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($start2 - 1), $Gapped_Context);
-		} else {
-		    $sequence = "";
-		    my $beg_offset = 0;
-		    my $end_offset = $contig_len - $end1;
-		    if ($end1 > $contig_len) {
-			$beg_offset = $end1 - $contig_len;
-			if ($beg_offset >= $Gapped_Context) {
-			    $threep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($beg_offset - $Gapped_Context), $Gapped_Context);
+		    } else { #contigs on either end of the edge are on the same end of the contig
+			if ((($start2 - 1) + $Gapped_Context) > $contig_len) {
+			    my $extra = (($start2 - 1) + $Gapped_Context) - $contig_len;
+			    $threep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($start2 - 1));
+			    $threep_seq .= substr($genseq_hash{$genome_tag}->{$contig1}, 0, $extra);
 			} else {
-			    $threep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($beg_offset - $Gapped_Context));
-			    $threep_seq .= substr($genseq_hash{$genome_tag}->{$contig1}, 0, $beg_offset);
+			    $threep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($start2 - 1), $Gapped_Context);
 			}
-		    } else {
-			$threep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($end1 - $Gapped_Context), $Gapped_Context);
-		    }
-		    if ($start2 <= 0) {
-			$end_offset += ($start2 - 1);
-			if ($start2 < -18) {
-			    $fivep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, (($contig_len + $start2) - 1), $Gapped_Context);
+			if ($end1 >= $Gapped_Context) {
+			    $fivep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, $end1 - $Gapped_Context, $Gapped_Context);
 			} else {
-			    $fivep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, (($contig_len + $start2) - 1));
-			    $fivep_seq .= substr($genseq_hash{$genome_tag}->{$contig1}, 0, (19 + $start2));
+			    my $extra = $end1 - $Gapped_Context;
+			    $fivep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, $extra);
+			    $fivep_seq .= substr($genseq_hash{$genome_tag}->{$contig1}, 0, $end1);
 			}
-		    } else {
-			$fivep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($start2 - 1), $Gapped_Context);
+			$seq_len = ($start2 - $end1) - 1;
+			$edge_hash{$genome_tag . $edge_id}->{'len'} = $seq_len;
+			$edge_hash{$genome_tag . $edge_id}->{'5p'} = $end1 + 1;
+			$edge_hash{$genome_tag . $edge_id}->{'3p'} = $start2 - 1;
+			#print STDERR "if $seq_len:$start2:$end1:$beg_offset:$end_offset\n" if ($DEBUG);
+			if ($seq_len <= 0) {
+			    $seq_len = 0;
+			    $sequence = "";
+			} else {
+			    $sequence = substr($genseq_hash{$genome_tag}->{$contig1}, $end1, $seq_len);
+			}
 		    }
-		    $seq_len = ($contig_len - $end1) + ($start2 - 1);
-		    $edge_hash{$genome_tag . $edge_id}->{'len'} = $seq_len;
-		    $edge_hash{$genome_tag . $edge_id}->{'5p'} = $end1 + 1;
-		    $edge_hash{$genome_tag . $edge_id}->{'3p'} = $start2 - 1;
-		    #print STDERR "else $seq_len:$end1:$start2:$beg_offset:$end_offset\n" if ($DEBUG);
-		    if ($seq_len <= 0) {
-			$seq_len = 0;
-			$sequence = "";
-		    } else {
-			if ($end_offset > 0) {
-			    $sequence = substr($genseq_hash{$genome_tag}->{$contig1}, $end1, $end_offset);
+		} else { # contig is not circular
+		    #print STDERR "$genome_tag-$contig1($contig_len) $start1:$end1 - $start2:$end2\n" if ($DEBUG);
+		    if ($start1 > $end2) { # this should never happen for linear contigs
+			die ("ERROR: bad edge coordinates for noncircular contig: $genome_tag $contig1($contig_len) $edge_id $edge_value $feat_name1 $feat_name2 $start1 $end1 $start2 $end2\n");
+		    } else { #contigs on either end of the edge are on the same end of the contig as expected
+			if ((($start2 - 1) + $Gapped_Context) > $contig_len) {
+			    $threep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($start2 - 1));
+			} else {
+			    $threep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($start2 - 1), $Gapped_Context);
 			}
-			if ($start2 > 1) {
-			    $sequence .= substr($genseq_hash{$genome_tag}->{$contig1}, $beg_offset, (($start2 - 1) - $beg_offset));
+			if ($end1 >= $Gapped_Context) {
+			    $fivep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, $end1 - $Gapped_Context, $Gapped_Context);
+			} else {
+			    $fivep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, 0, $end1);
+			}
+			$seq_len = ($start2 - $end1) - 1;
+			$edge_hash{$genome_tag . $edge_id}->{'len'} = $seq_len;
+			$edge_hash{$genome_tag . $edge_id}->{'5p'} = $end1 + 1;
+			$edge_hash{$genome_tag . $edge_id}->{'3p'} = $start2 - 1;
+			#print STDERR "if $seq_len:$start2:$end1:$beg_offset:$end_offset\n" if ($DEBUG);
+			if ($seq_len <= 0) {
+			    $seq_len = 0;
+			    $sequence = "";
+			} else {
+			    $sequence = substr($genseq_hash{$genome_tag}->{$contig1}, $end1, $seq_len);
 			}
 		    }
 		}
-	    } else {
-		if ($start1 < $end2) {
-		    $edge_hash{$genome_tag . $edge_id}->{'5p'} = $end1 + 1;
-		    $edge_hash{$genome_tag . $edge_id}->{'3p'} = $start2 - 1;
-		    $seq_len = ($start2 - $end1) - 1;
-		    $edge_hash{$genome_tag . $edge_id}->{'len'} = $seq_len;
-		    if ($seq_len > 0) {
-			$sequence = substr($genseq_hash{$genome_tag}->{$contig1}, $end1, $seq_len);
-		    } else {
-			$seq_len = 0;
-			$sequence = "";
+	    } else { # reverse strand
+		if ((($start1 < $end2) || ($start2 <= 0) || ($end1 <= 0) || ($start2 > $contig_len) || ($end1 > $contig_len)) && !$is_circular{$genome_tag}->{$contig1}) {
+		    die ("ERROR: bad edge coordinates for noncircular contig: $genome_tag $contig1($contig_len) $edge_id $edge_value $feat_name1 $feat_name2 $start1 $end1 $start2 $end2\n");
+		}
+		if ((($start1 < $end2) || ($start2 <= 0) || ($end1 <= 0) || ($start2 > $contig_len) || ($end1 > $contig_len)) && $is_circular{$genome_tag}->{$contig1}) { # this is a circular contig
+		    #print STDERR "$genome_tag-$contig1($contig_len) $start1:$end1 - $start2:$end2\n" if ($DEBUG);
+		    if (($start1 <= 0) || ($end1 <= 0)) {
+			$start1 += $contig_len; # normalize edge coordinates to be > 0
+			$end1 += $contig_len; # normalize edge coordinates to be > 0
 		    }
-		    $fivep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($end1 - $Gapped_Context), $Gapped_Context);
-		    $threep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($start2 - 1), $Gapped_Context);
-		} else {
-		    $edge_hash{$genome_tag . $edge_id}->{'5p'} = $end1 - 1;
-		    $edge_hash{$genome_tag . $edge_id}->{'3p'} = $start2 + 1;
-		    $seq_len = ($end1 - $start2) - 1;
-		    $edge_hash{$genome_tag . $edge_id}->{'len'} = $seq_len;
-		    if ($seq_len > 0) {
-			my $tmp_seq = substr($genseq_hash{$genome_tag}->{$contig1}, $start2, $seq_len);
-			$sequence = reverse($tmp_seq);
-			$sequence =~ tr/AGCTYRWSKMDVHBagctyrwskmdvhb/TCGARYWSMKHBDVtcgarywsmkhbdv/;
-		    } else {
-			$seq_len = 0;
-			$sequence = "";
+		    if (($start2 <= 0) || ($end2 <= 0)) {
+			$start2 += $contig_len; # normalize edge coordinates to be > 0
+			$end2 += $contig_len; # normalize edge coordinates to be > 0
 		    }
-		    $fivep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($start2 - $Gapped_Context), $Gapped_Context);
-		    $threep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($end1 - 1), $Gapped_Context);
+		    if ($start1 < $end2) { # the contigs on either side of the edge are on opposite ends of the contig
+			if ($start2 <= $contig_len) {
+			    $threep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($start2 - $Gapped_Context), $Gapped_Context);
+			    $fivep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($end1 - 1), $Gapped_Context);
+			    $seq_len = ($contig_len - $start2) + ($end1 - 1);
+			    $edge_hash{$genome_tag . $edge_id}->{'len'} = $seq_len;
+			    $edge_hash{$genome_tag . $edge_id}->{'5p'} = ($start2 < $contig_len) ? (($end1 - 1) + $contig_len) : ($end1 - 1);
+			    $edge_hash{$genome_tag . $edge_id}->{'3p'} = ($start2 < $contig_len) ? ($start2 + 1) : 1;
+			    #print STDERR "if $seq_len:$start2:$end1:$beg_offset:$end_offset\n" if ($DEBUG);
+			} else {
+			    my $extra = $start2 - $contig_len;
+			    if ($extra >= $Gapped_Context) {
+				$threep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($extra - $Gapped_Context), $Gapped_Context);
+			    } else {
+				$threep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($extra - $Gapped_Context));
+				$threep_seq .= substr($genseq_hash{$genome_tag}->{$contig1}, 0, $extra);
+			    }
+			    $fivep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($end1 - 1), $Gapped_Context);
+			    $seq_len = ($end1 - 1) - $extra;
+			    $edge_hash{$genome_tag . $edge_id}->{'len'} = $seq_len;
+			    $edge_hash{$genome_tag . $edge_id}->{'5p'} = $end1 - 1;
+			    $edge_hash{$genome_tag . $edge_id}->{'3p'} = $extra + 1;
+			    #print STDERR "if $seq_len:$start2:$end1:$beg_offset:$end_offset\n" if ($DEBUG);
+			}
+			if ($seq_len <= 0) {
+			    $seq_len = 0;
+			    $sequence = "";
+			} else {
+			    my $tmp_seq = "";
+			    if ($start2 < $contig_len) {
+				$tmp_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($start2 - $contig_len));
+				$tmp_seq .= substr($genseq_hash{$genome_tag}->{$contig1}, 0, ($end1 - 1));
+			    } else {
+				$tmp_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($start2 - $contig_len), $seq_len);
+			    }
+			    $sequence = reverse($tmp_seq);
+			    $sequence =~ tr/AGCTYRWSKMDVHBagctyrwskmdvhb/TCGARYWSMKHBDVtcgarywsmkhbdv/;
+			}
+		    } else { #contigs on either end of the edge are on the same end of the contig
+			if ((($start2 - 1) + $Gapped_Context) > $contig_len) {
+			    my $extra = (($start2 - 1) + $Gapped_Context) - $contig_len;
+			    $threep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($start2 - 1));
+			    $threep_seq .= substr($genseq_hash{$genome_tag}->{$contig1}, 0, $extra);
+			} else {
+			    $threep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($start2 - 1), $Gapped_Context);
+			}
+			if ($end1 >= $Gapped_Context) {
+			    $fivep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, $end1 - $Gapped_Context, $Gapped_Context);
+			} else {
+			    my $extra = $end1 - $Gapped_Context;
+			    $fivep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, $extra);
+			    $fivep_seq .= substr($genseq_hash{$genome_tag}->{$contig1}, 0, $end1);
+			}
+			$seq_len = ($end1 - $start2) - 1;
+			$edge_hash{$genome_tag . $edge_id}->{'len'} = $seq_len;
+			$edge_hash{$genome_tag . $edge_id}->{'5p'} = $end1 - 1;
+			$edge_hash{$genome_tag . $edge_id}->{'3p'} = $start2 + 1;
+			#print STDERR "if $seq_len:$start2:$end1:$beg_offset:$end_offset\n" if ($DEBUG);
+			if ($seq_len <= 0) {
+			    $seq_len = 0;
+			    $sequence = "";
+			} else {
+			    my $tmp_seq = substr($genseq_hash{$genome_tag}->{$contig1}, $start2, $seq_len);
+			    $sequence = reverse($tmp_seq);
+			    $sequence =~ tr/AGCTYRWSKMDVHBagctyrwskmdvhb/TCGARYWSMKHBDVtcgarywsmkhbdv/;
+			}
+		    }
+		} else { # contig is not circular
+		    #print STDERR "$genome_tag-$contig1($contig_len) $start1:$end1 - $start2:$end2\n" if ($DEBUG);
+		    if ($start1 < $end2) { # this should never happen for linear contigs
+			die ("ERROR: bad edge coordinates for noncircular contig: $genome_tag $contig1($contig_len) $edge_id $edge_value $feat_name1 $feat_name2 $start1 $end1 $start2 $end2\n");
+		    } else { #contigs on either end of the edge are on the same end of the contig as expected
+			if ((($end1 - 1) + $Gapped_Context) > $contig_len) {
+			    $threep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($end1 - 1));
+			} else {
+			    $threep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($end1 - 1), $Gapped_Context);
+			}
+			if ($start2 >= $Gapped_Context) {
+			    $fivep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, $start2 - $Gapped_Context, $Gapped_Context);
+			} else {
+			    $fivep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, 0, $start2);
+			}
+			$seq_len = ($end1 - $start2) - 1;
+			$edge_hash{$genome_tag . $edge_id}->{'len'} = $seq_len;
+			$edge_hash{$genome_tag . $edge_id}->{'5p'} = $end1 - 1;
+			$edge_hash{$genome_tag . $edge_id}->{'3p'} = $start2 + 1;
+			#print STDERR "if $seq_len:$start2:$end1:$beg_offset:$end_offset\n" if ($DEBUG);
+			if ($seq_len <= 0) {
+			    $seq_len = 0;
+			    $sequence = "";
+			} else {
+			    my $tmp_seq = substr($genseq_hash{$genome_tag}->{$contig1}, $start2, $seq_len);
+			    $sequence = reverse($tmp_seq);
+			    $sequence =~ tr/AGCTYRWSKMDVHBagctyrwskmdvhb/TCGARYWSMKHBDVtcgarywsmkhbdv/;
+			}
+		    }
 		}
 	    }
 	    if (($fivep_seq =~ /NNNNN/) || ($threep_seq =~ /NNNNN/)) {
@@ -1655,23 +1914,45 @@ sub process_pgg {
 	my $stddev;
 	if ($align_all || $remake_files || $compute_all || ($target_id ne "")) {
 	    if ($gene_count > 0) {
-		$mean = $sum / $gene_count;
-		@sizes = sort {$a <=> $b} @sizes;
-		$median = ($gene_count % 2) ? $sizes[($gene_count / 2)] : (($sizes[(($gene_count / 2) - 1)] + $sizes[($gene_count / 2)]) / 2);
-		if ($gene_count < 4) {
-		    $median_25 = $median_75 = $median;
-		} else {
-		    $median_25 = $sizes[int(($gene_count + 1) / 4)];
-		    $median_75 = $sizes[($gene_count - 1) - int(($gene_count + 1) / 4)];
+		if ($cluster1 <= $cluster2) { # only count edge in one direction
+		    if (((100 * $gene_count) / $genome_number) >= 95) {
+			$num_core_edge++;
+		    } elsif ($gene_count > 1) {
+			$num_shared_edge++;
+		    } else {
+			$num_size_one_edge++;
+		    }
 		}
-		$stddev = sqrt(($sumsquared - ($mean * $mean * $gene_count)) / (($gene_count > 1) ? ($gene_count - 1) : 1));
+		if ($no_stats) {
+		    $max = $min = $mean = $median = $median_25 = $median_75 = $stddev = 0; # the cluster_sizes file will have less useful information in this case
+		} else {
+		    $mean = $sum / $gene_count;
+		    @sizes = sort {$a <=> $b} @sizes;
+		    $median = ($gene_count % 2) ? $sizes[($gene_count / 2)] : (($sizes[(($gene_count / 2) - 1)] + $sizes[($gene_count / 2)]) / 2);
+		    if ($gene_count < 4) {
+			$median_25 = $median_75 = $median;
+		    } else {
+			$median_25 = $sizes[int(($gene_count + 1) / 4)];
+			$median_75 = $sizes[($gene_count - 1) - int(($gene_count + 1) / 4)];
+		    }
+		    $stddev = sqrt(($sumsquared - ($mean * $mean * $gene_count)) / (($gene_count > 1) ? ($gene_count - 1) : 1));
+		}
 		if ($remake_files) {
-		    print SIZEFILE "($out_cluster1", "_$whichend1,$out_cluster2", "_$whichend2)\t$gene_count\t\t$min\t$max\t$median\t$mean\t$stddev\t\t$median_25\t$median_75\n"; # need to add st. dev. do not have "connectivity" or average %identity at this point
+		    print SIZEFILE "($out_cluster1", "_$whichend1,$out_cluster2", "_$whichend2)\t$gene_count\t\t$min\t$max\t$median\t$mean\t$stddev\t\t$median_25\t$median_75\n"; #  do not have "connectivity" or average %identity at this point
 		    print OUTPGGFILE "($out_cluster1", "_$whichend1,$out_cluster2", "_$whichend2)\t$out_line\n";
 		}
-	    } elsif ($target_sequence ne "") {
-		$max = $min = $mean = $median = $median_25 = $median_75 = length($target_sequence);
-		$stddev = 0;
+	    } else {
+		if ($target_sequence ne "") {
+		    $max = $min = $mean = $median = $median_25 = $median_75 = length($target_sequence);
+		    $stddev = 0;
+		    if ($cluster1 <= $cluster2) { # only count edge in one direction
+			$num_size_one_edge++;
+		    }
+		} else {
+		    if ($cluster1 <= $cluster2) { # only count edge in one direction
+			$num_reduced_edge++;
+		    }
+		}
 	    }
 	}
 	if (!$suppress && ($cluster1 <= $cluster2)) { # only need to do this for one orientation of the edge - not sure if the clusters can be equal or if there are two edges in this case - do a 3' 5' test?
@@ -1732,10 +2013,21 @@ sub process_pgg {
 		$index++;
 	    }
 	}
+	if ($no_stats) {
+	    if ($gene_count > 1) {
+		if ($cluster1 <= $cluster2) { # only count edge in one direction
+		    $total_edge_pgg++;
+		    $total_edge_alle_pgg += $gene_count;
+		}
+	    }
+	    next; # do not generate the anomalies file or multiple sequence alignments
+	}
 	if ($cluster1 <= $cluster2) { # only need to do this for one orientation of the edge - not sure if the clusters can be equal or if there are two edges in this case - do a 3' 5' test?
 	    if ($gene_count > 1) {
-		$total_edge_pgg++;
-		$total_edge_alle_pgg += $gene_count;
+		if ($cluster1 <= $cluster2) { # only count edge in one direction
+		    $total_edge_pgg++;
+		    $total_edge_alle_pgg += $gene_count;
+		}
 	    }
 	    if ($compute_all || ($target_id ne "")) {
 		if ($compute_all && ($gene_count > 0)) {
@@ -2380,16 +2672,21 @@ _EOB_
 }
 
 ########################################  M A I N  #####################################################
-print  STDERR "Getting topology from $topology_file\n";
-&read_topology;
-print  STDERR "Gathering gene coordinates and attribute information from $att_file\n";
-&get_attributes;
-if ($write_multifasta) {
-    print STDERR "Reading genomes, matchtable, and pgg then writing multifasta clusters and edges\n";
-    &output_multifasta;
+if ($no_stats) {
+    &get_genome_names;
+    print STDERR "No stats just remaking files so not reading genomes\n";
 } else {
-    print  STDERR "Getting genome names and contig sequences from $genomes_file_name\n";
-    &get_genomes;
+    print  STDERR "Getting topology from $topology_file\n";
+    &read_topology;
+    print  STDERR "Gathering gene coordinates and attribute information from $att_file\n";
+    &get_attributes;
+    if ($write_multifasta) {
+	print STDERR "Reading genomes, matchtable, and pgg then writing multifasta clusters and edges\n";
+	&output_multifasta;
+    } else {
+	print  STDERR "Getting genome names and contig sequences from $genomes_file_name\n";
+	&get_genomes;
+    }
 }
 print  STDERR "Reading single copy core clusters from $single_cores\n";
 &read_single_cores;
@@ -2424,21 +2721,33 @@ foreach my $genome_tag (@genome_array) {
     $gapped_clus{$genome_tag} = 0;          # key = genome ID, value = number of gapped (really too many ambiguous characters) clusters
     $gapped_edge{$genome_tag} = 0;          # key = genome ID, value = number of gapped (really too many ambiguous characters) edges
 }    
-print  STDERR "Reading matchtable from $matchtable_file and outputting cluster multifasta files to $multifastadir\n";
-if ($compute_all || ($target_id ne "")) {
+print  STDERR "Reading matchtable from $matchtable_file\n";
+if (!$suppress) {
+    print  STDERR " and outputting cluster multifasta files to $multifastadir\n";
+}
+if (($compute_all || ($target_id ne "")) && (!$no_stats)) {
     unless (open (DIFFFILE, ">", "$basedir/anomalies.txt") ) {
 	die ("ERROR: cannot open file $basedir/anomalies.txt\n");
     }
     print DIFFFILE "Genome ID\tContig ID\tType\tStart\tEnd\tLength\tCluster-Edge ID\n";
 }
 &process_matchtable;
-print  STDERR "Reading pan-genome graph from $pgg_file and outputting edge multifasta files to $multifastadir\n";
+print  STDERR "Reading pan-genome graph from $pgg_file\n";
+if (!$suppress) {
+    print  STDERR " and outputting edge multifasta files to $multifastadir\n";
+}
 &process_pgg;
-if ($compute_all || ($target_id ne "")) {
+unless (open (SIZESFILE, ">", "$basedir/ce_sizes.txt") ) {
+    die ("ERROR: cannot open file $basedir/ce_sizes.txt\n");
+}
+print SIZESFILE "Type\tCore\tShared\tSingle\tReduced\tShared+Core\tS+C Alleles\nCluster\t$num_core_clus\t$num_shared_clus\t$num_size_one_clus\t$num_reduced_clus\t$total_clus_pgg\t$total_clus_alle_pgg\nEdge\t$num_core_edge\t$num_shared_edge\t$num_size_one_edge\t$num_reduced_edge\t$total_edge_pgg\t$total_edge_alle_pgg\n";
+close (SIZESFILE);
+if (($compute_all || ($target_id ne "")) && (!$no_stats)) {
     close (DIFFFILE);
     unless (open (STATFILE, ">", "$basedir/cluster_stats.txt") ) {
 	die ("ERROR: cannot open file $basedir/cluster_stats.txt\n");
     }
+    print  STDERR "Writing feature stats to $basedir/cluster_stats.txt\n";
     print STATFILE "Genome\tuniq_clus\tuniq_clus_alle_0_25\tuniq_clus_alle_25_75\tuniq_clus_alle_75_100\tuniq_edge\tuniq_edge_alle_0_25\tuniq_edge_alle_25_75\tuniq_edge_alle_75_100\tshort_clus\tlong_clus\tshort_edge\tlong_edge\tvery_short_clus\tvery_long_clus\tvery_short_edge\tvery_long_edge\tframeshift\tmissing_75clus\tmissing_75edge\tmiss_sing_core\tmiss_sing_edge\tdist_clus_alle\tcol_clus_alle\tdist_edge_alle\tcol_edge_alle\tgapped_clus\tgapped_edge\ttotal_clus($total_clus_pgg,$total_clus_alle_pgg)\ttotal_edge($total_edge_pgg,$total_edge_alle_pgg)\n";
     if ($compute_all) {
 	foreach my $genome_tag (@genome_array) {
@@ -2449,6 +2758,7 @@ if ($compute_all || ($target_id ne "")) {
     }
     close (STATFILE);
 }
+print STDERR "Checking for further processing\n";
 if ($remake_files) {
     print  STDERR "Remaking medoids and single core files accounting for cluster dropouts\n";
     &process_medoids;
@@ -2458,4 +2768,5 @@ if ((!$suppress) && ($align_all)) {
     print  STDERR "Computing multiple sequence alignments and  statistics\n";
     &compute_alignments;
 }
+print STDERR "Finished processing - exiting\n";
 exit(0);
