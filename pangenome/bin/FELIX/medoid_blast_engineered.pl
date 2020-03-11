@@ -12,6 +12,8 @@ use Carp;
 use strict;
 
 my $cwd = getcwd;
+my $commandline = join (" ", @ARGV);
+print STDERR "$commandline\n";
 my $help_text = "This program BLASTs a FASTA file of medoids against a database of engineered genes.
 This work is done in a folder called M_BLAST_TMP, which is deleted when the 
 program finishes. This program also takes a cluster sizes/weights file and a

@@ -16,20 +16,29 @@ use warnings;
 use List::Util qw[min max];
 
 my $cwd = getcwd;
-my $blast_task = "blastn";
-my @annotations = ();  # These are the lines of the attribute files but with 3 changes: 1) there BEST, VALUE, and TYPE fields 2) coordinates are now smallest then largest, not start then stop 3) there is an INVERT field to indicate strand rather than STOP being smaller than START
-my @pgg_blast_results = ();  # These are the blast results of the query sequences against the PGG genomes
+my $commandline = join (" ", @ARGV);
+print STDERR "$commandline\n";
+my @annotations = ();  # These are the lines of the attribute files but with 3 changes: 1) there are BEST, VALUE, and TYPE fields 2) coordinates are now smallest then largest, not start then stop 3) there is an INVERT field to indicate strand rather than STOP being smaller than START
 my @ordered = ();      # Same as above but sorted by CONTIG then START
+my @query_coords = (); # Same as above but first combining intervals and dropping most fields - sorted by QCCTG then QCBEG 
+my @pgg_blast_results = ();  # These are the blast results of the query sequences against the PGG genomes
+my %is_circular = (); # key = contig ID, value = 1 if contig is circular, 0 otherwise
 my %contig_len = ();   # key = contig id, value = length of contig
 my %contigs = ();      # key = contig id, value = sequence of contig
 my %query_seqs = ();   # key = query id, value = sequence of query
 my %pggdb_contig_len = ();   # key = contig id, value = length of contig
 my %pggdb_contigs = ();      # key = contig id, value = sequence of contig
+my %pggdb_is_circular = (); # key = contig ID, value = 1 if contig is circular, 0 otherwise
 my %seen_contig = ();  # key = contig id, value = 1 (placeholder to show we've seen this contig)
 my %max_bitscore = (); # key1 = query id, key2 = subject id, array = [MB5P,MB3P,MBFULL], value = max bitscore : pgg_blast_results index
 my @categories = ("identical","gapped","divergent","conserved"); # literals used for output in ranges file
 
 # CONSTANTS #
+use constant QCCTG => 0;
+use constant QCBEG => 1;
+use constant QCEND => 2;
+use constant QCNAME => 3;
+use constant QCDEL => 4;
 use constant MBBIT => 0;
 use constant MBIND => 1;
 use constant MBSEC => 2;
@@ -64,16 +73,40 @@ use constant DELETE => 8;
 use constant CATEGORY => 9;
 # END CONSTANTS #
 
-GetOptions('genomes=s' => \my $genomes,
-	'help' => \my $help,
-	'debug' => \my $debug,
-	'blast_directory=s' => \my $blast_directory,
-	'ld_load_directory=s' => \my $ld_load_directory,
-	'blast_task=s' => \ $blast_task,
-	'nrdb=s' => \my $nrdb,
-	'pggdb=s' => \my $PGGdb,
-	'engdb=s' => \my $engdb);
+my $bin_directory = "/usr/local/projdata/8520/projects/PANGENOME/pangenome_bin/";
+my $genomes;
+my $help;
+my $debug;
+my $blast_directory;
+my $local_blast_directory;
+my $ld_load_directory;
+my $blast_task = "blastn";
+my $nrdb;
+my $PGGdb;
+my $engdb;
+my $pggdb_topology_file;
+my $strip_version;
 
+GetOptions('genomes=s' => \ $genomes,
+	'strip_version' => \ $strip_version,
+	'help' => \ $help,
+	'debug' => \ $debug,
+	'bin_directory=s' => \ $bin_directory,
+	'blast_directory=s' => \ $blast_directory,
+	'ld_load_directory=s' => \ $ld_load_directory,
+	'PGG_topology=s' => \ $pggdb_topology_file,
+	'blast_task=s' => \ $blast_task,
+	'nrdb=s' => \ $nrdb,
+	'pggdb=s' => \ $PGGdb,
+	'engdb=s' => \ $engdb);
+
+if (-d $bin_directory) {
+    if (substr($bin_directory, 0, 1) ne "/") {
+	$bin_directory = $cwd . "/$bin_directory";
+    }
+} else {
+    die "The specified bin directory: $bin_directory does not exist or is not a directory!\n";
+}
 if ($blast_directory) {
     if (-d $blast_directory) {
 	if (substr($blast_directory, -1, 1) ne "/") {
@@ -98,13 +131,14 @@ if ($ld_load_directory) {
 	if (substr($ld_load_directory, 0, 1) ne "/") {
 	    $ld_load_directory = $cwd . "/$ld_load_directory";
 	}
-	$blast_directory = 'export LD_LIBRARY_PATH=' . $ld_load_directory . ':$LD_LIBRARY_PATH; ' . $blast_directory;
+	$local_blast_directory = 'export LD_LIBRARY_PATH=' . $ld_load_directory . ':$LD_LIBRARY_PATH; ' . $blast_directory;
     } else {
 	print STDERR "Error with -ld_load_directory $ld_load_directory\n";
 	$help = 1;
     }
 } else {
     $ld_load_directory = "";
+    $local_blast_directory = $blast_directory;
 }
 
 if ($help) {
@@ -113,8 +147,11 @@ if ($help) {
 GetOptions('genomes=s' => genomes,
 	'help' => help,
 	'debug' => debug,
+	'strip_version' => \ strip_version,
+	'bin_directory=s' => \ bin_directory,
 	'blast_directory=s' => \ blast_directory,
 	'ld_load_directory=s' => \ ld_load_directory,
+	'PGG_topology=s' => \ pggdb_topology_file,
 	'blast_task=s' => \ blast_task,
 	'nrdb=s' => nrdb,
 	'pggdb=s' => PGGdb,
@@ -123,16 +160,35 @@ _EOB_
     exit(0);
 }
 
+######################################COMPONENT PROGRAM PATHS################################
+my $medoid_blast_path = "$bin_directory/medoid_blast_search.pl";
+#############################################################################################
+
+# subroutine to handle substr for circular contigs
+sub circ_substr { # have to adjust coordinates because they are in 1 base based coordinates and perl strings start at 0
+
+    my ($seq, $beg, $end , $ctg_len) = @_; # beg and end are in 1 base coordinates
+    my $len = ($end - $beg) + 1;
+    if ($end > $ctg_len) {
+	my $tmp_seq = substr($seq, ($beg - 1));
+	$tmp_seq .= substr($seq, 0, ($end - $ctg_len));
+	return($tmp_seq);
+    } else {
+	return(substr($seq, ($beg - 1), $len));
+    }
+}
+
 # subroutine to print contig segments out in fasta format
 sub print_fasta { # have to adjust coordinates because they are in 1 base based coordinates and perl strings start at 0
 
-    my ($file_handle, $contig_name, $seq, $beg, $end) = @_;
+    my ($file_handle, $seq_name, $seq, $beg, $end) = @_;
+    #my $full_len = length($seq);
+    #print STDERR "$seq_name $beg $end $full_len\n";
     $beg--;
     $end--;
-    print $file_handle ">$contig_name\n";
+    print $file_handle ">$seq_name\n";
     my $pos;
     my $seq_len = ($end - $beg) + 1;
-    $query_seqs{$contig_name} = substr($seq, $beg, $seq_len);
     for ( $pos = $beg ; $seq_len > 60 ; $pos += 60 ) {
 	print $file_handle substr($seq, $pos, 60), "\n";
 	$seq_len -= 60;
@@ -141,7 +197,7 @@ sub print_fasta { # have to adjust coordinates because they are in 1 base based 
     return;
 }
 
-# read in contigs from genome file
+# read in contigs from pggdb genome file
 my $pggdbfile;
 unless (open ($pggdbfile, "<", $PGGdb) )  {
     die ("cannot open PGG database file: $PGGdb!\n");
@@ -165,21 +221,56 @@ while ($pggdb_line = <$pggdbfile>) {
 $/ = $pggdb_save_input_separator; # restore the input separator
 close ($pggdbfile);
 
-# read file which specifies the output file prefix, assembly fasta file, and anomalies file
+#read in pggdb topolgy inforamtion for genome
+unless (open (CIRCFILE, "<", "$pggdb_topology_file") )  {
+    die ("ERROR: can not open pggdb contig topology file $pggdb_topology_file.\n");
+}
+while (<CIRCFILE>) {
+    my $tag = "";
+    my $asmbl_id = "";
+    my $type = "";
+
+    chomp;
+    ($tag, $asmbl_id, $type) = split(/\t/, $_);  # split the scalar $line on tab
+    if (($tag eq "") || ($asmbl_id eq "") || ($type eq "")) {
+	die ("ERROR: genome id, assembly id/contig id, and type  must not be empty/null in the pggdb contig topology file $pggdb_topology_file.\nLine:\n$_\n");
+    }
+    if ($strip_version) {
+	$asmbl_id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
+    }
+    if (!defined $pggdb_contigs{$asmbl_id}) {
+	die ("ERROR: $asmbl_id is a contig in the pggdb contig topology file $pggdb_topology_file but not in the pggdb fasta file $PGGdb!\nLine:\n$_\n");
+    }
+    if (defined $pggdb_is_circular{$asmbl_id}) {
+	die ("ERROR: $asmbl_id occurs multiple times in the topology file $pggdb_topology_file\n");
+    }
+    if ($type eq "circular") {
+	$pggdb_is_circular{$asmbl_id} = 1;
+    } elsif ($type eq "linear") {
+	$pggdb_is_circular{$asmbl_id} = 0;
+    } else {
+	die ("ERROR: type $type must be either circular or linear in the pggdb contig topology file $pggdb_topology_file.\nLine:\n$_\n");
+    }
+}
+close (CIRCFILE);
+
+# read file which specifies the output file prefix, assembly fasta file, assembly topology file, and anomalies file
 open (my $infile, "<", $genomes) || die ("ERROR: cannot open file $genomes\n");
 while (my $line = <$infile>)  {
     # clear data structures for the next genome
     @annotations = ();  # These are the lines of the attribute files but with 3 changes: 1) there BEST, VALUE, and TYPE fields 2) coordinates are now smallest then largest, not start then stop 3) there is an INVERT field to indicate strand rather than STOP being smaller than START
     @ordered = ();      # Same as above but sorted by CONTIG then START
+    @query_coords = ();   # Combine intervals from ordered: QCCTG is contig, QCBEG is start coordinate, QCEND is stop coordinate, QCNAME is query sequence name, QCDEL for deleted - sort by QCCTG then QCBEG
+    %is_circular = (); # key = contig ID, value = 1 if contig is circular, 0 otherwise
     %contigs = ();      # key = contig id, value = sequence of contig
     %contig_len = ();   # key = contig id, value = length of contig
     %seen_contig = ();  # key = contig id, value = 1 (placeholder to show we've seen this contig)
     @pgg_blast_results = ();  # These are the blast results of the query sequences against the PGG genomes
-    %query_seqs = ();   # key = query id, value = sequence of query
+    %query_seqs = ();   # key1 = name, value = sequence
     %max_bitscore = (); # key1 = query id, key2 = subject id, array = [MB5P,MB3P,MBFULL], value = max bitscore : pgg_blast_results index
     
     chomp $line;
-    (my $output, my $genome, my $anomalies) = split(/\t/, $line);  # split the scalar $line on tab
+    (my $output, my $genome, my $target_topology_file, my $anomalies) = split(/\t/, $line);  # split the scalar $line on tab
 
     # read in contigs from genome file
     my $contigfile;
@@ -194,7 +285,9 @@ while (my $line = <$infile>)  {
 	my @fields = split(/\s+/, $title);  # split the scalar $line on space or tab (to separate the identifier from the header and store in array @line
 	my $id = $fields[0]; # unique orf identifier is in column 0, com_name is in rest
 	$id =~ s/>\s*//; # remove leading > and spaces
-	$id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
+	if ($strip_version) {
+	    $id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
+	}
 	$sequence =~ s/[^a-zA-Z]//g; # remove any non-alphabet characters
 	my $contig_length = length($sequence);
 	#print STDERR "$id\t$contig_length";
@@ -210,9 +303,42 @@ while (my $line = <$infile>)  {
     $/ = $save_input_separator; # restore the input separator
     close ($contigfile);
 
+    #read in topolgy inforamtion for genome
+    unless (open (CIRCFILE, "<", "$target_topology_file") )  {
+	die ("ERROR: can not open contig topology file $target_topology_file.\n");
+    }
+    while (<CIRCFILE>) {
+	my $tag = "";
+	my $asmbl_id = "";
+	my $type = "";
+
+	chomp;
+	($tag, $asmbl_id, $type) = split(/\t/, $_);  # split the scalar $line on tab
+	if (($tag eq "") || ($asmbl_id eq "") || ($type eq "")) {
+	    die ("ERROR: genome id, assembly id/contig id, and type  must not be empty/null in the contig topology file $target_topology_file.\nLine:\n$_\n");
+	}
+	if ($strip_version) {
+	    $asmbl_id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
+	}
+	if (!defined $contigs{$asmbl_id}) {
+	    die ("ERROR: $asmbl_id is a contig in the contig topology file $target_topology_file but not in the genome fasta file $genome!\nLine:\n$_\n");
+	}
+	if (defined $is_circular{$asmbl_id}) {
+	    die ("ERROR: $asmbl_id occurs multiple times in the topology file $target_topology_file\n");
+	}
+	if ($type eq "circular") {
+	    $is_circular{$asmbl_id} = 1;
+	} elsif ($type eq "linear") {
+	    $is_circular{$asmbl_id} = 0;
+	} else {
+	    die ("ERROR: type $type must be either circular or linear in the contig topology file $target_topology_file.\nLine:\n$_\n");
+	}
+    }
+    close (CIRCFILE);
+
     # read in anomalies file
     open(ANOM_FILE, "<", $anomalies) || die ("Couldn't open $anomalies\n");
-    my $count = 0;
+    my $count = -1;
     my $first = 1;
     while (my $line = <ANOM_FILE>) {
 	if ($first) {
@@ -223,6 +349,9 @@ while (my $line = <$infile>)  {
 	my @split_line = split(/\t/,$line);
 	if ($split_line[5] <= 0) {
 	    next; # ignore negative or zero length edge anomalies
+	}
+	if ($split_line[5] > 100000) {
+	    die ("ERROR: not expecting length of any anomaly to be greater than 100,000bp\n$line\n"); # die on long length edge anomalies
 	}
 	my $category = $split_line[2];
 	if (($category =~ /^divergent/) || ($category =~ /^very/) || ($category eq "uniq_edge")) {
@@ -236,41 +365,141 @@ while (my $line = <$infile>)  {
 	} else {
 	    next; # ignore other types
 	}
-	$annotations[$count][CATEGORY] = $category;       # category
-	$annotations[$count][TYPE] = $split_line[2];       # type
 	my $contig = $split_line[1];
 	$contig =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
+	if (!defined $contigs{$contig}) {
+	    die ("ERROR: $contig is a contig in the anomalies file $anomalies but not in the genome fasta file $genome!\n$line\n");
+	}
+	if ($split_line[3] < $split_line[4]) {
+	    if ((($contig_len{$contig} - $split_line[4]) + 1 + $split_line[3]) == $split_line[5]) {
+		if ($split_line[4] > $contig_len{$contig}) {
+		    $split_line[4] -= $contig_len{$contig}; # correct for going around the end
+		} else {
+		    $split_line[3] += $contig_len{$contig}; # correct for going around the end
+		}
+	    }
+	} else {
+	    if ((($contig_len{$contig} - $split_line[3]) + 1 + $split_line[4]) == $split_line[5]) {
+		if ($split_line[3] > $contig_len{$contig}) {
+		    $split_line[3] -= $contig_len{$contig}; # correct for going around the end
+		} else {
+		    $split_line[4] += $contig_len{$contig}; # correct for going around the end
+		}
+	    }
+	}
+	$count++;
 	$annotations[$count][CONTIG] = $contig;     # contig
+	$annotations[$count][CATEGORY] = $category;       # category
+	$annotations[$count][TYPE] = $split_line[2];       # type
 	$annotations[$count][LOCUS] = $split_line[6];      # locus_id
 	$annotations[$count][GENOME] = $split_line[0];     # genome
 	$annotations[$count][LENGTH] = $split_line[5];     # length
 	$annotations[$count][DELETE] = 0;     # subsumed by another segment
-	if ($split_line[3] < $split_line[4]) {
-	    $annotations[$count][START] = $split_line[3]; # start
-	    $annotations[$count][STOP] = $split_line[4]; # stop
-	    $annotations[$count][INVERT] = 0;              # invert
+	if ((!$is_circular{$contig}) && (($split_line[3] <= 0) || ($split_line[4] <= 0) || ($split_line[3] > $contig_len{$contig}) || ($split_line[4] > $contig_len{$contig}))) {
+	    die ("ERROR: for a linear contig neither start ($split_line[3]) nor stop ($split_line[4]) coordinates should be <= 0 or > contig length ($contig_len{$contig})\n$line\n");
+	}
+	if ((($split_line[3] <= 0) || ($split_line[3] > $contig_len{$contig})) && (($split_line[4] <= 0) || ($split_line[4] > $contig_len{$contig}))) {
+	    die ("ERROR: both start ($split_line[3]) and stop ($split_line[4]) coordinates should not be <= 0 or > contig length ($contig_len{$contig})\n$line\n");
+	}
+	if (($split_line[3] <= 0) || ($split_line[4] <= 0) || ($split_line[3] > $contig_len{$contig}) || ($split_line[4] > $contig_len{$contig})) {
+	    if (($split_line[3] <= 0) || ($split_line[4] <= 0)) {
+		if ($split_line[3] < $split_line[4]) {
+		    $annotations[$count][START] = $split_line[3]; # start
+		    $annotations[$count][STOP] = $split_line[4]; # stop
+		    $annotations[$count][INVERT] = 0;              # invert
+		} else {
+		    $annotations[$count][START] = $split_line[4]; # start
+		    $annotations[$count][STOP] = $split_line[3]; # stop
+		    $annotations[$count][INVERT] = 1;              # invert
+		}
+		if ((($annotations[$count][STOP] - $annotations[$count][START]) + 1) != $annotations[$count][LENGTH]) {
+		    die ("ERROR: start ($split_line[3]) and stop ($split_line[4]) coordinates are not consistent with anomaly length ($split_line[5])\n$line\n"); # die on non-normalized annotations going around the end of the contig
+		}
+		$count++; # for circular contigs with anomalies across the begin/end coordinates duplicate match
+		# change to be off of the end of a circular contig
+		$split_line[3] += $contig_len{$contig};
+		$split_line[4] += $contig_len{$contig};
+		$annotations[$count][CONTIG] = $contig;     # contig
+		$annotations[$count][CATEGORY] = $category;       # category
+		$annotations[$count][TYPE] = $split_line[2];       # type
+		$annotations[$count][LOCUS] = $split_line[6];      # locus_id
+		$annotations[$count][GENOME] = $split_line[0];     # genome
+		$annotations[$count][LENGTH] = $split_line[5];     # length
+		$annotations[$count][DELETE] = 0;     # subsumed by another segment
+		if ($split_line[3] < $split_line[4]) {
+		    $annotations[$count][START] = $split_line[3]; # start
+		    $annotations[$count][STOP] = $split_line[4]; # stop
+		    $annotations[$count][INVERT] = 0;              # invert
+		} else {
+		    $annotations[$count][START] = $split_line[4]; # start
+		    $annotations[$count][STOP] = $split_line[3]; # stop
+		    $annotations[$count][INVERT] = 1;              # invert
+		}
+		if ((($annotations[$count][STOP] - $annotations[$count][START]) + 1) != $annotations[$count][LENGTH]) {
+		    die ("ERROR: start ($split_line[3]) and stop ($split_line[4]) coordinates are not consistent with anomaly length ($split_line[5])\n$line\n"); # die on non-normalized annotations going around the end of the contig
+		}
+	    } else {
+		if ($split_line[3] < $split_line[4]) {
+		    $annotations[$count][START] = $split_line[3]; # start
+		    $annotations[$count][STOP] = $split_line[4]; # stop
+		    $annotations[$count][INVERT] = 0;              # invert
+		} else {
+		    $annotations[$count][START] = $split_line[4]; # start
+		    $annotations[$count][STOP] = $split_line[3]; # stop
+		    $annotations[$count][INVERT] = 1;              # invert
+		}
+		if ((($annotations[$count][STOP] - $annotations[$count][START]) + 1) != $annotations[$count][LENGTH]) {
+		    die ("ERROR: start ($split_line[3]) and stop ($split_line[4]) coordinates are not consistent with anomaly length ($split_line[5])\n$line\n"); # die on non-normalized annotations going around the end of the contig
+		}
+		$count++; # for circular contigs with anomalies across the begin/end coordinates duplicate match
+		# change to be off of the beginning of a circular contig
+		$split_line[3] -= $contig_len{$contig};
+		$split_line[4] -= $contig_len{$contig};
+		$annotations[$count][CONTIG] = $contig;     # contig
+		$annotations[$count][CATEGORY] = $category;       # category
+		$annotations[$count][TYPE] = $split_line[2];       # type
+		$annotations[$count][LOCUS] = $split_line[6];      # locus_id
+		$annotations[$count][GENOME] = $split_line[0];     # genome
+		$annotations[$count][LENGTH] = $split_line[5];     # length
+		$annotations[$count][DELETE] = 0;     # subsumed by another segment
+		if ($split_line[3] < $split_line[4]) {
+		    $annotations[$count][START] = $split_line[3]; # start
+		    $annotations[$count][STOP] = $split_line[4]; # stop
+		    $annotations[$count][INVERT] = 0;              # invert
+		} else {
+		    $annotations[$count][START] = $split_line[4]; # start
+		    $annotations[$count][STOP] = $split_line[3]; # stop
+		    $annotations[$count][INVERT] = 1;              # invert
+		}
+		if ((($annotations[$count][STOP] - $annotations[$count][START]) + 1) != $annotations[$count][LENGTH]) {
+		    die ("ERROR: start ($split_line[3]) and stop ($split_line[4]) coordinates are not consistent with anomaly length ($split_line[5])\n$line\n"); # die on non-normalized annotations going around the end of the contig
+		}
+	    }
 	} else {
-	    $annotations[$count][START] = $split_line[4]; # start
-	    $annotations[$count][STOP] = $split_line[3]; # stop
-	    $annotations[$count][INVERT] = 1;              # invert
+	    if ($split_line[3] < $split_line[4]) {
+		$annotations[$count][START] = $split_line[3]; # start
+		$annotations[$count][STOP] = $split_line[4]; # stop
+		$annotations[$count][INVERT] = 0;              # invert
+	    } else {
+		$annotations[$count][START] = $split_line[4]; # start
+		$annotations[$count][STOP] = $split_line[3]; # stop
+		$annotations[$count][INVERT] = 1;              # invert
+	    }
+	    if ((($annotations[$count][STOP] - $annotations[$count][START]) + 1) != $annotations[$count][LENGTH]) {
+		die ("ERROR: start ($split_line[3]) and stop ($split_line[4]) coordinates are not consistent with anomaly length ($split_line[5])\n$line\n"); # die on non-normalized annotations going around the end of the contig
+	    }
 	}
-	if ((($annotations[$count][STOP] - $annotations[$count][START]) + 1) != $annotations[$count][LENGTH]) {
-	    next; # for now ignore annotations going around the end of the contig - also gets rid of negative and zero length edges
-	}
-	$count++;
     }
-    $count--;
-    $#annotations = $count; #make sure that if last annotation was not supposed to be saved that it is tuncated off
     close(ANOM_FILE);
     
     if ($debug) {
-	print "DEBUG***annotations\n";
+	print STDERR "DEBUG***annotations\n";
 	for (my $j=0; $j < @annotations; $j++) {
-	    print ("$j: $annotations[$j][CONTIG]\t$annotations[$j][LOCUS]\t$annotations[$j][START]\t$annotations[$j][STOP]\t$annotations[$j][TYPE]\t$ordered[$j][CATEGORY]\t$annotations[$j][GENOME]\t$annotations[$j][INVERT]\n");
+	    print STDERR ("$j: $annotations[$j][CONTIG]\t$annotations[$j][LOCUS]\t$annotations[$j][START]\t$annotations[$j][STOP]\t$annotations[$j][TYPE]\t$ordered[$j][CATEGORY]\t$annotations[$j][GENOME]\t$annotations[$j][INVERT]\n");
 	}
     }
 
-    # sort attribute files by contig then by start, store in ordered data-structure. 
+    # sort anomalies by contig then by start, store in ordered data-structure. 
 
     @ordered = sort { $a->[CONTIG] cmp $b->[CONTIG] || $a->[START] <=> $b->[START] || $a->[CATEGORY] <=> $b->[CATEGORY] } @annotations; # sort on contig, then on start, then on type
 
@@ -323,21 +552,7 @@ while (my $line = <$infile>)  {
 	}
     }
 
-    # open file for extracted interesting sequences
-    my $out_fasta_seqs = $output . "_QUERY_SEQS.fasta";
-    my $file_fasta_seqs;
-    unless (open ($file_fasta_seqs, ">", $out_fasta_seqs) )  {
-	die ("cannot open file $out_fasta_seqs!\n");
-    }
-
-    # open file for extracted interesting sequences
-    my $out_ranges = $output . "_ranges.txt";
-    my $file_ranges;
-    unless (open ($file_ranges, ">", $out_ranges) )  {
-	die ("cannot open file $out_ranges!\n");
-    }
-
-    # resort attribute files by deleted or not, then by contig, then by start, store in ordered data-structure. 
+    # resort anomalies by deleted or not, then by contig, then by start, store in ordered data-structure. 
 
     @ordered = sort { $a->[DELETE] <=> $b->[DELETE] || $a->[CONTIG] cmp $b->[CONTIG] || $a->[START] <=> $b->[START] || $a->[CATEGORY] <=> $b->[CATEGORY] } @ordered; # sort on deleted or not, then on contig, then on start, then on type
 
@@ -347,6 +562,14 @@ while (my $line = <$infile>)  {
 	    print ("$j: $ordered[$j][CONTIG]\t$ordered[$j][LOCUS]\t$ordered[$j][START]\t$ordered[$j][STOP]\t$ordered[$j][TYPE]\t$ordered[$j][CATEGORY]\t$ordered[$j][GENOME]\t$ordered[$j][INVERT]\n");
 	}
     }
+
+    # open file for extracted interesting ranges
+    my $out_ranges = $output . "_ranges.txt";
+    my $file_ranges;
+    unless (open ($file_ranges, ">", $out_ranges) )  {
+	die ("cannot open file $out_ranges!\n");
+    }
+
 
     # output segments which are diverged, or at the ends of contigs
     my $range_beg = 0;
@@ -365,6 +588,8 @@ while (my $line = <$infile>)  {
     my $cur_type;
     my $cur_locus;
     my $diverged_type = "";
+    my $qc_index = 0;
+    my $first_qc_index = -1;
     for (my $i=0; $i < @ordered; $i++) {
 	if ($ordered[$i][DELETE]) {
 	    last;
@@ -382,7 +607,18 @@ while (my $line = <$infile>)  {
 	$seen_contig{$cur_contig} = 1;
 	if ($prev_contig ne $cur_contig) { # first segment for this contig
 	    if (($prev_contig ne "") && ($beg_diverged != 0)) {
-		&print_fasta($file_fasta_seqs, ($prev_contig . "_DIV_" . $beg_diverged . "_" . $end_diverged . "_" . $diverged_type), $contigs{$prev_contig}, $beg_diverged, $end_diverged);
+		$query_coords[$qc_index][QCNAME] = $prev_contig . "_DIV_" . $beg_diverged . "_" . $end_diverged . "_" . $diverged_type;
+		$query_coords[$qc_index][QCCTG] = $prev_contig;
+		$query_coords[$qc_index][QCBEG] = $beg_diverged;
+		$query_coords[$qc_index][QCEND] = $end_diverged;
+		$query_coords[$qc_index][QCDEL] = 0;
+		if (($first_qc_index >= 0) && ($query_coords[$first_qc_index][QCBEG] <= 0) && ($end_diverged > $contig_len{$prev_contig})) {
+		    $query_coords[$first_qc_index][QCDEL] = 1; # discard the off the beginning segment in favor of the off the end segment for ciruclar contigs
+		    $first_qc_index = -1;
+		    $query_coords[$qc_index][QCNAME] .= "_" . $query_coords[$first_qc_index][QCNAME];
+		    $query_coords[$qc_index][QCEND] = $contig_len{$prev_contig} + $query_coords[$qc_index][QCEND];
+		}
+		$qc_index++;
 		$beg_diverged = 0;
 		$end_diverged = 0;
 		$diverged_type = "";
@@ -390,13 +626,23 @@ while (my $line = <$infile>)  {
 	    if (($prev_contig ne "") && (($contig_len{$prev_contig} - $prev_end) > 20)) { # include unannotated contig ends > 20 bp
 		my $tmp_seq = substr($contigs{$prev_contig}, $prev_end, ($contig_len{$prev_contig} - $prev_end));
 		if ($tmp_seq !~ /NNNNN/) { # do not use sequences with gaps in them - perhaps should split on gaps instead
-		    &print_fasta($file_fasta_seqs, ($prev_contig . "_END_" . ($prev_end + 1) . "_" . $contig_len{$prev_contig}), $contigs{$prev_contig}, ($prev_end + 1), $contig_len{$prev_contig});
+		    $query_coords[$qc_index][QCNAME] = $prev_contig . "_END_" . ($prev_end + 1) . "_" . $contig_len{$prev_contig};
+		    $query_coords[$qc_index][QCCTG] = $prev_contig;
+		    $query_coords[$qc_index][QCBEG] = $prev_end;
+		    $query_coords[$qc_index][QCEND] = $contig_len{$prev_contig};
+		    $query_coords[$qc_index][QCDEL] = 0;
+		    $qc_index++;
 		}
 	    }
 	    if ($cur_beg > 20) { # include unannotated contig ends > 20 bp
 		my $tmp_seq = substr($contigs{$cur_contig}, 0, ($cur_beg - 1));
 		if ($tmp_seq !~ /NNNNN/) { # do not use sequences with gaps in them - perhaps should split on gaps instead
-		    &print_fasta($file_fasta_seqs, ($cur_contig . "_BEG_1_" . ($cur_beg - 1)), $contigs{$cur_contig}, 1, ($cur_beg - 1));
+		    $query_coords[$qc_index][QCNAME] = $cur_contig . "_BEG_1_" . ($cur_beg - 1);
+		    $query_coords[$qc_index][QCCTG] = $cur_contig;
+		    $query_coords[$qc_index][QCBEG] = 1;
+		    $query_coords[$qc_index][QCEND] = $cur_beg - 1;
+		    $query_coords[$qc_index][QCDEL] = 0;
+		    $qc_index++;
 		}
 	    }
 	    if (($prev_contig ne "") && ($range_beg != 0)) {
@@ -425,7 +671,15 @@ while (my $line = <$infile>)  {
 	
 	if (($cur_category == IDENTICAL) || ($cur_category == MAYBE) || ($cur_category == GAPPED)) {
 	    if ($beg_diverged != 0) {
-		&print_fasta($file_fasta_seqs, ($cur_contig . "_DIV_" . $beg_diverged . "_" . $end_diverged . "_" . $diverged_type), $contigs{$cur_contig}, $beg_diverged, $end_diverged);
+		if ($first_qc_index < 0) {
+		    $first_qc_index = $qc_index;
+		}
+		$query_coords[$qc_index][QCNAME] = $cur_contig . "_DIV_" . $beg_diverged . "_" . $end_diverged . "_" . $diverged_type;
+		$query_coords[$qc_index][QCCTG] = $cur_contig;
+		$query_coords[$qc_index][QCBEG] = $beg_diverged;
+		$query_coords[$qc_index][QCEND] = $end_diverged;
+		$query_coords[$qc_index][QCDEL] = 0;
+		$qc_index++;
 		$beg_diverged = 0;
 		$end_diverged = 0;
 		$diverged_type = "";
@@ -446,20 +700,37 @@ while (my $line = <$infile>)  {
 	$prev_category = $cur_category;
 	$prev_contig = $cur_contig;
     }
-    if (($prev_contig ne "") && ($beg_diverged != 0)) {
-	&print_fasta($file_fasta_seqs, ($prev_contig . "_DIV_" . $beg_diverged . "_" . $end_diverged . "_" . $diverged_type), $contigs{$prev_contig}, $beg_diverged, $end_diverged);
-    }
-    if (($prev_contig ne "") && (($contig_len{$prev_contig} - $prev_end) > 20)) { # include unannotated contig ends > 20 bp
-	my $tmp_seq = substr($contigs{$prev_contig}, $prev_end, ($contig_len{$prev_contig} - $prev_end));
-	if ($tmp_seq !~ /NNNNN/) { # do not use sequences with gaps in them - perhaps should split on gaps instead
-	    &print_fasta($file_fasta_seqs, ($prev_contig . "_END_" . ($prev_end + 1) . "_" . $contig_len{$prev_contig}), $contigs{$prev_contig}, ($prev_end + 1), $contig_len{$prev_contig});
-	}
-    }
     if (($prev_contig ne "") && ($range_beg != 0)) {
 	print $file_ranges "$prev_contig\t$range_beg\t$range_end\t$categories[$prev_category]\n";
     }
     if (($prev_contig ne "") && (($contig_len{$prev_contig} - $range_end) > 0)) { # include unannotated contig ends > 0 bp
 	print $file_ranges "$prev_contig\t", ($range_end + 1), "\t$contig_len{$prev_contig}\tunannotated\n";
+    }
+    close($file_ranges);
+    if (($prev_contig ne "") && ($beg_diverged != 0)) {
+	$query_coords[$qc_index][QCNAME] = $prev_contig . "_DIV_" . $beg_diverged . "_" . $end_diverged . "_" . $diverged_type;
+	$query_coords[$qc_index][QCCTG] = $prev_contig;
+	$query_coords[$qc_index][QCBEG] = $beg_diverged;
+	$query_coords[$qc_index][QCEND] = $end_diverged;
+	$query_coords[$qc_index][QCDEL] = 0;
+	if (($first_qc_index >= 0) && ($query_coords[$first_qc_index][QCBEG] <= 0) && ($end_diverged > $contig_len{$prev_contig})) {
+	    $query_coords[$first_qc_index][QCDEL] = 1; # discard the off the beginning segment in favor of the off the end segment for ciruclar contigs
+	    $first_qc_index = -1;
+	    $query_coords[$qc_index][QCNAME] .= "_" . $query_coords[$first_qc_index][QCNAME];
+	    $query_coords[$qc_index][QCEND] = $contig_len{$prev_contig} + $query_coords[$qc_index][QCEND];
+	}
+	$qc_index++;
+    }
+    if (($prev_contig ne "") && (($contig_len{$prev_contig} - $prev_end) > 20)) { # include unannotated contig ends > 20 bp
+	my $tmp_seq = substr($contigs{$prev_contig}, $prev_end, ($contig_len{$prev_contig} - $prev_end));
+	if ($tmp_seq !~ /NNNNN/) { # do not use sequences with gaps in them - perhaps should split on gaps instead
+	    $query_coords[$qc_index][QCNAME] = $prev_contig . "_END_" . ($prev_end + 1) . "_" . $contig_len{$prev_contig};
+	    $query_coords[$qc_index][QCCTG] = $prev_contig;
+	    $query_coords[$qc_index][QCBEG] = $prev_end;
+	    $query_coords[$qc_index][QCEND] = $contig_len{$prev_contig};
+	    $query_coords[$qc_index][QCDEL] = 0;
+	    $qc_index++;
+	}
     }
 
     # output entire contigs with no annotation
@@ -468,13 +739,61 @@ while (my $line = <$infile>)  {
 	    #print STDERR "not seen: $id\t$contig_len{$id}\n";
 	    my $tmp_seq = substr($contigs{$id}, 0, $contig_len{$id});
 	    if ($tmp_seq !~ /NNNNN/) { # do not use sequences with gaps in them - perhaps should split on gaps instead
-		&print_fasta($file_fasta_seqs, ($id . "_WHOLE_1_" . $contig_len{$id}), $contigs{$id}, 1, $contig_len{$id});
+		$query_coords[$qc_index][QCNAME] = $id . "_WHOLE_1_" . $contig_len{$id};
+		$query_coords[$qc_index][QCCTG] = $id;
+		$query_coords[$qc_index][QCBEG] = 1;
+		$query_coords[$qc_index][QCEND] = $contig_len{$id};
+		$query_coords[$qc_index][QCDEL] = 0;
+		$qc_index++;
 	    }
 	}
     }
 
+    # open file for extracted interesting sequences
+    my $out_fasta_seqs = $output . "_QUERY_SEQS.fasta";
+    my $file_fasta_seqs;
+    unless (open ($file_fasta_seqs, ">", $out_fasta_seqs) )  {
+	die ("cannot open file $out_fasta_seqs!\n");
+    }
+    # resort combined anomalies by deleted or not, then by contig, then by start, store in ordered data-structure. 
+
+    @query_coords = sort { $a->[QCDEL] <=> $b->[QCDEL] || $a->[QCCTG] cmp $b->[QCCTG] || $a->[QCBEG] <=> $b->[QCBEG] } @query_coords; # sort on deleted or not, then on contig, then on start
+
+    if ($debug) {
+	print "DEBUG***query_coords\n";
+	for (my $j=0; $j < @query_coords; $j++) {
+	    print ("$j: $query_coords[$j][QCCTG]\t$query_coords[$j][QCBEG]\t$query_coords[$j][QCEND]\t$query_coords[$j][QCNAME]\t$query_coords[$j][QCDEL]\n");
+	}
+    }
+
+    # output segments which are diverged, or at the ends of contigs
+    my $cur_name = "";
+    for (my $i=0; $i < @query_coords; $i++) {
+	if ($query_coords[$i][QCDEL]) {
+	    last;
+	}
+	$cur_contig = $query_coords[$i][QCCTG];
+	if (!defined $contigs{$cur_contig}) {
+	    die ("ERROR: contig $cur_contig is not defined here but should be\n");
+	}
+	$cur_beg = $query_coords[$i][QCBEG];
+	$cur_end = $query_coords[$i][QCEND];
+	$cur_name = $query_coords[$i][QCNAME];
+	if ($cur_beg > $contig_len{$cur_contig}) {
+	    die ("ERROR: contig $cur_contig($contig_len{$cur_contig}) has segment $cur_name with bad coordinates $cur_beg:$cur_end\n");
+	}
+	if (($cur_beg <= 0) || ($cur_end <= 0)) {
+	    die ("ERROR: contig $cur_contig has segment $cur_name with bad coordinates $cur_beg:$cur_end\n");
+	}
+	if ($cur_end > $contig_len{$cur_contig}) {
+	    $query_seqs{$cur_name} = substr($contigs{$cur_contig}, $cur_beg);
+	    $query_seqs{$cur_name} .= substr($contigs{$cur_contig}, 0, ($cur_end - $contig_len{$cur_contig}));
+	} else {
+	    $query_seqs{$cur_name} = substr($contigs{$cur_contig}, ($cur_beg - 1), (($cur_end - $cur_beg) + 1));
+	}
+	&print_fasta($file_fasta_seqs, $cur_name, $query_seqs{$cur_name}, 1, length($query_seqs{$cur_name}));
+    }
     close($file_fasta_seqs);
-    close($file_ranges);
 
     my $out_predictions = $output . "_CALLS";
     my $out_genome = $output . "_GENOME";
@@ -488,7 +807,7 @@ while (my $line = <$infile>)  {
     my $combined_btab = $output . "_COMBINED.btab";
     my $out_features = $output . "_FEATURES";
     my $makeblastdb = $blast_directory . "makeblastdb";
-    my $blastn = $blast_directory . "blastn";
+    my $blastn = $local_blast_directory . "blastn";
     my $cmd;
     `cp $genome $out_genome`;
     $cmd = "$makeblastdb -in $out_genome -dbtype nucl";
@@ -498,12 +817,16 @@ while (my $line = <$infile>)  {
     `rm $out_genome $out_genome_nsq $out_genome_nin $out_genome_nhr`;
     #$cmd = "$blastn -query $out_fasta_seqs -db $engdb -out $out_engdb_blast -task $blast_task -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\" -culling_limit 2";
     #`$cmd`;
-    $cmd = "$blastn -query $out_fasta_seqs -db $PGGdb -out $out_PGG_blast -task $blast_task -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\"";
+    #$cmd = "$blastn -query $out_fasta_seqs -db $PGGdb -out $out_PGG_blast -task $blast_task -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\"";
+    $cmd = "$medoid_blast_path -blastout $out_PGG_blast -genome $PGGdb -topology $pggdb_topology_file -blast_directory $blast_directory -ld_load_directory $ld_load_directory -medoids $out_fasta_seqs -blast_task $blast_task -filter_anomalies";
     `$cmd`;
     # read in anomalies file
     open(PGG_BLAST_FILE, "<", $out_PGG_blast) || die ("Couldn't open $out_PGG_blast for reading\n");
     $count = 0;
     while (my $line = <PGG_BLAST_FILE>) {
+	if ($line =~ /^#/) {
+	    next; # skip comment lines
+	}
 	chomp($line);
 	my @split_line = split(/\t/,$line);
 	my $qid = $pgg_blast_results[$count][QSEQID] = $split_line[0];         # query id
@@ -518,6 +841,7 @@ while (my $line = <$infile>)  {
 	my $evalue = $pgg_blast_results[$count][EVALUE] = $split_line[9];      # evalue
 	my $bitscore = $pgg_blast_results[$count][BITSCORE] = $split_line[10]; # bitscore
 	my $stitle = $pgg_blast_results[$count][STITLE] = $split_line[11];     # subject title
+	#print STDERR "$pid $qstart $qend $qlen\n";
 	if (($pid >= 95) && (($qstart <= 6) || ($qend >= ($qlen - 5)))) {
 	    if (($qstart <= 6) && ($qend >= ($qlen - 5))) {
 		if (defined $max_bitscore{$qid}{$sid}) {
@@ -564,7 +888,7 @@ while (my $line = <$infile>)  {
     close(PGG_BLAST_FILE);
     open(PGG_BLAST_FILE, ">", $out_PGG_blast) || die ("Couldn't open $out_PGG_blast for writing\n");
     open(CALLS_FILE, ">", $out_predictions) || die ("Couldn't open $out_predictions for writing\n");
-    print CALLS_FILE "Sample\tType\tQuery ID\t5pflank\t3pflank\tDeleted\tDeletion Length\tInserted\tInsertion Length\tSubject ID\t% Identity\tSubject Start\tSubject End\tQuery Start\tQuery End\n";
+    print CALLS_FILE "Sample\tType\tQuery ID\t5pflank\t3pflank\tDeleted\tDeletion Length\tInserted\tInsertion Length\tSubject ID\tPercent Identity\tSubject Start\tSubject End\tQuery Start\tQuery End\n";
     my $mutations = 0;
     my $deletions = 0;
     my $insertions = 0;
@@ -644,11 +968,11 @@ while (my $line = <$infile>)  {
 		$insertion = substr($query_seqs{$qid}, ($qstart - 1), (($qend - $qstart) + 1));
 		my $deletion = "";
 		if ($revcomp) {
-		    my $tmp_seq = substr($pggdb_contigs{$cur_sid}, ($send - 1), (($sstart - $send) + 1));
+		    my $tmp_seq = &circ_substr($pggdb_contigs{$cur_sid}, $send, $sstart, $pggdb_contig_len{$cur_sid});
 		    $deletion = reverse($tmp_seq);
 		    $deletion =~ tr/AGCTYRWSKMDVHBagctyrwskmdvhb/TCGARYWSMKHBDVtcgarywsmkhbdv/;
 		} else {
-		    $deletion = substr($pggdb_contigs{$cur_sid}, ($sstart - 1), (($send - $sstart) + 1));
+		    $deletion = &circ_substr($pggdb_contigs{$cur_sid}, $sstart, $send, $pggdb_contig_len{$cur_sid});
 		}
 		$mutations++;
 		my $del_len = length($deletion);
@@ -726,19 +1050,19 @@ while (my $line = <$infile>)  {
 		if ($revcomp) {
 		    my $tmp_seq = "";
 		    if ($del_start >= $del_end) {
-			$tmp_seq = substr($pggdb_contigs{$cur_sid}, ($del_end - 1), (($del_start - $del_end) + 1));
+			$tmp_seq = &circ_substr($pggdb_contigs{$cur_sid}, $del_end, $del_start, $pggdb_contig_len{$cur_sid});
 		    } else {
 			$tandem_duplication = 1;
-			$tmp_seq = substr($pggdb_contigs{$cur_sid}, ($del_start - 1), (($del_end - $del_start) + 1));
+			$tmp_seq = &circ_substr($pggdb_contigs{$cur_sid}, $del_start, $del_end, $pggdb_contig_len{$cur_sid});
 		    }
 		    $deletion = reverse($tmp_seq);
 		    $deletion =~ tr/AGCTYRWSKMDVHBagctyrwskmdvhb/TCGARYWSMKHBDVtcgarywsmkhbdv/;
 		} else {
 		    if ($del_start <= $del_end) {
-			$deletion = substr($pggdb_contigs{$cur_sid}, ($del_start - 1), (($del_end - $del_start) + 1));
+			$deletion = &circ_substr($pggdb_contigs{$cur_sid}, $del_start, $del_end, $pggdb_contig_len{$cur_sid});
 		    } else {
 			$tandem_duplication = 1;
-			$deletion = substr($pggdb_contigs{$cur_sid}, ($del_end - 1), (($del_start - $del_end) + 1));
+			$deletion = &circ_substr($pggdb_contigs{$cur_sid}, $del_end, $del_start, $pggdb_contig_len{$cur_sid});
 		    }
 		}
 		if (($deletion !~ /NNNNN/) && (length($insertion) <= 200000) && (length($deletion) <= 200000)) { # do not believe sequences with gaps in them or are really long
@@ -774,13 +1098,13 @@ while (my $line = <$infile>)  {
 		my $deletion = "";
 		if ($revcomp) {
 		    if ((($del_start - $del_end) + 1) > 0) {
-			my $tmp_seq = substr($pggdb_contigs{$cur_sid}, ($del_end - 1), (($del_start - $del_end) + 1));
+			my $tmp_seq = &circ_substr($pggdb_contigs{$cur_sid}, $del_end, $del_start, $pggdb_contig_len{$cur_sid});
 			$deletion = reverse($tmp_seq);
 			$deletion =~ tr/AGCTYRWSKMDVHBagctyrwskmdvhb/TCGARYWSMKHBDVtcgarywsmkhbdv/;
 		    }
 		} else {
 		    if ((($del_end - $del_start) + 1) > 0) {
-			$deletion = substr($pggdb_contigs{$cur_sid}, ($del_start - 1), (($del_end - $del_start) + 1));
+			$deletion = &circ_substr($pggdb_contigs{$cur_sid}, $del_start, $del_end, $pggdb_contig_len{$cur_sid});
 		    }
 		}
 		if (($deletion !~ /NNNNN/) && (length($insertion) <= 200000) && (length($deletion) <= 200000)) { # do not believe sequences with gaps in them or are really long

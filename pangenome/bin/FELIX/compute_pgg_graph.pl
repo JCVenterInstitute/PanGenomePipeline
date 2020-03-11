@@ -12,6 +12,8 @@ use Carp;
 use strict;
 use File::Compare;
 
+my $commandline = join (" ", @ARGV);
+print STDERR "$commandline\n";
 my $blast_directory = "";
 my $ld_load_directory = "";
 my $blast_task = "blastn";
@@ -171,7 +173,7 @@ if ($keep_divergent_alignments) {
 my $medoid_blast_path = "$bin_directory/medoid_blast_search.pl";
 my $pgg_annotate_path = "$bin_directory/pgg_annotate.pl";
 my $pgg_multifasta_path = "$bin_directory/pgg_edge_multifasta.pl -P $project ";
-my $filter_anomalies_path = "$bin_directory/filter_anomalies.pl";
+#my $filter_anomalies_path = "$bin_directory/filter_anomalies.pl";
 #############################################################################################
 
 sub bash_error_check {
@@ -214,15 +216,15 @@ sub compute
     }
     if ($blast_directory) {
 	$medoid_blast_path .= " -blast_directory $blast_directory ";
-	$filter_anomalies_path .= " -blast_directory $blast_directory ";
+	#$filter_anomalies_path .= " -blast_directory $blast_directory ";
     }	
     if ($blast_task) {
 	$medoid_blast_path .= " -blast_task $blast_task ";
-	$filter_anomalies_path .= " -blast_task $blast_task ";
+	#$filter_anomalies_path .= " -blast_task $blast_task ";
     }	
     if ($ld_load_directory) {
 	$medoid_blast_path .= " -ld_load_directory $ld_load_directory ";
-	$filter_anomalies_path .= " -ld_load_directory $ld_load_directory ";
+	#$filter_anomalies_path .= " -ld_load_directory $ld_load_directory ";
     }	
     if ($strip_version) {
 	$medoid_blast_path .= " -strip_version ";
@@ -270,6 +272,8 @@ sub compute
 	my $uniq_edge_name = "$genome_name" . "_uniq_edge.txt";
 	my $anomalies_name = "output/anomalies.txt";
 	my $anomalies_name_genome = "$genome_name" . "_anomalies.txt";
+	my $ce_sizes_name = "output/ce_sizes.txt";
+	my $ce_sizes_name_genome = "$genome_name" . "_ce_sizes.txt";
 	my $stats_name = "output/cluster_stats.txt";
 	my $stats_name_genome = "$genome_name" . "_cluster_stats.txt";
 	`paste matchtable.col $match_name > tmp.matchtable.col`;
@@ -279,7 +283,8 @@ sub compute
 	`mv tmp.pgg.col pgg.col;`;                                                         # rename file
 	if ($strip_version) {
 	    $pgg_multifasta_path .= " -V ";
-	}	
+	}
+	#`cp full_topology.txt PGG_topology.txt`; need this if doing filter_anomalies here
 	if ($duplicate) {
 	    `cat $topology_name | sed -e 's/\t/_ReDoDuP\t/' >> full_topology.txt`; 
 	    if ($debug) {print STDERR "\n/usr/bin/time -o tmp_cpu_stats -v $pgg_multifasta_path -l -T full_topology.txt -I $genome_name -B output -b $multifastadir -g combined_genome_list -m matchtable.col -a combined.att -p pgg.col -t $dup_genome_name -S -s $single_copy\n";}
@@ -297,22 +302,24 @@ sub compute
 	    `rm tmp_cpu_stats`;
 	    &bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $pgg_multifasta_path -l -T full_topology.txt -B output -b $multifastadir -g combined_genome_list -m matchtable.col -a combined.att -p pgg.col -t $genome_name -S -s $single_copy", $?, $!);
 	}
+	`mv $ce_sizes_name $ce_sizes_name_genome`;
 	`cat $anomalies_name $gene_ani_name $rearrange_name $uniq_clus_name $uniq_edge_name > $anomalies_name_genome`;
 	`rm combined.att pgg.col matchtable.col full_topology.txt combined_genome_list`;
 	
-	my $filter_genomes_name = "$genome_name" . "_filter_genomes.txt";
-	my $filter_features_name = "$genome_name" . "_FEATURES";
-	open(FGLIST, ">", $filter_genomes_name);
-	print FGLIST "$genome_name\t$genome_path\t$anomalies_name_genome\n";
-	close(FGLIST);
-	if ($debug) {print STDERR "\n/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -genomes $filter_genomes_name -engdb $engdb -nrdb $nrdb -pggdb $pggdb\n";}
-	`/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -genomes $filter_genomes_name -engdb $engdb -nrdb $nrdb -pggdb $pggdb`;
-	`echo "***$filter_anomalies_path***" >> $cpu_name`;
-	`cat tmp_cpu_stats >> $cpu_name`;
-	`rm tmp_cpu_stats`;
-	&bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -genomes $filter_genomes_name -engdb $engdb -nrdb $nrdb -pggdb $pggdb", $?, $!);
-	`paste $stats_name $filter_features_name > $stats_name_genome`;
-	`rm $filter_features_name $filter_genomes_name`;
+	#my $filter_genomes_name = "$genome_name" . "_filter_genomes.txt";
+	#my $filter_features_name = "$genome_name" . "_FEATURES";
+	#open(FGLIST, ">", $filter_genomes_name);
+	#print FGLIST "$genome_name\t$genome_path\t$topology_name\t$anomalies_name_genome\n";
+	#close(FGLIST);
+	#if ($debug) {print STDERR "\n/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -PGG_topology PGG_topology.txt -genomes $filter_genomes_name -engdb $engdb -nrdb $nrdb -pggdb $pggdb\n";}
+	#`/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -PGG_topology PGG_topology.txt -genomes $filter_genomes_name -engdb $engdb -nrdb $nrdb -pggdb $pggdb`;
+	#`echo "***$filter_anomalies_path***" >> $cpu_name`;
+	#`cat tmp_cpu_stats >> $cpu_name`;
+	#`rm tmp_cpu_stats`;
+	#&bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -PGG_topology PGG_topology.txt -genomes $filter_genomes_name -engdb $engdb -nrdb $nrdb -pggdb $pggdb", $?, $!);
+	#`paste $stats_name $filter_features_name > $stats_name_genome`;
+	`mv $stats_name $stats_name_genome`;
+	#`rm $filter_features_name $filter_genomes_name`;
 	`rm -r output multifasta`;
     }
     `rm $blast_name`;

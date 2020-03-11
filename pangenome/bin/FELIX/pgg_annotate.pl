@@ -10,6 +10,8 @@
 use FileHandle;
 use Getopt::Long;
 use strict;
+my $commandline = join (" ", @ARGV);
+print STDERR "$commandline\n";
 my %pgg_core_edges = ();   # key = pgg core edge, value = 1 just a place holder, these are edges between core clusters
 my @edges = ();            # the identifiers from the first column of the PGG file for each edge
 my %core_edges = ();       # key is from the first column of the PGG file for each edge, value = 1 just placeholder for being a core edge, these are edges with occurence >= core_thresh
@@ -35,6 +37,7 @@ my @cluster_hits = ();     # array of the number of blast matches in the reduced
 my %contigs = ();          # key = contig id, value = sequence of contig
 my %contig_len = ();       # key = contig id, value = length of contig
 my @medoids = ();          # index = cluster id, value = sequence of medoid
+my @medoids_len = ();      # index = cluster id, value = length of medoid
 my @medoids_anno = ();     # index = cluster id, value = annotation from fasta header of medoid
 my @core_clusters = ();    # index = cluster number, value = 1 if core 0 otherwise
 my $num_clusters = 0;      # this is the number of clusters in the pan-genome graph determined from the cluster_weights file
@@ -415,6 +418,9 @@ sub read_blast                                                       # For each 
 	} else {
 	    $inverted = 0;
 	}
+	if ($medoids_len[$qid] != $qlength) {
+	    die ("ERROR: medoid length form medoids file $medoids_path: $medoids_len[$qid] != medoid length from blast file $blast_file_path: $qlength\n");
+	}
 	$blast_matches_raw[$blast_match_num++] = { 'clus' => $qid,      # cluster number
 					       'ctg' => $sid,       # contig identifier
 					       'pid' => $pid,       # percent identity
@@ -583,12 +589,20 @@ sub process_blast_by_region
     my @tmp_scores = ();        # parallel array to tmp_columns to store scores for the matches in the column
     my @tmp_status = ();        # parallel array to tmp_columns to deisgnate if the current column contains a single copy core cluster
     print STDERR "Sorted by region building columns\n";
-    foreach my $i (0 .. $#reduced_by_region) {
-	my $ctg1 = $reduced_by_region[$i]->{'ctg'};
-	my $beg1 = $reduced_by_region[$i]->{'sbeg'};
-	my $end1 = $reduced_by_region[$i]->{'send'};
-	my $score1 = $reduced_by_region[$i]->{'bits'};
-	my $len1 = ($end1 - $beg1) + 1;
+    foreach my $i (0 .. ($#reduced_by_region + 1)) { #need to go one past the range to process the last set of potentially overlapping matches
+	my $ctg1;
+	my $beg1;
+	my $end1;
+	my $score1;
+	my $len1;
+	if ($i <= $#reduced_by_region) {
+	    #print STDERR "$reduced_by_region[$i]->{'clus'}_$i\n";
+	    $ctg1 = $reduced_by_region[$i]->{'ctg'};
+	    $beg1 = $reduced_by_region[$i]->{'sbeg'};
+	    $end1 = $reduced_by_region[$i]->{'send'};
+	    $score1 = $reduced_by_region[$i]->{'bits'};
+	    $len1 = ($end1 - $beg1) + 1;
+	}
 	if ($i > $last_overlap) {
 	    my $column = "";
 	    my $core = {'is_core' => 0}; # initialize to not containing a core
@@ -707,7 +721,7 @@ sub process_blast_by_region
 	    push @tmp_cores, $core;
 	    push @tmp_scores, $score;
 	    push @tmp_status, $status;
-	    if (($cur_ctg ne $ctg1) && ($cur_ctg ne "")) {
+	    if ((($cur_ctg ne $ctg1) && ($cur_ctg ne "")) || ($i > $#reduced_by_region)) {
 		$columns{$cur_ctg} = [ @tmp_columns ];
 		@tmp_columns = ();
 		$columns_core{$cur_ctg} = [ @tmp_cores ];
@@ -717,6 +731,9 @@ sub process_blast_by_region
 		$columns_status{$cur_ctg} = [ @tmp_status ];
 		@tmp_status = ();
 	    }
+	}
+	if ($i > $#reduced_by_region) {
+	    last; #we have already processed the last real data
 	}
 	$cur_ctg = $ctg1;
 	foreach my $j (($i + 1) .. $#reduced_by_region) {
@@ -746,13 +763,10 @@ sub process_blast_by_region
 	    }
 	}
     }
-    $columns{$cur_ctg} = [ @tmp_columns ];
-    $columns_core{$cur_ctg} = [ @tmp_cores ];
-    $columns_status{$cur_ctg} = [ @tmp_status ];
-    $column_scores{$cur_ctg} = [ @tmp_scores ];
     #foreach my $contig (keys %columns) {
+	#print STDERR "Contig: $contig\n";
 	#foreach my $i (0 .. $#{ $columns{$contig} }) {
-	    #print STDERR "COL$i:$columns{$contig}[$i]:$columns_status{$contig}->[$i]:$column_scores{$contig}[$i]->{'best_score'}\n";
+	    #print STDERR "COL$i:$columns{$contig}[$i]:$columns_status{$contig}[$i]:$column_scores{$contig}[$i]->{'best_score'}\n";
 	#}
     #}
     return;
@@ -1081,6 +1095,7 @@ sub read_medoids {  # read in the medoids for the PGG
 	$id =~ s/.*_//; # remove everything up to and including the last underscore
 	$sequence =~ s/[^a-zA-Z]//g; # remove any non-alphabet characters
 	$medoids[$id] = $sequence;
+	$medoids_len[$id] = length($sequence);
 	shift @fields;
 	shift @fields;
 	$medoids_anno[$id] = join(" ", @fields);
@@ -2016,6 +2031,7 @@ sub write_seq
 sub refine_alignments
 # refine the initial Blast alignments using Needleman-Wunsch
 {
+    #print STDERR "refine_alignments:\n";
     foreach my $contig (keys %columns) {
 	my $col_index = 0;
 	foreach my $column (@{ $columns{$contig} }) {
@@ -2030,6 +2046,7 @@ sub refine_alignments
 		my $sequence = "";
 		my $contig_sequence = "";
 		(my $clus, my $index) = split('_', $column);
+		#print STDERR "inv$reduced_by_region[$index]->{'sinv'}:qb$reduced_by_region[$index]->{'qbeg'}:qe$reduced_by_region[$index]->{'qend'}:ql$reduced_by_region[$index]->{'qlen'}:sb$reduced_by_region[$index]->{'sbeg'}:se$reduced_by_region[$index]->{'send'}:sl$reduced_by_region[$index]->{'ctglen'}\n";
 		if (!$reduced_by_region[$index]->{'sinv'} && ($reduced_by_region[$index]->{'qbeg'} != 1)) {
 		    $s_extra = ($reduced_by_region[$index]->{'sbeg'} - 1) + ($align_anchor_len - 1); # give $align_anchor_len bp to anchor the alignment but only really looking for the beginning need -1 for string beginning at 0 and 'beg" starting at 1
 		    if ($s_extra >= $reduced_by_region[$index]->{'ctglen'}) {$s_extra = $reduced_by_region[$index]->{'ctglen'} - 1;}
@@ -2191,17 +2208,26 @@ sub output_files
 	my $core_edge_start = 0;
 	my $core_edge_end = 0;
 	my $first_edge_end = 0;
+	my $first_node_end = 0;
 	my $edge_start = 0;
 	my $edge_end = 0;
 #	my $edge_all_start = 0;
 	my $core_start = 0;
 	my $core_end = 0;
+	my $core_region_clusters = "";
 	foreach my $column (@{ $columns{$contig} }) {
 	    if ($columns_status{$contig}->[$col_index] > 0) {
 		(my $clus, my $index) = split('_', $column);
 		my $beg_align = $reduced_by_region[$index]->{'sbeg'};
 		my $end_align = $reduced_by_region[$index]->{'send'};
-		#print STDERR "COL$col_index:$column:$columns_status{$contig}->[$col_index]:$reduced_by_region[$index]->{'sinv'}\n";
+		if ($medoids_len[$clus] != $reduced_by_region[$index]->{'qlen'}) {
+		    print STDERR "COL$col_index:$column:$columns_status{$contig}->[$col_index]:$reduced_by_region[$index]->{'sinv'}:$beg_align:$end_align\n";
+		    print STDERR "or: $clus_orient por: $prev_clus_orient for: $first_clus_orient nor: $next_clus_orient cor: $core_orient cpor: $prev_core_orient cnor: $next_core_orient es: $edge_start ee: $edge_end ces: $core_edge_start cee: $core_edge_end fee: $first_edge_end cs: $core_start ce: $core_end\n";
+		    print STDERR "BLAST($column_scores{$contig}[$col_index]->{'best_score'}) $column:$reduced_by_region[$index]->{'clus'}($cluster_size[$reduced_by_region[$index]->{'clus'}]):$reduced_by_region[$index]->{'ctg'}:$reduced_by_region[$index]->{'pid'}:$reduced_by_region[$index]->{'qbeg'}:$reduced_by_region[$index]->{'qend'}:$reduced_by_region[$index]->{'qlen'}:$reduced_by_region[$index]->{'sbeg'}:$reduced_by_region[$index]->{'send'}:$reduced_by_region[$index]->{'sinv'}:$reduced_by_region[$index]->{'ctglen'}:$reduced_by_region[$index]->{'bits'}:$reduced_by_region[$index]->{'keepclus'}:$reduced_by_region[$index]->{'keepctg'}:$reduced_by_region[$index]->{'weak'}\n";
+		    die ("ERROR: cluster $clus medoid length: $medoids_len[$clus] is not the same as from reduced_by_region array $index: $reduced_by_region[$index]->{'qlen'}\n");
+		}
+		#print STDERR "COL$col_index:$column:$columns_status{$contig}->[$col_index]:$reduced_by_region[$index]->{'sinv'}:$beg_align:$end_align\n";
+		#print STDERR "or: $clus_orient por: $prev_clus_orient for: $first_clus_orient nor: $next_clus_orient cor: $core_orient cpor: $prev_core_orient cnor: $next_core_orient es: $edge_start ee: $edge_end ces: $core_edge_start cee: $core_edge_end fee: $first_edge_end cs: $core_start ce: $core_end\n";
 		#print STDERR "BLAST($column_scores{$contig}[$col_index]->{'best_score'}) $column:$reduced_by_region[$index]->{'clus'}($cluster_size[$reduced_by_region[$index]->{'clus'}]):$reduced_by_region[$index]->{'ctg'}:$reduced_by_region[$index]->{'pid'}:$reduced_by_region[$index]->{'qbeg'}:$reduced_by_region[$index]->{'qend'}:$reduced_by_region[$index]->{'qlen'}:$reduced_by_region[$index]->{'sbeg'}:$reduced_by_region[$index]->{'send'}:$reduced_by_region[$index]->{'sinv'}:$reduced_by_region[$index]->{'ctglen'}:$reduced_by_region[$index]->{'bits'}:$reduced_by_region[$index]->{'keepclus'}:$reduced_by_region[$index]->{'keepctg'}:$reduced_by_region[$index]->{'weak'}\n";
 		if ($columns_status{$contig}->[$col_index] == 1) {
 		    $clus_orient = $clus . '_' . ($reduced_by_region[$index]->{'sinv'} ? '3' : '5');
@@ -2242,23 +2268,28 @@ sub output_files
 		    if ($first_clus_orient eq "") {
 			$first_clus_orient = $clus_orient;
 			$first_edge_end = $edge_end;
+			$first_node_end = $end_align;
 		    }
 		    if ($core_start > 0) {
 			if (((($cluster_size[$clus] * 100) / $num_genomes) >= $core_thresh) && (defined $core_edges{$current_edge})){
 			    $core_end = $end_align;
+			    $core_region_clusters .= ",$clus";
 			} else {
-			    print $coreclusfile "$target\t$contig\t$core_start\t$core_end\n";
+			    print $coreclusfile "$target\t$contig\t$core_start\t$core_end\t$core_region_clusters\n";
 			    if ((($cluster_size[$clus] * 100) / $num_genomes) >= $core_thresh) {
 				$core_start = $beg_align;
 				$core_end = $end_align;
+				$core_region_clusters = $clus;
 			    } else {
 				$core_start = 0;
 				$core_end = 0;
+				$core_region_clusters = "";
 			    }
 			}
 		    } elsif ((($cluster_size[$clus] * 100) / $num_genomes) >= $core_thresh) {
 			$core_start = $beg_align;
 			$core_end = $end_align;
+			$core_region_clusters = $clus;
 		    }
 		    my $ortholog = $target . "CL_" . $clus;
 		    $match_table[$clus] = $ortholog;
@@ -2283,9 +2314,10 @@ sub output_files
 		} else { # right now this should never happen
 		    die ("Encountered a gene call which is not an ortholog or paralog: COL$col_index:$column:$columns_status{$contig}->[$col_index]:$reduced_by_region[$index]->{'sinv'}\n");
 		    if ($core_start > 0) {
-			print $coreclusfile "$target\t$contig\t$core_start\t$core_end\n";
+			print $coreclusfile "$target\t$contig\t$core_start\t$core_end\t$core_region_clusters\n";
 			$core_start = 0;
 			$core_end = 0;
+			$core_region_clusters = "";
 		    }
 		    my $paralog = $target . "PL_" . $paralog_index . "_" . $clus;
 		    $clus_orient = $paralog . '_' . ($reduced_by_region[$index]->{'sinv'} ? '3' : '5');
@@ -2317,6 +2349,7 @@ sub output_files
 			if ($first_clus_orient eq "") {
 			    $first_clus_orient = $clus_orient;
 			    $first_edge_end = $edge_end;
+			    $first_node_end = $end_align;
 			}
 #		    }
 		    push @new_match_table, $paralog;
@@ -2339,11 +2372,22 @@ sub output_files
 	    $col_index++;
 	}
 	if ($core_start > 0) {
-	    print $coreclusfile "$target\t$contig\t$core_start\t$core_end\n";
+	    print $coreclusfile "$target\t$contig\t$core_start\t$core_end\t$core_region_clusters\n";
 	}
 	if (($is_circular{$contig}) && ($first_clus_orient ne "") && ($prev_clus_orient ne "")) {
-	    $edge_end = $contig_len{$contig} + $first_edge_end;
+	    #print STDERR "Unique edge across end of circular contig: $edge_start $first_edge_end $first_node_end $edge_end $target $contig($contig_len{$contig}) ($prev_clus_orient,$first_clus_orient)\n";
+	    if ($first_node_end > $first_edge_end) {
+		if ($edge_start <= $contig_len{$contig}) {
+		    $edge_end = $contig_len{$contig} + $first_edge_end;
+		} else {
+		    $edge_start -= $contig_len{$contig};
+		    $edge_end = $first_edge_end;
+		}
+	    } else {
+		$edge_end = $first_edge_end;
+	    }
 	    my $tmp_len = ($edge_end - $edge_start) + 1;
+	    #print STDERR "Unique edge across end of circular contig: $edge_start $first_edge_end $edge_end $tmp_len $target $contig($contig_len{$contig}) ($prev_clus_orient,$first_clus_orient)\n";
 	    $hash_edges{'(' . $prev_clus_orient . ',' . $first_clus_orient . ')'} = "$target\t$contig\tuniq_edge\t$edge_start\t$edge_end\t$tmp_len\t";
 	    $hash_edges{'(' . $first_clus_orient . ',' . $prev_clus_orient . ')'} = "$target\t$contig\tuniq_edge\t$edge_end\t$edge_start\t$tmp_len\t";
 	}
@@ -2667,6 +2711,80 @@ sub check_overlaps
 			}
 		    } else {
 		    }
+		}
+	    }
+	}
+	if ($is_circular{$contig}) {
+	    #check for overlap between first and last match on a contig for circular contigs
+	    #print STDERR "COL0:$columns{$contig}[0]:$columns_status{$contig}->[0]:$column_scores{$contig}[0]->{'best_score'}\n";
+	    (my $col1) = split(';', $columns{$contig}[0]);
+	    (my $clus1, my $index1) = split('_', $col1);
+	    my $beg1 = $reduced_by_region[$index1]->{'sbeg'} + $contig_len{$contig};
+	    my $end1 = $reduced_by_region[$index1]->{'send'} + $contig_len{$contig};
+	    my $bits1 = $reduced_by_region[$index1]->{'bits'};
+	    my $len1 = ($end1 - $beg1) + 1;
+	    #print STDERR "$col1:$clus1:$index1:$beg1:$end1\n";
+	    my $last_col = $#{ $columns{$contig} };
+	    (my $col2) = split(';', $columns{$contig}[$last_col]);
+	    (my $clus2, my $index2) = split('_', $col2);
+	    my $beg2 = $reduced_by_region[$index2]->{'sbeg'};
+	    my $end2 = $reduced_by_region[$index2]->{'send'};
+	    my $bits2 = $reduced_by_region[$index2]->{'bits'};
+	    my $len2 = ($end2 - $beg2) + 1;
+	    my $overlap;
+	    if ($end1 < $beg2) {
+		$overlap = 0;
+	    } elsif ($end2 < $beg1) {
+		$overlap = 0;
+	    } elsif ($beg1 < $beg2) {
+		if ($end2 < $end1) {
+		    $overlap = $len2;
+		} else {
+		    $overlap = ($end1 - $beg2) + 1;
+		}
+	    } else {
+		if ($end1 < $end2) {
+		    $overlap = $len1;
+		} else {
+		    $overlap = ($end2 - $beg1) + 1;
+		}
+	    }
+	    my $cov1 = $overlap / $len1;
+	    my $cov2 = $overlap / $len2;
+	    my $maxcov = $cov1 > $cov2 ? $cov1 : $cov2;
+	    if (($maxcov > 0.5) || ($overlap >= 50)) {
+		#print STDERR "OCOL$last_col:$overlap:$maxcov:$col2:$clus2:$index2:$beg2:$end2\n";
+		if (($columns_status{$contig}->[0] <= 0) && ($columns_status{$contig}->[$last_col] > 0)) {
+		    $columns_status{$contig}->[0] = -1;
+		} elsif (($columns_status{$contig}->[$last_col] <= 0) && ($columns_status{$contig}->[0] > 0)) {
+		    $columns_status{$contig}->[$last_col] = -1;
+		} elsif (($columns_status{$contig}->[0] > 0) && ($columns_status{$contig}->[$last_col] > 0)) {
+		    if ($maxcov > 0.5) {
+			if ($columns_status{$contig}->[0] > $columns_status{$contig}->[$last_col]) {
+			    $columns_status{$contig}->[0] = -1;
+			} elsif ($columns_status{$contig}->[0] < $columns_status{$contig}->[$last_col]) {
+			    $columns_status{$contig}->[$last_col] = -1;
+			} elsif ($column_scores{$contig}[0]->{'best_score'} < $column_scores{$contig}[$last_col]->{'best_score'}) {
+			    $columns_status{$contig}->[0] = -1;
+			} elsif ($column_scores{$contig}[0]->{'best_score'} > $column_scores{$contig}[$last_col]->{'best_score'}) {
+			    $columns_status{$contig}->[$last_col] = -1;
+			} elsif ($bits1 > $bits2) {
+			    $columns_status{$contig}->[$last_col] = -1;
+			} elsif ($bits2 > $bits1) {
+			    $columns_status{$contig}->[0] = -1;
+			} elsif ($len1 > $len2) {
+			    $columns_status{$contig}->[$last_col] = -1;
+			} else {
+			    $columns_status{$contig}->[0] = -1;
+			}
+		    }
+		} elsif (($columns_status{$contig}->[0] == 0) && ($columns_status{$contig}->[$last_col] == 0)) {
+		    if ($column_scores{$contig}[0]->{'best_score'} < $column_scores{$contig}[$last_col]->{'best_score'}) {
+			$columns_status{$contig}->[0] = -1;
+		    } else {
+			$columns_status{$contig}->[$last_col] = -1;
+		    }
+		} else {
 		}
 	    }
 	}
