@@ -240,8 +240,14 @@ sub launch_grid_job {
 
     my ( $name, $project_code, $working_dir, $shell_script, $stdoutdir, $stderrdir, $queue, $job_array_max ) = @_;
 
-    my $qsub_command = "qsub -V -P $project_code -o $stdoutdir -e $stderrdir -wd $working_dir -r n -N $name";
-    $qsub_command .= " -l $queue" if $queue;
+    my $qsub_command = "qsub -V -o $stdoutdir -e $stderrdir -r n -N $name";
+    if ($queue eq "NONE") {
+	$qsub_command .= " -w $working_dir";
+    } else {
+	$qsub_command .= " -wd $working_dir";
+    }
+    $qsub_command .= " -P $project_code" if ($project_code && ($project_code ne "NONE"));
+    $qsub_command .= " -l $queue" if ($queue && ($queue ne "NONE"));
     $qsub_command .= " -t 1-$job_array_max" if $job_array_max;
 
     $qsub_command .= " $shell_script";
