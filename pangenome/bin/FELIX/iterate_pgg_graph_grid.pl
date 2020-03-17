@@ -13,6 +13,7 @@ use Carp;
 use strict;
 use File::Compare;
 
+my $qsub_job_num = 0;
 my $commandline = join (" ", @ARGV);
 print STDERR "$commandline\n";
 my $blast_directory = "";
@@ -205,7 +206,16 @@ sub launch_grid_job {
     $qsub_command .= " -l $queue" if ($queue && ($queue ne "NONE"));
     $qsub_command .= " -t 1-$job_array_max" if $job_array_max;
 
-    $qsub_command .= " $shell_script";
+    #$qsub_command .= " $shell_script";
+    $qsub_job_num++;
+    my $qsub_exec = "TMP_" . $qsub_job_num . "_" . $name;
+    unless (open(OUT_QSUB, ">", $qsub_exec)) {
+	die ("cannot open qsub executable file $qsub_exec!\n");
+    }
+    print OUT_QSUB $shell_script;
+    close(OUT_QSUB);
+    `chmod +x $qsub_exec`;
+    $qsub_command .= " $qsub_exec";
 
     my $response = `$qsub_command`;
     my $job_id;
