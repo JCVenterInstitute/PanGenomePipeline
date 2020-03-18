@@ -198,7 +198,7 @@ sub launch_grid_job {
 
     my $qsub_command = "qsub -V -o $stdoutdir -e $stderrdir -r n -N $name";
     if ($queue eq "NONE") {
-	$qsub_command .= " -w $working_dir";
+	$qsub_command .= " -d $working_dir";
     } else {
 	$qsub_command .= " -wd $working_dir";
     }
@@ -208,9 +208,12 @@ sub launch_grid_job {
 
     #$qsub_command .= " $shell_script";
     $qsub_job_num++;
-    my $qsub_exec = "TMP_" . $qsub_job_num . "_" . $name;
+    my $qsub_exec = $cwd . "/TMP_" . $qsub_job_num . "_" . $name;
     unless (open(OUT_QSUB, ">", $qsub_exec)) {
 	die ("cannot open qsub executable file $qsub_exec!\n");
+    }
+    if (substr($shell_script, 0, 1) ne "/") {
+	$shell_script = $cwd . "/$shell_script";
     }
     print OUT_QSUB $shell_script;
     close(OUT_QSUB);
@@ -225,6 +228,7 @@ sub launch_grid_job {
         $job_id = $1;
 
     } else {
+	&bash_error_check($qsub_command, $?, $!);
         die "Problem submitting the job!: $response";
     }
 
