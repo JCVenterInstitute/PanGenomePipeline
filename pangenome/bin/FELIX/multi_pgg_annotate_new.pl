@@ -48,6 +48,8 @@ my $keep_divergent_alignments = "";
 my $input_multifastadir = "";
 my $cwd = getcwd;
 my %old_genomes = ();
+my $no_MSA = 0;
+my $no_filter_anomalies = 0;
 my $less_memory = 0;
 my $max_grid_jobs = 50;
 my $engdb = "";
@@ -82,6 +84,8 @@ GetOptions('genomes=s' => \ $genome_list_path,
 	   'qsub_queue=s' => \ $qsub_queue,
 	   'max_grid_jobs=i' => \ $max_grid_jobs,
 	   'strip_version' => \ $strip_version,
+	   'no_MSA' => \ $no_MSA,
+	   'no_filter_anomalies' => \ $no_filter_anomalies,
 	   'less_memory' => \ $less_memory,
 	   'help' => \ $help,
 	   'debug' => \ $debug);
@@ -147,6 +151,8 @@ GetOptions('genomes=s' => \ genome_list_path,
 	   'qsub_queue=s' => \ qsub_queue,
 	   'max_grid_jobs=i' => \ max_grid_jobs,
 	   'strip_version' => \ strip_version,
+	   'no_MSA' => \ no_MSA,
+	   'no_filter_anomalies' => \ no_filter_anomalies,
 	   'less_memory' => \ less_memory,
 	   'help' => \ help,
 	   'debug' => \ debug);
@@ -223,7 +229,7 @@ my $filter_anomalies_path = "$bin_directory/filter_anomalies.pl";
 sub bash_error_check {
     my ($command, $error, $message) = @_;
     if (!$error) {
-	return;
+	return(0);
     }
     print STDERR "$command FAILED\n";
     if ($error == -1) {
@@ -233,7 +239,7 @@ sub bash_error_check {
     } else {
 	printf STDERR "child exited with value %d\n", $error >> 8;
     }
-    return;
+    return(1);
 }
 
 sub launch_grid_job {
@@ -246,6 +252,7 @@ sub launch_grid_job {
 	$qsub_command .= " -d $working_dir";
     } else {
 	$qsub_command .= " -wd $working_dir";
+	$qsub_command .= " -terse";
     }
     $qsub_command .= " -P $project_code" if ($project_code && ($project_code ne "NONE"));
     $qsub_command .= " -l $queue" if ($queue && ($queue ne "NONE"));
@@ -265,16 +272,10 @@ sub launch_grid_job {
     `chmod +x $qsub_exec`;
     $qsub_command .= " $qsub_exec";
 
-    my $response = `$qsub_command`;
-    my $job_id;
+    my $job_id = `$qsub_command`;
 
-    if ($response =~ (/Your job (\d+) \(.*\) has been submitted/) || $response =~ (/Your job-array (\d+)\./)) {
-
-        $job_id = $1;
-
-    } else {
-	&bash_error_check($qsub_command, $?, $!);
-        die "Problem submitting the job!: $response";
+    if (&bash_error_check($qsub_command, $?, $!)) {
+        die "Problem submitting the job!: $job_id\n$qsub_command\n$shell_script\n$qsub_exec\n";
     }
 
     return $job_id;
@@ -460,6 +461,12 @@ sub compute
     if ($less_memory) {
 	$compute_path .= " -less_memory ";
     }	
+    if ($no_MSA) {
+	$compute_path .= " -no_MSA ";
+    }	
+    if ($no_filter_anomalies) {
+	$compute_path .= " -no_filter_anomalies ";
+    }	
     for (my $j=0; $j <= $#genomes; $j++)
     {
 	my $identifier = $genomes[$j][0];                                                 # get genome name
@@ -614,7 +621,9 @@ sub compute
     `echo "SplitGene" > SplitGene`;
     `echo "wgsANI" > wgs_ANI`;
     my $filter_genomes_file = "FILTER_GENOMES_FILE";
-    open(FGLIST, ">", $filter_genomes_file);
+    if (!$no_filter_anomalies) {
+	open(FGLIST, ">", $filter_genomes_file);
+    }
     for (my $j=0; $j <= $#genomes; $j++)
     {
 	if ($debug) {print STDERR "Genome $j\n\n";}
@@ -643,7 +652,11 @@ sub compute
 	my $topology_name = "$identifier" . "_topology.txt";
 	my $genome_path = $genomes[$j][1];
 	my $anomalies_name_genome = "$identifier" . "_anomalies.txt";
-	print FGLIST "$identifier\t$genome_path\t$topology_name\t$anomalies_name_genome\n";
+	if (!$no_filter_anomalies) {
+	    print FGLIST "$identifier\t$genome_path\t$topology_name\t$anomalies_name_genome\n";
+	} else {
+	    `rm $topology_name`;
+	}
 	if ($debug) {print STDERR "matchname: $match_name \t pggname: $pgg_name \n";}
 	die ("$match_name doesn't exist \n") unless (-e $match_name);
 	die ("$pgg_name doesn't exist \n") unless (-e $pgg_name);
@@ -677,39 +690,41 @@ sub compute
 	`paste stats.tail.col1  uniq_clus stats.tail.col345 uniq_edge stats.tail.col7plus >> PGG_stats.txt`;
 	`rm stats.tail stats.tail.col1 stats.tail.col345 stats.tail.col7plus uniq_clus uniq_edge $stats_name`;
     }
-    close(FGLIST);
-    if ($blast_directory) {
-	$filter_anomalies_path .= " -blast_directory $blast_directory ";
-    }	
-    if ($blast_task) {
-	$filter_anomalies_path .= " -blast_task $blast_task ";
-    }	
-    if ($ld_load_directory) {
-	$filter_anomalies_path .= " -ld_load_directory $ld_load_directory ";
-    }	
-    if ($strip_version) {
-	$filter_anomalies_path .= " -strip_version ";
-    }
-    if ($debug) {print STDERR "\n/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -PGG_topology $topology_file -genomes $filter_genomes_file -engdb $engdb -nrdb $nrdb -pggdb $pggdb\n";}
-    `/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -PGG_topology $topology_file -genomes $filter_genomes_file -engdb $engdb -nrdb $nrdb -pggdb $pggdb`;
-    `echo "***$filter_anomalies_path***" >> overhead_cpustats`;
-    `cat tmp_cpu_stats >> overhead_cpustats`;
-    `rm tmp_cpu_stats`;
-    &bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -PGG_topology $topology_file -genomes $filter_genomes_file -engdb $engdb -nrdb $nrdb -pggdb $pggdb", $?, $!);
-    `rm $filter_genomes_file`;
-    for (my $j=0; $j <= $#genomes; $j++)
-    {
-	if ($debug) {print STDERR "Genome $j\n\n";}
-	my $identifier = $genomes[$j][0];                                                 # get genome name
-	my $filter_features_name = "$identifier" . "_FEATURES";
-	my $topology_name = "$identifier" . "_topology.txt";
-	if ($debug) {print STDERR "Genome $identifier $filter_features_name \n\n";}
-	if ($j == 0) {
-	    `cat $filter_features_name > ALL_FILTER_FEATURES`;
-	} else {
-	    `tail -n 1 $filter_features_name >> ALL_FILTER_FEATURES`;                                                      # generate file 2
+    if (!$no_filter_anomalies) {
+	close(FGLIST);
+	if ($blast_directory) {
+	    $filter_anomalies_path .= " -blast_directory $blast_directory ";
+	}	
+	if ($blast_task) {
+	    $filter_anomalies_path .= " -blast_task $blast_task ";
+	}	
+	if ($ld_load_directory) {
+	    $filter_anomalies_path .= " -ld_load_directory $ld_load_directory ";
+	}	
+	if ($strip_version) {
+	    $filter_anomalies_path .= " -strip_version ";
 	}
-	`rm $topology_name`;
+	if ($debug) {print STDERR "\n/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -PGG_topology $topology_file -genomes $filter_genomes_file -engdb $engdb -nrdb $nrdb -pggdb $pggdb\n";}
+	`/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -PGG_topology $topology_file -genomes $filter_genomes_file -engdb $engdb -nrdb $nrdb -pggdb $pggdb`;
+	`echo "***$filter_anomalies_path***" >> overhead_cpustats`;
+	`cat tmp_cpu_stats >> overhead_cpustats`;
+	`rm tmp_cpu_stats`;
+	&bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -PGG_topology $topology_file -genomes $filter_genomes_file -engdb $engdb -nrdb $nrdb -pggdb $pggdb", $?, $!);
+	`rm $filter_genomes_file`;
+	for (my $j=0; $j <= $#genomes; $j++)
+	{
+	    if ($debug) {print STDERR "Genome $j\n\n";}
+	    my $identifier = $genomes[$j][0];                                                 # get genome name
+	    my $filter_features_name = "$identifier" . "_FEATURES";
+	    my $topology_name = "$identifier" . "_topology.txt";
+	    if ($debug) {print STDERR "Genome $identifier $filter_features_name \n\n";}
+	    if ($j == 0) {
+		`cat $filter_features_name > ALL_FILTER_FEATURES`;
+	    } else {
+		`tail -n 1 $filter_features_name >> ALL_FILTER_FEATURES`;                                                      # generate file 2
+	    }
+	    `rm $topology_name`;
+	}
     }
     if ($duplicate) {
 	`paste PGG_stats.txt gene_ANI rearrange SplitGene wgs_ANI ALL_FILTER_FEATURES | sed -e 's/_ReDoDuP\t/\t/' > tmp.PGG_stats.txt`;                             #add in all columns that contain their own header (new columns)

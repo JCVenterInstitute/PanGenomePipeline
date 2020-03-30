@@ -178,7 +178,7 @@ my $compute_new_clusters_path = "$bin_directory/compute_new_clusters.pl";
 sub bash_error_check {
     my ($command, $error, $message) = @_;
     if (!$error) {
-	return;
+	return(0);
     }
     print STDERR "$command FAILED\n";
     if ($error == -1) {
@@ -188,7 +188,7 @@ sub bash_error_check {
     } else {
 	printf STDERR "child exited with value %d\n", $error >> 8;
     }
-    return;
+    return(1);
 }
 
 sub launch_grid_job {
@@ -201,6 +201,7 @@ sub launch_grid_job {
 	$qsub_command .= " -d $working_dir";
     } else {
 	$qsub_command .= " -wd $working_dir";
+	$qsub_command .= " -terse";
     }
     $qsub_command .= " -P $project_code" if ($project_code && ($project_code ne "NONE"));
     $qsub_command .= " -l $queue" if ($queue && ($queue ne "NONE"));
@@ -220,16 +221,10 @@ sub launch_grid_job {
     `chmod +x $qsub_exec`;
     $qsub_command .= " $qsub_exec";
 
-    my $response = `$qsub_command`;
-    my $job_id;
+    my $job_id = `$qsub_command`;
 
-    if ($response =~ (/Your job (\d+) \(.*\) has been submitted/) || $response =~ (/Your job-array (\d+)\./)) {
-
-        $job_id = $1;
-
-    } else {
-	&bash_error_check($qsub_command, $?, $!);
-        die "Problem submitting the job!: $response";
+    if (&bash_error_check($qsub_command, $?, $!)) {
+        die "Problem submitting the job!: $job_id\n$qsub_command\n$shell_script\n$qsub_exec\n";
     }
 
     return $job_id;
@@ -299,9 +294,13 @@ sub parse_response {
 sub do_core_list
 # run single_copy_core.pl to generate input for pgg_annotate.pl
 {
-    if ($debug) {print STDERR "\nperl $single_copy_path -s $weights -p $paralogs -c $id > $single_copy\n";}
-    `perl $single_copy_path -s $weights -p $paralogs -c $id > $single_copy 2>> $logfile`;
-    &bash_error_check("perl $single_copy_path -s $weights -p $paralogs -c $id > $single_copy 2>> $logfile", $?, $!);
+    if (-e $paralogs) {
+	if ($debug) {print STDERR "\nperl $single_copy_path -s $weights -p $paralogs -c $id > $single_copy\n";}
+	`perl $single_copy_path -s $weights -p $paralogs -c $id > $single_copy 2>> $logfile`;
+	&bash_error_check("perl $single_copy_path -s $weights -p $paralogs -c $id > $single_copy 2>> $logfile", $?, $!);
+    } else {
+	die ("ERROR: paralogs file: $paralogs does not exist!\n");
+    }
 }
 #############################################################################################
 sub do_neighbors

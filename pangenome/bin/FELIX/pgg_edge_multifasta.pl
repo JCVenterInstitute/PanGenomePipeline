@@ -2320,7 +2320,11 @@ sub write_single_cores                                               # Read in t
 	die ("cannot open cores file: $basedir/single_copy_clusters.txt!\n");
     }
     foreach my $clus (sort {$a <=> $b} (keys %single_copy_core)) {
-	print OUT_CORES "$renumber[$clus]\n";
+	if ($renumber[$clus] != 0) {
+	    print OUT_CORES "$renumber[$clus]\n";
+	} else {
+	    print STDERR "WARNING: single copy core cluster $clus was not annotated in any genome and hence reduced away!\n";
+	}
 	#print STDERR "$clus:$renumber[$single_copy_core{$clus}]\n" if ($DEBUG);
     }
     close(OUT_CORES);
@@ -2329,7 +2333,7 @@ sub write_single_cores                                               # Read in t
 sub bash_error_check {
     my ($command, $error, $message) = @_;
     if (!$error) {
-	return;
+	return(0);
     }
     print STDERR "$command FAILED\n";
     if ($error == -1) {
@@ -2339,7 +2343,7 @@ sub bash_error_check {
     } else {
 	printf STDERR "child exited with value %d\n", $error >> 8;
     }
-    return;
+    return(1);
 }
 
 sub launch_grid_job {
@@ -2352,6 +2356,7 @@ sub launch_grid_job {
 	$qsub_command .= " -d $working_dir";
     } else {
 	$qsub_command .= " -wd $working_dir";
+	$qsub_command .= " -terse";
     }
     $qsub_command .= " -P $project_code" if ($project_code && ($project_code ne "NONE"));
     $qsub_command .= " -l $queue" if ($queue && ($queue ne "NONE"));
@@ -2371,16 +2376,10 @@ sub launch_grid_job {
     `chmod +x $qsub_exec`;
     $qsub_command .= " $qsub_exec";
 
-    my $response = `$qsub_command`;
-    my $job_id;
+    my $job_id = `$qsub_command`;
 
-    if ($response =~ (/Your job (\d+) \(.*\) has been submitted/) || $response =~ (/Your job-array (\d+)\./)) {
-
-        $job_id = $1;
-
-    } else {
-	&bash_error_check($qsub_command, $?, $!);
-        die "Problem submitting the job!: $response";
+    if (&bash_error_check($qsub_command, $?, $!)) {
+        die "Problem submitting the job!: $job_id\n$qsub_command\n$shell_script\n$qsub_exec\n";
     }
 
     return $job_id;
