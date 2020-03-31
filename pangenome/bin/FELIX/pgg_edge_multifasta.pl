@@ -2393,6 +2393,9 @@ sub wait_for_grid_jobs {
     my ( $queue, $name, $number, $job_ids ) = @_;
     my $size = scalar( keys %{$job_ids} );
 
+    if ($queue eq "NONE") {
+	sleep 300; # need to wait to make sure qstat knows about all submitted jobs
+    }
     while ( $size > $number ) {
 	sleep 60;
 	if ($queue eq "NONE") {
