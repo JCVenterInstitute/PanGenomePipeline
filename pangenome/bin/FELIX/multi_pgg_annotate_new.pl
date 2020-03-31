@@ -286,20 +286,46 @@ sub launch_grid_job {
 sub wait_for_grid_jobs {
     # Given a hash of job ids wait until hash is reduced to number of jobs specified and return number of jobs; name is the job name
     
-    my ( $name, $number, $job_ids ) = @_;
+    my ( $queue, $name, $number, $job_ids ) = @_;
     my $size = scalar( keys %{$job_ids} );
 
     while ( $size > $number ) {
 	sleep 60;
-	my $response = `qacct -j $name 2>&1`;
-	&parse_response( $response, $job_ids );
+	if ($queue eq "NONE") {
+	    my $response = `qstat 2>&1`;
+	    &parse_response_qstat( $response, $name, $job_ids );
+	} else {
+	    my $response = `qacct -j $name 2>&1`;
+	    &parse_response_qacct( $response, $job_ids );
+	}
 	$size = scalar( keys %{$job_ids} );
     }
     return ($size);
 }
 
+sub parse_response_qstat {
+# NOT INTENDED TO BE CALLED DIRECTLY.
+# Given a qstat response, delete a job id from the loop-control-hash when
+# a statisfactory state is seen.
 
-sub parse_response {
+    my ( $response, $job_name, $job_ids ) = @_;
+    my @qstat_array = split ( /\n/, $response );
+    my %running = ();
+    foreach my $line (@qstat_array) {
+	my @fields = split ( /\s+/, $line );
+	if (($fields[1] eq $job_name) && ($fields[4] ne "C")) {
+	    $running{$fields[0]} = $fields[4];
+	}
+    }
+    foreach my $job_id (keys %{ $job_ids }) {
+	if (! ( defined $running{$job_id} )) {
+	    delete ( $job_ids->{$job_id} )
+	}
+    }
+    return;
+}
+
+sub parse_response_qacct {
 # NOT INTENDED TO BE CALLED DIRECTLY.
 # Given a qacct response, delete a job id from the loop-control-hash when
 # a statisfactory state is seen.
@@ -514,10 +540,10 @@ sub compute
 	$job_ids{&launch_grid_job($job_name, $project, $working_dir, $shell_script, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
 	$num_jobs++;
 	if ($num_jobs >= $max_grid_jobs) {
-	    $num_jobs = &wait_for_grid_jobs($job_name, ((($max_grid_jobs - 10) > 0) ? ($max_grid_jobs - 10) : 0), \%job_ids);
+	    $num_jobs = &wait_for_grid_jobs($qsub_queue, $job_name, ((($max_grid_jobs - 10) > 0) ? ($max_grid_jobs - 10) : 0), \%job_ids);
 	}
     }
-    &wait_for_grid_jobs($job_name, 0, \%job_ids);
+    &wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
     `rm -r TMP_*`;
     if ($debug) {print STDERR "removed TMP directories\n";}
     
@@ -590,7 +616,7 @@ sub compute
 		last; # no failed jobs
 	    }
 	    if ($debug) {print STDERR "$num_jobs relaunched\n";}
-	    &wait_for_grid_jobs($job_name, 0, \%job_ids);
+	    &wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
 	    `rm -r TMP_*`;
 	    if ($debug) {print STDERR "removed resubmitted TMP directories\n";}
 	}
