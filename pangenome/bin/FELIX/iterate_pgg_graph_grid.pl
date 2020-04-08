@@ -222,6 +222,7 @@ sub launch_grid_job {
     $qsub_command .= " $qsub_exec";
 
     my $job_id = `$qsub_command`;
+    $job_id =~ s/\s*//g; # remove all whitespace characters
 
     if (&bash_error_check($qsub_command, $?, $!)) {
         die "Problem submitting the job!: $job_id\n$qsub_command\n$shell_script\n$qsub_exec\n";

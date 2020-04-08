@@ -421,6 +421,9 @@ sub read_blast                                                       # For each 
 	if ($medoids_len[$qid] != $qlength) {
 	    die ("ERROR: medoid length form medoids file $medoids_path: $medoids_len[$qid] != medoid length from blast file $blast_file_path: $qlength\n");
 	}
+	if (($pid < 90) && (((($qend - $qbegin) + 1) / $qlength) < 0.5)) {
+	    next; # skip obviously weak matches
+	}
 	$blast_matches_raw[$blast_match_num++] = { 'clus' => $qid,      # cluster number
 					       'ctg' => $sid,       # contig identifier
 					       'pid' => $pid,       # percent identity
@@ -833,7 +836,7 @@ sub nw_align
 # use dynamic programming to find best alignment of query to subject DNA sequences where full alignment of query is desired so all terminal query gaps are penalized
 {
     my ($query, $subject) = @_;
-    #print STDERR length($query), ":", length($subject), "\n";
+    #print STDERR "LNW:", length($query), ":", length($subject), "\n";
     #print STDERR substr($query, 0, 80), "...", substr($query, -80), "\n";
     #print STDERR substr($subject, 0, 80), "...", substr($subject, -80), "\n";
     my @prev_score = (); #previous row in dynamic programming array
@@ -2036,7 +2039,6 @@ sub refine_alignments
 	my $col_index = 0;
 	foreach my $column (@{ $columns{$contig} }) {
 	    if ($columns_status{$contig}->[$col_index] == 1) {
-		#print STDERR "$contig:$col_index\n";
 		my $beg_align = -1;
 		my $end_align = -1;
 		my $ignore = -1;
@@ -2046,7 +2048,8 @@ sub refine_alignments
 		my $sequence = "";
 		my $contig_sequence = "";
 		(my $clus, my $index) = split('_', $column);
-		#print STDERR "inv$reduced_by_region[$index]->{'sinv'}:qb$reduced_by_region[$index]->{'qbeg'}:qe$reduced_by_region[$index]->{'qend'}:ql$reduced_by_region[$index]->{'qlen'}:sb$reduced_by_region[$index]->{'sbeg'}:se$reduced_by_region[$index]->{'send'}:sl$reduced_by_region[$index]->{'ctglen'}\n";
+		#print STDERR "CTG:$contig COL:$col_index:$column:$columns_status{$contig}->[$col_index] MATCH:inv$reduced_by_region[$index]->{'sinv'}:qb$reduced_by_region[$index]->{'qbeg'}:qe$reduced_by_region[$index]->{'qend'}:ql$reduced_by_region[$index]->{'qlen'}:sb$reduced_by_region[$index]->{'sbeg'}:se$reduced_by_region[$index]->{'send'}:sl$reduced_by_region[$index]->{'ctglen'}\n";
+		#print STDERR "BLAST($column_scores{$contig}[$col_index]->{'best_score'}) $column:$reduced_by_region[$index]->{'clus'}($cluster_size[$reduced_by_region[$index]->{'clus'}]):$reduced_by_region[$index]->{'ctg'}:$reduced_by_region[$index]->{'pid'}:$reduced_by_region[$index]->{'qbeg'}:$reduced_by_region[$index]->{'qend'}:$reduced_by_region[$index]->{'qlen'}:$reduced_by_region[$index]->{'sbeg'}:$reduced_by_region[$index]->{'send'}:$reduced_by_region[$index]->{'sinv'}:$reduced_by_region[$index]->{'ctglen'}:$reduced_by_region[$index]->{'bits'}:$reduced_by_region[$index]->{'keepclus'}:$reduced_by_region[$index]->{'keepctg'}:$reduced_by_region[$index]->{'weak'}\n";
 		if (!$reduced_by_region[$index]->{'sinv'} && ($reduced_by_region[$index]->{'qbeg'} != 1)) {
 		    $s_extra = ($reduced_by_region[$index]->{'sbeg'} - 1) + ($align_anchor_len - 1); # give $align_anchor_len bp to anchor the alignment but only really looking for the beginning need -1 for string beginning at 0 and 'beg" starting at 1
 		    if ($s_extra >= $reduced_by_region[$index]->{'ctglen'}) {$s_extra = $reduced_by_region[$index]->{'ctglen'} - 1;}
@@ -2131,9 +2134,7 @@ sub refine_alignments
 		} else {
 		    $end_align = $reduced_by_region[$index]->{'send'};
 		}
-		#print STDERR "COL$col_index:$column:$columns_status{$contig}->[$col_index]:$reduced_by_region[$index]->{'sinv'}\n";
 		#print STDERR "NWFINAL:$beg_align:$end_align:$num_matches:$s_offset:$s_extra\n";
-		#print STDERR "BLAST($column_scores{$contig}[$col_index]->{'best_score'}) $column:$reduced_by_region[$index]->{'clus'}($cluster_size[$reduced_by_region[$index]->{'clus'}]):$reduced_by_region[$index]->{'ctg'}:$reduced_by_region[$index]->{'pid'}:$reduced_by_region[$index]->{'qbeg'}:$reduced_by_region[$index]->{'qend'}:$reduced_by_region[$index]->{'qlen'}:$reduced_by_region[$index]->{'sbeg'}:$reduced_by_region[$index]->{'send'}:$reduced_by_region[$index]->{'sinv'}:$reduced_by_region[$index]->{'ctglen'}:$reduced_by_region[$index]->{'bits'}:$reduced_by_region[$index]->{'keepclus'}:$reduced_by_region[$index]->{'keepctg'}:$reduced_by_region[$index]->{'weak'}\n";
 		$reduced_by_region[$index]->{'sbeg'} = $beg_align;
 		$reduced_by_region[$index]->{'send'} = $end_align;
 	    }
@@ -2525,8 +2526,11 @@ sub assign_paralogs
 	    if ($columns_status{$contig}->[$col_index] == 1) {
 		#print STDERR "$contig $col_index != $cluster_colindex[$clus]\n";
 		if (($contig . "_" . $col_index) ne $cluster_colindex[$clus]) {
-		    $columns_status{$contig}->[$col_index] = 2;
+		    #$columns_status{$contig}->[$col_index] = 2; #return to this if we start doing paralogs again
+		    $columns_status{$contig}->[$col_index] = -1;
 		}
+	    } else {
+		    $columns_status{$contig}->[$col_index] = -1; #label every column that is not a presumptive ortholog to be removed
 	    }
 	    $col_index++;
 	}
@@ -2855,16 +2859,22 @@ sub check_overlaps
     &reset_columns;
     &determine_contig_nearest_neighbors;
     &score_from_neighbors(1, 1, 1.0);
+    print STDERR "Checking for split genes\n";
+    &split_genes; # might want this after refine alignments but not if we are eliminating paralogs first
     print STDERR "Assigning paralogs\n";
     &assign_paralogs;
     print STDERR "Checking overlapping columns\n";
     &check_overlaps;
     print STDERR "Refining alignments\n";
+    &reset_columns;
+    &determine_contig_nearest_neighbors;
+    &score_from_neighbors(1, 1, 1.0);
     &refine_alignments;
     print STDERR "Checking overlapping columns\n";
     &check_overlaps;
-    print STDERR "Checking for split genes\n";
-    &split_genes;
+    &reset_columns;
+    &determine_contig_nearest_neighbors;
+    &score_from_neighbors(1, 1, 1.0);
     print STDERR "Refining nearest neighbors for output\n";
     &refine_contig_nearest_neighbors;
     print STDERR "Outputting files\n";
