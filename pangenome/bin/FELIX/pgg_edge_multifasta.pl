@@ -2472,6 +2472,7 @@ sub compute_alignments
     my $job_name = "pggmus_" . $$; #use a common job name so that qacct can access all of them together
     my %job_ids = ();
     my $num_jobs = 0;
+    my $total_jobs = 0;
     my @msa_files = ();
     foreach my $line (@mf_files) {
 	(my $mf_file, my $num_alleles, my $empty) = split(/\t/, $line);  # split the scalar $line on tab
@@ -2484,6 +2485,9 @@ sub compute_alignments
 	$empty_file .= ".empty";
 	$stats_file .= ".stats";
 	print STDERR "$mf_file:$num_alleles:$empty:$msa_file:$empty_file:$stats_file\n" if ($DEBUG);
+	if ((-e $msa_file) && (-s $msa_file)) {
+	    next; # skip if file already exists and is not zero size
+	}
 	if ($empty) {
 	    unless (open(OUT_EMPTY, ">", "$empty_file")) {
 		die ("cannot open empty indicator file: $empty_file!\n");
@@ -2498,9 +2502,6 @@ sub compute_alignments
 	    close(OUT_STATS);
 	    next; #nothing to align
 	}
-	if ((-e $msa_file) && (-s $msa_file)) {
-	    next; # skip if file already exists and is not zero size
-	}
 	my $identifier = basename($mf_file);
 	$identifier =~ s/\.fasta$//;
 	my $muscle_args = " -in $mf_file -out $msa_file -diags -quiet -verbose";
@@ -2511,6 +2512,7 @@ sub compute_alignments
 	print STDERR "Launched $muscle_exec\n" if ($DEBUG);
 	$job_ids{&launch_grid_job($job_name, $project, $working_dir, $muscle_exec, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
 	$num_jobs++;
+	$total_jobs++;
 	if ($num_jobs >= $max_grid_jobs) {
 	    $num_jobs = &wait_for_grid_jobs($qsub_queue, $job_name, ((($max_grid_jobs - 10) > 0) ? ($max_grid_jobs - 10) : 0), \%job_ids);
 	}
@@ -2531,7 +2533,7 @@ sub compute_alignments
 	}
 	$num_jobs++;
     }
-    if ($num_jobs > ($max_grid_jobs / 2)) {
+    if ($num_jobs > ($total_jobs / 10)) {
 	die "Too many Muscle grid jobs failed $num_jobs\n";
     } elsif ($num_jobs > 0) {
 	for (my $k=0; $k <= 2; $k++){ #try a maximum of 3 times on failed jobs
