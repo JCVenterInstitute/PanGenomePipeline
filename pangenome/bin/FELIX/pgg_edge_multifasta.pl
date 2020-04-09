@@ -27,7 +27,7 @@ use warnings;
 use Getopt::Std;
 use File::Basename;
 getopts ('j:I:RSALlDhb:B:m:p:P:a:g:t:M:s:T:Vk:FfC:Q:N:X');
-our ($opt_j, $opt_I,$opt_S,$opt_A,$opt_L,$opt_l,$opt_D,$opt_h,$opt_b,$opt_m,$opt_p,$opt_P,$opt_a,$opt_g,$opt_t,$opt_M,$opt_R,$opt_B,$opt_s,$opt_T,$opt_V,$opt_k,$opt_F,$opt_f,$opt_C,$opt_Q,$opt_N,$opt_X);
+our ($opt_j, $opt_I,$opt_S,$opt_A,$opt_L,$opt_l,$opt_D,$opt_h,$opt_b,$opt_m,$opt_p,$opt_P,$opt_a,$opt_g,$opt_t,$opt_M,$opt_r,$opt_R,$opt_B,$opt_s,$opt_T,$opt_V,$opt_k,$opt_F,$opt_f,$opt_C,$opt_Q,$opt_N,$opt_X);
 
 ## use boolean logic:  TRUE = 1, FALSE = 0
 
@@ -35,6 +35,7 @@ my $qsub_job_num = 0;
 my $bin_directory = "/usr/local/projdata/8520/projects/PANGENOME/pangenome_bin/";
 my $cwd = getcwd;
 my $muscle_path = "/usr/local/bin/muscle";
+my $rscript_path = "/usr/local/bin/Rscript";
 my $version = "ver1.0";
 my $project = "8520";
 my $Gapped_Context = 100; #number of basepairs around a cluster/edge to check for gaps so as to ignore problematic assembly regions
@@ -152,6 +153,15 @@ if ($opt_C) {
     }
 } else {
     $muscle_path = "/usr/local/bin/muscle";
+}
+if ($opt_r) {
+    if (-x "$opt_r") {
+	$rscript_path = $opt_r;
+    } else {
+	print STDERR "Error with -r $opt_r\n"; &option_help;
+    }
+} else {
+    $rscript_path = "/usr/local/bin/Rscript";
 }
 
 my $num_size_one_clus = 0;
@@ -1342,7 +1352,7 @@ sub process_matchtable {
 					}
 					my $stats_path = "$bin_directory/summarize_alignment.R";
 					my $stats_args = " $combined_file $target_id";
-					my $stats_exec = "Rscript " . $stats_path . $stats_args;
+					my $stats_exec = $rscript_path . " " . $stats_path . $stats_args;
 					`/usr/bin/time -o tmp_cpu_stats -v $stats_exec > $com_stats_file`;
 					`echo "***$stats_exec***" >> $cpu_name`;
 					`cat tmp_cpu_stats >> $cpu_name`;
@@ -2181,7 +2191,7 @@ sub process_pgg {
 					    }
 					    my $stats_path = "$bin_directory/summarize_alignment.R";
 					    my $stats_args = " $combined_file $target_id";
-					    my $stats_exec = "Rscript " . $stats_path . $stats_args;
+					    my $stats_exec = $rscript_path . " " . $stats_path . $stats_args;
 					    `/usr/bin/time -o tmp_cpu_stats -v $stats_exec > $com_stats_file`;
 					    `echo "***$stats_exec***" >> $cpu_name`;
 					    `cat tmp_cpu_stats >> $cpu_name`;
@@ -2587,7 +2597,7 @@ sub compute_alignments
 	my $identifier = basename($msa_file);
 	$identifier =~ s/\.afa$//;
 	my $stats_args = " $msa_file";
-	my $stats_exec = "Rscript " . $stats_path . $stats_args;
+	my $stats_exec = $rscript_path . " " . $stats_path . $stats_args;
 	my $stdoutfile = $stats_file;
 	my $stderrfile = $cwd . "/" . $identifier . "_stderr";
 	my $working_dir = $cwd;
@@ -2626,7 +2636,7 @@ sub compute_alignments
 		my $identifier = basename($msa_file);
 		$identifier =~ s/\.afa$//;
 		my $stats_args = " $msa_file";
-		my $stats_exec = "Rscript " . $stats_path . $stats_args;
+		my $stats_exec = $rscript_path . " " . $stats_path . $stats_args;
 		my $stdoutfile = $stats_file;
 		my $stderrfile = $cwd . "/" . $identifier . "_stderr";
 		my $working_dir = $cwd;
@@ -2694,6 +2704,7 @@ Version: $version
      -f: generate multifasta files with all alleles for clusters and edges
      -F: use multifasta files with all alleles for clusters and edges instead of extracting them directly from genome fasta files
      -C: path to the Muslce executable for multiple sequence alignments - default /usr/local/bin/muscle
+     -r: path to the Rscript executable for Rscript scripts - default /usr/local/bin/Rscript
      -Q: name of qsub queue to use for Muscle jobs - default himem
      -D: DEBUG MODE (DEFAULT = off)
  Output: All stored within a directory specified using -b
