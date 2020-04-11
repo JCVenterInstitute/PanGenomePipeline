@@ -18,6 +18,7 @@ my $blast_directory = "";
 my $ld_load_directory = "";
 my $blast_task = "blastn";
 my $muscle_path = "";
+my $rscript_path = "";
 my $bin_directory = "/usr/local/projdata/8520/projects/PANGENOME/pangenome_bin/";
 my $input_bin_directory = "";
 my $single_copy = "single_copy_clusters.txt";
@@ -59,6 +60,7 @@ GetOptions('genome=s' => \ $genome_path,
 	   'ld_load_directory=s' => \ $ld_load_directory,
 	   'blast_task=s' => \ $blast_task,
 	   'muscle_path=s' => \ $muscle_path,
+	   'rscript_path=s' => \ $rscript_path,
 	   'multifastadir=s' => \ $multifastadir,
 	   'alignments=s' => \ $keep_divergent_alignments,
 	   'duplicate=i' => \ $duplicate,
@@ -81,6 +83,19 @@ if ($muscle_path) {
     }
 } else {
     $muscle_path = "";
+}
+
+if ($rscript_path) {
+    if (-x $rscript_path) {
+	if (substr($rscript_path, 0, 1) ne "/") {
+	    $rscript_path = $cwd . "/$rscript_path";
+	}
+    } else {
+	print STDERR "Error with -rscript_path $rscript_path\n";
+	$help = 1;
+    }
+} else {
+    $rscript_path = "";
 }
 
 if ($blast_directory) {
@@ -132,6 +147,7 @@ GetOptions('genome=s' => \ genome_path,
 	   'ld_load_directory=s' => \ ld_load_directory,
 	   'blast_task=s' => \ blast_task,
 	   'muscle_path=s' => \ muscle_path,
+	   'rscript_path=s' => \ rscript_path,
 	   'multifastadir=s' => \ multifastadir,
 	   'alignments=s' => \ keep_divergent_alignments,
 	   'duplicate=i' => \ duplicate,
@@ -219,6 +235,9 @@ sub compute
     }
     if ($muscle_path ne "") {
 	$pgg_multifasta_path .= " -C $muscle_path ";
+    }
+    if ($rscript_path ne "") {
+	$pgg_multifasta_path .= " -r $rscript_path ";
     }
     if ($keep_divergent_alignments) {
 	$pgg_multifasta_path .= " -k $keep_divergent_alignments ";

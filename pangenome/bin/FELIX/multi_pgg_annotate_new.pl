@@ -22,6 +22,7 @@ my $blast_directory = "";
 my $ld_load_directory = "";
 my $blast_task = "blastn";
 my $muscle_path = "";
+my $rscript_path = "";
 my $bin_directory = "/usr/local/projdata/8520/projects/PANGENOME/pangenome_bin/";
 my $input_bin_directory = "";
 my @genomes = ();
@@ -68,6 +69,7 @@ GetOptions('genomes=s' => \ $genome_list_path,
 	   'ld_load_directory=s' => \ $ld_load_directory,
 	   'blast_task=s' => \ $blast_task,
 	   'muscle_path=s' => \ $muscle_path,
+	   'rscript_path=s' => \ $rscript_path,
 	   'multifastadir=s' => \ $input_multifastadir,
 	   'alignments=s' => \ $keep_divergent_alignments,
 	   'attributes=s' => \ $attributes,
@@ -135,6 +137,7 @@ GetOptions('genomes=s' => \ genome_list_path,
 	   'ld_load_directory=s' => \ ld_load_directory,
 	   'blast_task=s' => \ blast_task,
 	   'muscle_path=s' => \ muscle_path,
+	   'rscript_path=s' => \ rscript_path,
 	   'multifastadir=s' => \ input_multifastadir,
 	   'alignments=s' => \ keep_divergent_alignments,
 	   'attributes=s' => \ attributes,
@@ -478,6 +481,9 @@ sub compute
     if ($debug) {print STDERR "Starting grid genome processing\n\n";}
     if ($muscle_path ne "") {
 	$compute_path .= " -muscle_path $muscle_path ";
+    }
+    if ($rscript_path ne "") {
+	$compute_path .= " -rscript_path $rscript_path ";
     }
     if ($blast_directory) {
 	$compute_path .= " -blast_directory $blast_directory ";

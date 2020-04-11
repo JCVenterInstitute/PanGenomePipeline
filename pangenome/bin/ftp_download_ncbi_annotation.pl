@@ -540,7 +540,7 @@ sub filter_on_assembly_data {
         }
 
         # grab curl data:
-        system( "curl -K $curl_config_file >& ./$opts{ output_prefix }.curl_log" );
+        system( "curl -K $curl_config_file > ./$opts{ output_prefix }.curl_log 2>&1" );
 
         # check for retries:
         for my $assembly_accession ( keys %$candidates ) {
@@ -945,7 +945,7 @@ sub retrieve_gb_and_fasta_files {
         }
 
         # grab files with curl
-        system( "curl -K $curl_config_file >& ./$opts{ output_prefix }.curl_output_files_log" );
+        system( "curl -K $curl_config_file > ./$opts{ output_prefix }.curl_output_files_log 2>&1" );
 
         # Check for retries:
         for my $url ( keys %$downloads ) {
