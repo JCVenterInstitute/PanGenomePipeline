@@ -382,11 +382,11 @@ sub do_neighbors
 # run core_neighbor_finder.pl to generate input for pgg_annotate.pl
 {
     if ($debug) {print STDERR "\n$core_neighbor_path -v $pgg -cl $single_copy\n";}
-    `/usr/bin/time -o cpustats -v $core_neighbor_path -v $pgg -cl $single_copy >& $logfile`;
+    `/usr/bin/time -o cpustats -v $core_neighbor_path -v $pgg -cl $single_copy >> $logfile 2>&1`;
     `echo "***$core_neighbor_path***" >> overhead_cpustats`;
     `cat cpustats >> overhead_cpustats`;
     `rm cpustats`;
-    &bash_error_check("$core_neighbor_path -v $pgg -cl $single_copy >& $logfile", $?, $!);
+    &bash_error_check("$core_neighbor_path -v $pgg -cl $single_copy >> $logfile 2>&1", $?, $!);
 }
 #############################################################################################
 sub read_old_genomes
