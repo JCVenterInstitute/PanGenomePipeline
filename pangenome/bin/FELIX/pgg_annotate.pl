@@ -475,7 +475,7 @@ sub process_blast_by_cluster
 	    $match->{'keepclus'} = 1;
 	    $cluster_matches[$cur_cluster]->{'best'} = $i;
 	    $cluster_matches[$cur_cluster]->{'last_best'} = $i;
-	} elsif (($match->{'bits'} == $best_bitscore) || (($num_cur_matches <= 10) && ($match->{'bits'} > (0.9 * $best_bitscore))) || (($num_cur_matches <= 15) && ($match->{'bits'} > (0.95 * $best_bitscore))) || (($num_cur_matches <= 20) && ($match->{'bits'} > (0.98 * $best_bitscore))) || (($num_cur_matches <= 25) && ($match->{'bits'} > (0.99 * $best_bitscore)))) {
+	} elsif (($match->{'bits'} == $best_bitscore) || (($num_cur_matches <= 5) && ($match->{'bits'} > (0.95 * $best_bitscore))) || (($num_cur_matches <= 10) && ($match->{'bits'} > (0.99 * $best_bitscore))) || (($num_cur_matches <= 15) && ($match->{'bits'} > (0.99.5 * $best_bitscore))) || (($num_cur_matches <= 20) && ($match->{'bits'} > (0.99.9 * $best_bitscore)))) {
 	    $match->{'keepclus'} = 1;
 	    $cluster_matches[$cur_cluster]->{'last_best'} = $i;
 	} else { # ignore blast matches which are not within some threshold of the best match
@@ -504,11 +504,16 @@ sub process_blast_by_region
     @matches_by_region = sort $sort_by_contig_start (@matches_by_cluster);
 
     print STDERR "Sorted by region - now mark weak matches\n";
+    print STDERR "Num matches by region $#matches_by_region\n";
     foreach my $i (0 .. $#matches_by_region) {
+	if (!$matches_by_region[$i]->{'keepclus'} && !$matches_by_region[$i]->{'keepctg'}) {
+	    next; #do not waste time on a bunch of transposon matches
+	}
 	my $ctg1 = $matches_by_region[$i]->{'ctg'};
 	my $beg1 = $matches_by_region[$i]->{'sbeg'};
 	my $end1 = $matches_by_region[$i]->{'send'};
 	my $len1 = ($end1 - $beg1) + 1;
+	#print STDERR "i:$i:$ctg1:$beg1:$end1\n";
 	foreach my $j (($i + 1) .. $#matches_by_region) {
 	    my $ctg2 = $matches_by_region[$j]->{'ctg'};
 	    my $beg2 = $matches_by_region[$j]->{'sbeg'};
@@ -526,6 +531,7 @@ sub process_blast_by_region
 	    my $cov1 = $overlap / $len1;
 	    my $cov2 = $overlap / $len2;
 	    my $maxcov = $cov1 > $cov2 ? $cov1 : $cov2;
+	    #print STDERR "j:$j:$ctg2:$beg2:$end2:$cov1:$cov2:$maxcov\n";
 	    if ($maxcov > ($overlap_threshold / 3)) {
 		my $clus1 = $matches_by_region[$i]->{'clus'};
 		my $clus2 = $matches_by_region[$j]->{'clus'};
@@ -561,6 +567,7 @@ sub process_blast_by_region
 			}
 		    }
 		}
+		#print STDERR "Weak? $clus1:$pid1:$score1:$frac1:$size1 - $clus2:$pid2:$score2:$frac2:$size2 - $matches_by_region[$i]->{'keepctg'}:$matches_by_region[$i]->{'weak'} - $matches_by_region[$j]->{'keepctg'}:$matches_by_region[$j]->{'weak'}\n";
 	    }
 	}
     }
