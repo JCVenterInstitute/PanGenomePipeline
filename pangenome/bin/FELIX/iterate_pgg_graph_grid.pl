@@ -430,7 +430,8 @@ sub compute
     if ($ld_load_directory) {
 	$compute_path .= " -ld_load_directory $ld_load_directory ";
 	$compute_new_clusters_path .= " -L $ld_load_directory ";
-    }	
+    }
+    my $match_col_files = "";
     for (my $i=1; $i <= $max_iterate; $i++)
     {
 	my $job_name = "cpgg_" . $$ . "$i"; #use a common job name so that qacct can access all of them together
@@ -440,7 +441,7 @@ sub compute
 	if ($debug) {print STDERR "Iteration $i\n";}
 	&do_neighbors;                                                                                 # run core_neighbor_finder
 	`cut -f 1 $matchtable > matchtable.col`;                                                        # get first column of existing matchtable file, use that as first column of new file
-	`cut -f 1 $pgg > pgg.col`;                
+	# don't need this with pgg.combined generated instead `cut -f 1 $pgg > pgg.col`;                
 	open(GENEANI, ">", "gene_ANI");
 	open(REARRANGE, ">", "rearrange");
 	open(SPLITGENE, ">", "SplitGene");
@@ -581,12 +582,13 @@ sub compute
 	    print REARRANGE "$rearrange";
 	    print SPLITGENE "$splitgene";
 	    `cat $wgs_ani_name >> wgs_ANI`;                                                    # we don't need to do a line-count here, we just copy over the entire one-line file
-	    `paste matchtable.col $match_name > tmp.matchtable.col`;                           # paste line frome matchtable
-	    `paste pgg.col $pgg_name > tmp.pgg.col`;                                           # paste line from edges file
-	    die ("tmp.matchtable.col is zero size \n") unless (-s "tmp.matchtable.col");
-	    die ("tmp.pgg.col is zero size \n") unless (-s "tmp.pgg.col");
-	    `mv tmp.matchtable.col matchtable.col`;                                            # rename file
-	    `mv tmp.pgg.col pgg.col`;                                                         # rename file
+	    $match_col_files .= $match_name . " "; # this is for a paste command at the end of the loop
+	    # do this at the end of the loop `paste matchtable.col $match_name > tmp.matchtable.col`;                           # paste line frome matchtable
+	    # do this at the end of the loop die ("tmp.matchtable.col is zero size \n") unless (-s "tmp.matchtable.col");
+	    # do this at the end of the loop `mv tmp.matchtable.col matchtable.col`;                                            # rename file
+	    # don't need this with pgg.combined generated instead `paste pgg.col $pgg_name > tmp.pgg.col`;                                           # paste line from edges file
+	    # don't need this with pgg.combined generated instead die ("tmp.pgg.col is zero size \n") unless (-s "tmp.pgg.col");
+	    # don't need this with pgg.combined generated instead `mv tmp.pgg.col pgg.col`;                                                         # rename file
 	    if ($j==0)
 	    {
 		`cat $att_name > combined.att`;                                       # overwrite combined file from past iteration
@@ -601,6 +603,9 @@ sub compute
 	close(GENEANI);
 	close(REARRANGE);
 	close(SPLITGENE);
+	`paste matchtable.col $match_col_files > tmp.matchtable.col`;                           # paste line frome matchtable
+	die ("tmp.matchtable.col is zero size \n") unless (-s "tmp.matchtable.col");
+	`mv tmp.matchtable.col matchtable.col`;                                            # rename file
 	my $start_new_cluster_num = `wc -l < matchtable.col` + 1;
 	if ((-s "new_clusters.txt") && (-s "new_gene_seqs.fasta")){
 	    if ($debug) {print STDERR "\nperl $compute_new_clusters_path -c new_clusters.txt -g Genomes.List -s new_gene_seqs.fasta -n $start_new_cluster_num -i IndexNewClusters -M NewMatches -m NewMedoids\n";}
