@@ -597,13 +597,14 @@ sub compute
 		`cat $att_name >> combined.att`;                                      # add to combined file
 	    }
 	    # clean up
-	    `rm $match_name $pgg_name $att_name $gene_ani_name $rearrange_name $split_gene_name $wgs_ani_name $match_name_new $pgg_name_new $att_name_new $uniq_clus_name $uniq_edge_name $stdoutfile $stderrfile`;
+	    `rm $pgg_name $att_name $gene_ani_name $rearrange_name $split_gene_name $wgs_ani_name $match_name_new $pgg_name_new $att_name_new $uniq_clus_name $uniq_edge_name $stdoutfile $stderrfile`;
 	}
 	close(ALLEDGES);
 	close(GENEANI);
 	close(REARRANGE);
 	close(SPLITGENE);
 	`paste matchtable.col $match_col_files > tmp.matchtable.col`;                           # paste line frome matchtable
+	`rm $match_col_files`;
 	die ("tmp.matchtable.col is zero size \n") unless (-s "tmp.matchtable.col");
 	`mv tmp.matchtable.col matchtable.col`;                                            # rename file
 	my $start_new_cluster_num = `wc -l < matchtable.col` + 1;
