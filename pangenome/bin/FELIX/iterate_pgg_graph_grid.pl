@@ -605,6 +605,7 @@ sub compute
 	close(SPLITGENE);
 	`paste matchtable.col $match_col_files > tmp.matchtable.col`;                           # paste line frome matchtable
 	`rm $match_col_files`;
+	$match_col_files = "";
 	die ("tmp.matchtable.col is zero size \n") unless (-s "tmp.matchtable.col");
 	`mv tmp.matchtable.col matchtable.col`;                                            # rename file
 	my $start_new_cluster_num = `wc -l < matchtable.col` + 1;
