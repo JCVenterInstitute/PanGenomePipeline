@@ -451,7 +451,7 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 	    my $fivep = $feat_hash{$feat_name}->{'5p'};
 	    my $threep = $feat_hash{$feat_name}->{'3p'};
 	    my $contig_len = $genseq_len{$genome_tag}->{$feat_hash{$feat_name}->{'contig'}};
-	    print STDERR "$feat_name $feat_hash{$feat_name}->{'anno'} $feat_hash{$feat_name}->{'gtag'} $genome_tag\n" if ($DEBUG);
+	    #print STDERR "$feat_name $feat_hash{$feat_name}->{'anno'} $feat_hash{$feat_name}->{'gtag'} $genome_tag\n" if ($DEBUG);
 	    if (($fivep < 1) || ($threep < 1) || ($fivep > $contig_len) || ($threep > $contig_len)) {
 		if ($is_circular{$genome_tag}->{$feat_hash{$feat_name}->{'contig'}}) {
 		    if ($fivep <= $threep) {
@@ -576,7 +576,7 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 		$start2 = $feat_hash{$feat_name2}->{'3p'};
 		$end2 = $feat_hash{$feat_name2}->{'5p'};
 	    }
-	    print STDERR "$edge_value $feat_name1 $feat_name2 $genome_tag\n" if ($DEBUG);
+	    #print STDERR "$edge_value $feat_name1 $feat_name2 $genome_tag\n" if ($DEBUG);
 	    my $seq_len;
 	    my $sequence;
 	    my $edge_5p;
@@ -808,7 +808,7 @@ sub get_attributes {
 	$feat_hash{$feat_name}->{'anno'} = $anno;
 	$feat_hash{$feat_name}->{'gtag'} = $tag;
 	$feat_hash{$feat_name}->{'contig'} = $asmbl_id;
-	print STDERR "$feat_name $feat_hash{$feat_name}->{'anno'} $feat_hash{$feat_name}->{'5p'} $feat_hash{$feat_name}->{'3p'} $feat_hash{$feat_name}->{'gtag'} $feat_hash{$feat_name}->{'contig'}\n" if ($DEBUG);
+	#print STDERR "$feat_name $feat_hash{$feat_name}->{'anno'} $feat_hash{$feat_name}->{'5p'} $feat_hash{$feat_name}->{'3p'} $feat_hash{$feat_name}->{'gtag'} $feat_hash{$feat_name}->{'contig'}\n" if ($DEBUG);
     }
     close (ATTFILE);
 
@@ -856,6 +856,7 @@ sub process_matchtable {
 	my @sizes = ();
 	my $div_by_three = 0;
 	my $seen = 0;
+	#print  STDERR "genome_array[0]=$genome_array[0] tmp_array[0]=$tmp_array[0]\n" if ($DEBUG);
 	if ($use_multifasta && !$no_stats) {
 	    if (open (CLUSTERFILE, "<$multifastadir/cluster_full_$cluster_id.fasta") )  { #if the file isn't there it's because the cluster was empty and going away on the next iteration
 		my ($save_input_separator) = $/;
@@ -878,8 +879,14 @@ sub process_matchtable {
 			die ("ERROR: $target_id is the target genome and should not be in the multifasta files\n"); # need to get target genome info from actual fasta file not from multifasta file
 		    }
 		    my $tag = shift @tmp_array;
+		    #if ($tag ne $genome_tag) {
+			#print  STDERR "tag=$tag ne $genome_tag\n" if ($DEBUG);
+		    #} else {
+			#print  STDERR "tag=$tag eq $genome_tag\n" if ($DEBUG);
+		    #}
 		    while ($tag ne $genome_tag) {
 			$index++;
+			#print  STDERR "skipping $tag\n" if ($DEBUG);
 			$tag = shift @tmp_array;
 			if (!defined $tag) {
 			    die ("ERROR: shifted off the end of the genome tag array while looking for $genome_tag with featname $feat_name for cluster $cluster_id and target $target_id\n");
@@ -2739,8 +2746,8 @@ _EOB_
 
 ########################################  M A I N  #####################################################
 if ($no_stats) {
-    &get_genome_names;
     print STDERR "No stats just remaking files so not reading genomes\n";
+    &get_genome_names;
 } else {
     print  STDERR "Getting topology from $topology_file\n";
     &read_topology;
@@ -2749,7 +2756,10 @@ if ($no_stats) {
     if ($write_multifasta) {
 	print STDERR "Reading genomes, matchtable, and pgg then writing multifasta clusters and edges\n";
 	&output_multifasta;
-    } else {
+    } elsif ($use_multifasta) {
+	print STDERR "Getting genome names from $genomes_file_name but extracting clusters and edges from multifasta files in $multifastadir\n";
+	&get_genome_names;
+   } else {
 	print  STDERR "Getting genome names and contig sequences from $genomes_file_name\n";
 	&get_genomes;
     }
