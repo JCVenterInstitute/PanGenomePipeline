@@ -557,7 +557,7 @@ sub compute
 	}
     }
     &wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
-    `rm -r TMP_*`;
+    #`rm -r TMP_*`;
     if ($debug) {print STDERR "removed TMP directories\n";}
     
     $num_jobs = 0;
@@ -575,7 +575,7 @@ sub compute
 	}
     }
     if ($debug) {print STDERR "$num_jobs FAILED resubmitting\n";}
-    if ($num_jobs > ($max_grid_jobs / 2)) {
+    if (($num_jobs > ($max_grid_jobs / 2)) || ($num_jobs > ((scalar @genomes) / 2))) {
 	die "Too many grid jobs failed $num_jobs\n";
     } elsif ($num_jobs > 0) {
 	for (my $k=0; $k <= 2; $k++){ #try a maximum of 3 times on failed jobs
@@ -630,7 +630,7 @@ sub compute
 	    }
 	    if ($debug) {print STDERR "$num_jobs relaunched\n";}
 	    &wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
-	    `rm -r TMP_*`;
+	    #`rm -r TMP_*`;
 	    if ($debug) {print STDERR "removed resubmitted TMP directories\n";}
 	}
     }
