@@ -227,6 +227,7 @@ sub compute
     
     if ($debug) {print STDERR "Starting compute ...\n\n";}
     if ($debug) {print STDERR "\ngenome_name: $genome_name \t path: $genome_path\n\n";}
+    $pgg_multifasta_path .= " -N $bin_directory ";
     if (!$no_MSA) {
 	$pgg_multifasta_path .= " -l ";
     }
@@ -334,7 +335,7 @@ sub compute
 	}
 	`mv $ce_sizes_name $ce_sizes_name_genome`;
 	`cat $anomalies_name $gene_ani_name $rearrange_name $uniq_clus_name $uniq_edge_name > $anomalies_name_genome`;
-	`rm combined.att pgg.col matchtable.col full_topology.txt combined_genome_list`;
+	#`rm combined.att pgg.col matchtable.col full_topology.txt combined_genome_list`;
 	
 	#if (!$no_filter_anomalies) {
 	    #my $filter_genomes_name = "$genome_name" . "_filter_genomes.txt";
