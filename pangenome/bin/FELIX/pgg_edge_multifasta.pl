@@ -442,16 +442,16 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 		die ("ERROR: contig identifier was not assigned for $feat_name in $matchtable_file should have come from $att_file!\n");
 	    }
 	    if (!defined $genseq_hash{$genome_tag}) { # should not happen
-		die ("ERROR: genome tag identifier was not assigned for $feat_name in $matchtable_file should have come from $att_file!\n");
+		die ("ERROR: genseq_hash genome_tag ($genome_tag) is undefined!\n");
 	    }
 	    if (!defined $genseq_hash{$genome_tag}->{$feat_hash{$feat_name}->{'contig'}}) { # should not happen
-		die ("ERROR: contig sequence was not assigned for $feat_name in $matchtable_file should have come from $att_file!\n");
+		die ("ERROR: genseq_hash genome_tag ($genome_tag) contig ($feat_hash{$feat_name}->{'contig'}) is undefined!\n");
 	    }
 	    $cluster_to_feat_hash{$genome_tag}->{$cluster_id} = $feat_name;
 	    my $fivep = $feat_hash{$feat_name}->{'5p'};
 	    my $threep = $feat_hash{$feat_name}->{'3p'};
 	    my $contig_len = $genseq_len{$genome_tag}->{$feat_hash{$feat_name}->{'contig'}};
-	    print STDERR "$feat_name $feat_hash{$feat_name}->{'anno'} $feat_hash{$feat_name}->{'gtag'} $genome_tag\n" if ($DEBUG);
+	    #print STDERR "$feat_name $feat_hash{$feat_name}->{'anno'} $feat_hash{$feat_name}->{'gtag'} $genome_tag\n" if ($DEBUG);
 	    if (($fivep < 1) || ($threep < 1) || ($fivep > $contig_len) || ($threep > $contig_len)) {
 		if ($is_circular{$genome_tag}->{$feat_hash{$feat_name}->{'contig'}}) {
 		    if ($fivep <= $threep) {
@@ -557,10 +557,13 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 		die ("ERROR: Inconsistency in genome tag between $att_file, $matchtable_file, and $pgg_file for $feat_name1 and $feat_name2");
 	    }
 	    if (!defined $genseq_hash{$genome_tag}) { # should not happen
-		die ("ERROR: genome tag identifier was not assigned for $pgg_file should have come from $att_file!\n");
+		die ("ERROR: geneseq_hash genome_tag ($genome_tag) not defined!\n");
 	    }
-	    if ((!defined $genseq_hash{$genome_tag}->{$contig1}) || (!defined $genseq_hash{$genome_tag}->{$contig2})) { # should not happen
-		die ("ERROR: contig sequence was not assigned for $contig1 $feat_name1 or $contig2 $feat_name2 in $pgg_file should have come from $att_file!\n");
+	    if (!defined $genseq_hash{$genome_tag}->{$contig1}) { # should not happen
+		die ("ERROR: geneseq_hash genome_tag ($genome_tag) contig ($contig1) not defined!\n");
+	    }
+	    if (!defined $genseq_hash{$genome_tag}->{$contig2}) { # should not happen
+		die ("ERROR: geneseq_hash genome_tag ($genome_tag) contig ($contig2) not defined!\n");
 	    }
 	    if ($whichend1 == 5) {
 		$start1 = $feat_hash{$feat_name1}->{'3p'};
@@ -576,7 +579,7 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 		$start2 = $feat_hash{$feat_name2}->{'3p'};
 		$end2 = $feat_hash{$feat_name2}->{'5p'};
 	    }
-	    print STDERR "$edge_value $feat_name1 $feat_name2 $genome_tag\n" if ($DEBUG);
+	    #print STDERR "$edge_value $feat_name1 $feat_name2 $genome_tag\n" if ($DEBUG);
 	    my $seq_len;
 	    my $sequence;
 	    my $edge_5p;
@@ -808,7 +811,7 @@ sub get_attributes {
 	$feat_hash{$feat_name}->{'anno'} = $anno;
 	$feat_hash{$feat_name}->{'gtag'} = $tag;
 	$feat_hash{$feat_name}->{'contig'} = $asmbl_id;
-	print STDERR "$feat_name $feat_hash{$feat_name}->{'anno'} $feat_hash{$feat_name}->{'5p'} $feat_hash{$feat_name}->{'3p'} $feat_hash{$feat_name}->{'gtag'} $feat_hash{$feat_name}->{'contig'}\n" if ($DEBUG);
+	#print STDERR "$feat_name $feat_hash{$feat_name}->{'anno'} $feat_hash{$feat_name}->{'5p'} $feat_hash{$feat_name}->{'3p'} $feat_hash{$feat_name}->{'gtag'} $feat_hash{$feat_name}->{'contig'}\n" if ($DEBUG);
     }
     close (ATTFILE);
 
@@ -856,6 +859,7 @@ sub process_matchtable {
 	my @sizes = ();
 	my $div_by_three = 0;
 	my $seen = 0;
+	#print  STDERR "genome_array[0]=$genome_array[0] tmp_array[0]=$tmp_array[0]\n" if ($DEBUG);
 	if ($use_multifasta && !$no_stats) {
 	    if (open (CLUSTERFILE, "<$multifastadir/cluster_full_$cluster_id.fasta") )  { #if the file isn't there it's because the cluster was empty and going away on the next iteration
 		my ($save_input_separator) = $/;
@@ -878,8 +882,14 @@ sub process_matchtable {
 			die ("ERROR: $target_id is the target genome and should not be in the multifasta files\n"); # need to get target genome info from actual fasta file not from multifasta file
 		    }
 		    my $tag = shift @tmp_array;
+		    #if ($tag ne $genome_tag) {
+			#print  STDERR "tag=$tag ne $genome_tag\n" if ($DEBUG);
+		    #} else {
+			#print  STDERR "tag=$tag eq $genome_tag\n" if ($DEBUG);
+		    #}
 		    while ($tag ne $genome_tag) {
 			$index++;
+			#print  STDERR "skipping $tag\n" if ($DEBUG);
 			$tag = shift @tmp_array;
 			if (!defined $tag) {
 			    die ("ERROR: shifted off the end of the genome tag array while looking for $genome_tag with featname $feat_name for cluster $cluster_id and target $target_id\n");
@@ -895,7 +905,7 @@ sub process_matchtable {
 			die ("ERROR: contig identifier was not assigned for $feat_name in $matchtable_file should have come from $att_file!\n");
 		    }
 		    if (!defined $genseq_hash{$genome_tag}) { # should not happen
-			die ("ERROR: genome tag identifier was not assigned for $feat_name in $matchtable_file should have come from $att_file!\n");
+			die ("ERROR: genseq_hash genome tag ($genome_tag) is not defined!\n");
 		    }
 		    $cluster_to_feat_hash{$genome_tag}->{$cluster_id} = $feat_name;
 		    $feat_hash{$feat_name}->{'len'} = $seq_len;
@@ -976,10 +986,10 @@ sub process_matchtable {
 		die ("ERROR: contig identifier was not assigned for $feat_name in $matchtable_file should have come from $att_file!\n");
 	    }
 	    if (!defined $genseq_hash{$genome_tag}) { # should not happen
-		die ("ERROR: genome tag identifier was not assigned for $feat_name in $matchtable_file should have come from $att_file!\n");
+		die ("ERROR: genseq_hash genome_tag ($genome_tag) is undefined!\n");
 	    }
 	    if (!defined $genseq_hash{$genome_tag}->{$feat_hash{$feat_name}->{'contig'}}) { # should not happen
-		die ("ERROR: contig sequence was not assigned for $feat_name in $matchtable_file should have come from $att_file!\n");
+		die ("ERROR: genseq_hash genome_tag ($genome_tag) contig ($feat_hash{$feat_name}->{'contig'}) is undefined!\n");
 	    }
 	    $cluster_to_feat_hash{$genome_tag}->{$cluster_id} = $feat_name;
 	    my $fivep = $feat_hash{$feat_name}->{'5p'};
@@ -987,7 +997,7 @@ sub process_matchtable {
 	    my $fivep_seq = "";
 	    my $threep_seq = "";
 	    my $contig_len = $genseq_len{$genome_tag}->{$feat_hash{$feat_name}->{'contig'}};
-	    print STDERR "$feat_name $feat_hash{$feat_name}->{'anno'} $feat_hash{$feat_name}->{'gtag'} $genome_tag\n" if ($DEBUG);
+	    #print STDERR "$feat_name $feat_hash{$feat_name}->{'anno'} $feat_hash{$feat_name}->{'gtag'} $genome_tag\n" if ($DEBUG);
 	    if (($fivep < 1) || ($threep < 1) || ($fivep > $contig_len) || ($threep > $contig_len)) {
 		if ($is_circular{$genome_tag}->{$feat_hash{$feat_name}->{'contig'}}) {
 		    if ($fivep <= $threep) {
@@ -1216,7 +1226,7 @@ sub process_matchtable {
 		    } elsif (defined $genome_seqs[$index]) {
 			my $feat_name = $cluster_to_feat_hash{$genome_tag}->{$cluster_id};
 			if (!defined $feat_pres{$genome_seqs[$index]}) {
-			    print STDERR "$genome_tag:$index:$feat_name:\n$genome_seqs[$index]\n" if ($DEBUG);
+			    #print STDERR "$genome_tag:$index:$feat_name:\n$genome_seqs[$index]\n" if ($DEBUG);
 			}
 			my $seq_len = $feat_hash{$feat_name}->{'len'};
 			my $ambig_count = $genome_seqs[$index] =~ tr/ACGTacgt//c;
@@ -1638,10 +1648,13 @@ sub process_pgg {
 		die ("ERROR: Inconsistency in genome tag between $att_file, $matchtable_file, and $pgg_file for $feat_name1 and $feat_name2");
 	    }
 	    if (!defined $genseq_hash{$genome_tag}) { # should not happen
-		die ("ERROR: genome tag identifier was not assigned for $pgg_file should have come from $att_file!\n");
+		die ("ERROR: geneseq_hash genome_tag ($genome_tag) not defined!\n");
 	    }
-	    if ((!defined $genseq_hash{$genome_tag}->{$contig1}) || (!defined $genseq_hash{$genome_tag}->{$contig2})) { # should not happen
-		die ("ERROR: contig sequence was not assigned for $contig1 $feat_name1 or $contig2 $feat_name2 in $pgg_file should have come from $att_file!\n");
+	    if (!defined $genseq_hash{$genome_tag}->{$contig1}) { # should not happen
+		die ("ERROR: geneseq_hash genome_tag ($genome_tag) contig ($contig1) not defined!\n");
+	    }
+	    if (!defined $genseq_hash{$genome_tag}->{$contig2}) { # should not happen
+		die ("ERROR: geneseq_hash genome_tag ($genome_tag) contig ($contig2) not defined!\n");
 	    }
 	    if ($whichend1 == 5) {
 		$start1 = $feat_hash{$feat_name1}->{'3p'};
@@ -1657,7 +1670,7 @@ sub process_pgg {
 		$start2 = $feat_hash{$feat_name2}->{'3p'};
 		$end2 = $feat_hash{$feat_name2}->{'5p'};
 	    }
-	    print STDERR "$edge_value $feat_name1 $feat_name2 $genome_tag\n" if ($DEBUG);
+	    #print STDERR "$edge_value $feat_name1 $feat_name2 $genome_tag\n" if ($DEBUG);
 	    $edge_hash{$genome_tag . $edge_id} = {};
 	    $edge_hash{$genome_tag . $edge_id}->{'gtag'} = $genome_tag;
 	    $edge_hash{$genome_tag . $edge_id}->{'contig'} = $contig1;
@@ -2053,7 +2066,7 @@ sub process_pgg {
 			} elsif (defined $genome_seqs[$index]) {
 			    my $feat_name = $genome_tag . $edge_id;
 			    if (!defined $feat_pres{$genome_seqs[$index]}) {
-				print STDERR "$genome_tag:$index:$feat_name:\n$genome_seqs[$index]\n" if ($DEBUG);
+				#print STDERR "$genome_tag:$index:$feat_name:\n$genome_seqs[$index]\n" if ($DEBUG);
 			    }
 			    my $seq_len = $edge_hash{$feat_name}->{'len'};
 			    my $ambig_count = $genome_seqs[$index] =~ tr/ACGTacgt//c;
@@ -2739,8 +2752,8 @@ _EOB_
 
 ########################################  M A I N  #####################################################
 if ($no_stats) {
-    &get_genome_names;
     print STDERR "No stats just remaking files so not reading genomes\n";
+    &get_genome_names;
 } else {
     print  STDERR "Getting topology from $topology_file\n";
     &read_topology;
@@ -2749,10 +2762,14 @@ if ($no_stats) {
     if ($write_multifasta) {
 	print STDERR "Reading genomes, matchtable, and pgg then writing multifasta clusters and edges\n";
 	&output_multifasta;
-    } else {
-	print  STDERR "Getting genome names and contig sequences from $genomes_file_name\n";
-	&get_genomes;
-    }
+     } else {
+	 if ($use_multifasta) {
+	     print STDERR "Getting genome names from $genomes_file_name but extracting clusters and edges from multifasta files in $multifastadir\n";
+	 } else {
+	     print  STDERR "Getting genome names and contig sequences from $genomes_file_name\n";
+	 }
+	 &get_genomes;
+     }
 }
 print  STDERR "Reading single copy core clusters from $single_cores\n";
 &read_single_cores;
