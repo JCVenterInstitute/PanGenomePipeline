@@ -557,7 +557,7 @@ sub compute
 	}
     }
     &wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
-    #`rm -r TMP_*`;
+    `rm -r TMP_*`;
     if ($debug) {print STDERR "removed TMP directories\n";}
     
     $num_jobs = 0;
@@ -630,7 +630,7 @@ sub compute
 	    }
 	    if ($debug) {print STDERR "$num_jobs relaunched\n";}
 	    &wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
-	    #`rm -r TMP_*`;
+	    `rm -r TMP_*`;
 	    if ($debug) {print STDERR "removed resubmitted TMP directories\n";}
 	}
     }
