@@ -29,6 +29,8 @@ determination of 23mers but is included as part of the position within the conti
 #include <stdbool.h>
 #include <limits.h>
 #include <stdint.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #define MAX_UINT16 65535
 #define MAX_UINT32 4294967295
@@ -68,7 +70,7 @@ void kmer_bucket_sort_genome( FILE * fp_fasta, char * genome_file_name, uint16_t
   int kmer_bucket;
   
   if ((getline_return = getline(&fasta_line, &fasta_line_malloc_len, fp_fasta)) == -1) {
-    fprintf(stderr, "%s appears to be empty.\n%s", genome_file_name);
+    fprintf(stderr, "%s appears to be empty.\n", genome_file_name);
     exit(EXIT_FAILURE);
   }
   if (fasta_line[0] != '>') {
