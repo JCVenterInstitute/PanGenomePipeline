@@ -35,8 +35,12 @@ determination of 23mers but is included as part of the position within the conti
 #define MAX_UINT16 65535
 #define MAX_UINT32 4294967295
 #define MAX_INT32 2147482647
+#define KMER_SIZE 23
 #define KMER_BUFFER_LEN 1000
 #define KMER_BUFFER_NUMBER 262144
+#define CONTIG_SEQ_BUFFER_LEN 100000
+#define MIN_ANCHOR_LEN 200
+#define OPT_ANCHOR_LEN 1000
  
 struct Kmer { /* this struct captures the each 23mer and its context and is output to one of the 262,144 bucket files */
   uint64_t kmer; /* the lower 46 bits encodes a 23mer given a two bit encoding of each basepair */
@@ -45,10 +49,131 @@ struct Kmer { /* this struct captures the each 23mer and its context and is outp
   uint16_t   contig; /* the contig number of the 23mer based on the order of the contig in the multifasta genome file beginning with 0 */
 };
 
+struct red_Kmer { /* this struct is a reduced version of the Kmer struct which does not store the k-mer explicitly */
+  int32_t  pos; /* the position of the last basepair of the 23mer within the contig, the first basepair of a contig has position 1, a negative value indicates the reverse complement of the 23mer appears in the contig */
+  uint16_t  genome; /* the genome number of the 23mer based on the order of the genome in the input file names file beginning with 0 */
+  uint16_t   contig; /* the contig number of the 23mer based on the order of the contig in the multifasta genome file beginning with 0 */
+};
+
 /*
-  This subroutine reads through a genome one basepair at a time to construct 23mers and output them to the buclet files
- */
-void kmer_bucket_sort_genome( FILE * fp_fasta, char * genome_file_name, uint16_t genome_number, char ** bucket_file_names, struct Kmer ** kmer_buffers, int * kmer_buffer_indices)
+This subroutine is the comparator function for qsort for an array of k-mers in a bucket file.
+*/
+static int kmer_sort(const void * kmer_ptr1, const void * kmer_ptr2) {
+  if (((struct Kmer *)kmer_ptr1)->kmer < ((struct Kmer *)kmer_ptr2)->kmer) {
+    return (-1);
+  } else if (((struct Kmer *)kmer_ptr1)->kmer > ((struct Kmer *)kmer_ptr2)->kmer) {
+    return (1);
+  } else {
+    return ((int) (((struct Kmer *)kmer_ptr1)->genome - ((struct Kmer *)kmer_ptr2)->genome));
+  }
+}
+
+/*
+This subroutine is the comparator function for qsort for an array of reduced k-mers in a bucket file.
+*/
+static int red_kmer_sort(const void * kmer_ptr1, const void * kmer_ptr2) {
+  if (((struct red_Kmer *)kmer_ptr1)->contig < ((struct red_Kmer *)kmer_ptr2)->contig) {
+    return (-1);
+  } else if (((struct red_Kmer *)kmer_ptr1)->contig > ((struct red_Kmer *)kmer_ptr2)->contig) {
+    return (1);
+  } else {
+    return ((int) (((struct red_Kmer *)kmer_ptr1)->pos - ((struct red_Kmer *)kmer_ptr2)->pos));
+  }
+}
+
+/*
+This subroutine reads in a specified number of base pairs into an anchor buffer
+*/
+int read_fasta_kmer(char * genome_file_name, FILE * fp_fasta, int cur_file_pos, int cur_file_contig, int cur_contig, int cur_pos, int num_basepairs, char * contig_seq, int contig_seq_pos)
+{
+  int fgetc_return, getline_return;
+  char cur_char;
+  char prev_char = '\n';
+  size_t fasta_line_malloc_len = 0;
+  char * fasta_line = NULL;
+  
+  while ((num_basepairs > 0) && ((fgetc_return = fgetc(fp_fasta)) != EOF)) {
+    cur_char = (char) fgetc_return;
+    if (isspace(cur_char)) {
+      /* ignore white space except for keeping track of newlines to determine fasta header lines */
+      prev_char = cur_char;
+    } else if (cur_char == '>') {
+      if (prev_char == '\n') {
+	cur_file_contig++;
+	cur_file_pos = 1;
+	/* Start of a new contig. Read in header line but ignore it other than incrementing contig number */
+	if ((getline_return = getline(&fasta_line, &fasta_line_malloc_len, fp_fasta)) == -1) {
+	  fprintf (stderr, "empty contig fasta header: %d for genome %s!\n", cur_file_contig, genome_file_name);
+	  exit(EXIT_FAILURE);
+	}
+      } else {
+	fprintf (stderr, "Unexpected > not at beginning of line in fasta file %s.\n", genome_file_name);
+	exit(EXIT_FAILURE);
+      }
+    } else { /* just read in a nucleotide either catching up to current anchor or part of the anchor */
+      if ((cur_file_contig == cur_contig) && (cur_file_pos >= cur_pos)) {
+	contig_seq[contig_seq_pos++] = cur_char;
+	num_basepairs--;
+      }
+      cur_file_pos++;
+    }
+  }
+  free(fasta_line);
+  return (cur_file_contig);
+}
+
+/*
+This subroutine writes anchors/medoid sequences out to a file based on an anchor buffer and returns the number of anchors written
+*/
+int write_anchors(FILE * fp_anchors, int anchor_number, char * contig_seq, int stop_pos)
+{
+  int num_anchors_written = 0;
+  int i,j;
+
+  if (stop_pos < MIN_ANCHOR_LEN) {
+  } else if (stop_pos < ((3 * OPT_ANCHOR_LEN) / 2)) {
+    fprintf(fp_anchors, ">medoid_%d\n", anchor_number);
+    for (j = 0; j < stop_pos; j += 60) {
+      int out_len = (stop_pos - j) < 60 ? (stop_pos - j) : 60;
+      if (fwrite(&contig_seq[j], sizeof(char), (size_t) out_len, fp_anchors) != KMER_BUFFER_LEN) {
+	fprintf (stderr, "Could not complete write to anchors file for anchor %d\n", anchor_number);
+	exit(EXIT_FAILURE);
+      }
+      fputc('\n', fp_anchors);
+    }
+    num_anchors_written++;
+  } else {
+    int anchors_in_buffer = stop_pos / OPT_ANCHOR_LEN;
+    int anchor_len = OPT_ANCHOR_LEN;
+    if ((stop_pos % OPT_ANCHOR_LEN) > 0) {
+      anchors_in_buffer++;
+      anchor_len = stop_pos / anchors_in_buffer;
+      if ((stop_pos % anchors_in_buffer) > 0) {
+	anchor_len++;
+      }
+    }
+    for (i = 0; i < anchors_in_buffer; i++) {
+      int anchor_stop_pos = (((i + 1) * anchor_len) > stop_pos) ? stop_pos : ((i + 1) * anchor_len);
+      fprintf(fp_anchors, ">medoid_%d\n", anchor_number);
+      for (j = i * anchor_len; j < anchor_stop_pos; j += 60) {
+	int out_len = (stop_pos - j) < 60 ? (stop_pos - j) : 60;
+	if (fwrite(&contig_seq[j], sizeof(char), (size_t) out_len, fp_anchors) != KMER_BUFFER_LEN) {
+	  fprintf (stderr, "Could not complete write to anchors file for anchor %d\n", anchor_number);
+	  exit(EXIT_FAILURE);
+	}
+	fputc('\n', fp_anchors);
+      }
+      anchor_number++;
+      num_anchors_written++;
+    }
+  }
+  return num_anchors_written;
+}
+
+/*
+This subroutine reads through a genome one basepair at a time to construct 23mers and output them to the buclet files
+*/
+int kmer_bucket_sort_genome(FILE * fp_fasta, char * genome_file_name, uint16_t genome_number, char ** bucket_file_names, struct Kmer ** kmer_buffers, int * kmer_buffer_indices, size_t * bucket_sizes)
 {
   FILE * fp_bucket;
   size_t getline_return;
@@ -68,6 +193,7 @@ void kmer_bucket_sort_genome( FILE * fp_fasta, char * genome_file_name, uint16_t
   int kmer_bp_count = 0;
   int contig_pos = 0;
   int kmer_bucket;
+  int new_red_files = 0;
   
   if ((getline_return = getline(&fasta_line, &fasta_line_malloc_len, fp_fasta)) == -1) {
     fprintf(stderr, "%s appears to be empty.\n", genome_file_name);
@@ -77,6 +203,7 @@ void kmer_bucket_sort_genome( FILE * fp_fasta, char * genome_file_name, uint16_t
     fprintf(stderr, "First line of fasta file %s does not begin with a >.\n%s", genome_file_name, fasta_line);
     exit(EXIT_FAILURE);
   }
+  new_red_files++; /* this gets incremented for every contig in the first genome, and only once for each other genome */
   prev_char = '\n';
   while ((fgetc_return = fgetc(fp_fasta)) != EOF) {
     cur_char = (char) fgetc_return;
@@ -144,6 +271,9 @@ void kmer_bucket_sort_genome( FILE * fp_fasta, char * genome_file_name, uint16_t
 	      fprintf (stderr, "maximum number of contigs: %d exceeded for genome %s!\n", contig_number, genome_file_name);
 	      exit(EXIT_FAILURE);
 	    }
+	    if (genome_number == 0) {
+	      new_red_files++; /* this gets incremented for every contig in the first genome, and only once for each other genome */
+	    }
 	    contig_number++;
 	  } else {
 	    fprintf (stderr, "Unexpected > not at beginning of line in fasta file %s.\n", genome_file_name);
@@ -187,7 +317,7 @@ void kmer_bucket_sort_genome( FILE * fp_fasta, char * genome_file_name, uint16_t
 	      kmer_buffers[kmer_bucket][kmer_buffer_indices[kmer_bucket]].contig = contig_number;
 	    }
 	    kmer_buffer_indices[kmer_bucket]++;
-	    if (kmer_buffer_indices[kmer_bucket] == 1000) {
+	    if (kmer_buffer_indices[kmer_bucket] == KMER_BUFFER_LEN) {
 	      /* kmer bucket buffer is full so output it and reset index */
 	      kmer_buffer_indices[kmer_bucket] = 0;
 	      fp_bucket = fopen(bucket_file_names[kmer_bucket], "a");
@@ -195,10 +325,11 @@ void kmer_bucket_sort_genome( FILE * fp_fasta, char * genome_file_name, uint16_t
 		fprintf (stderr, "Could not open file %s\n", bucket_file_names[kmer_bucket]);
 		exit(EXIT_FAILURE);
 	      }
-	      if (fwrite(kmer_buffers[kmer_bucket], sizeof(struct Kmer), 1000, fp_bucket) != 1000) {
+	      if (fwrite(kmer_buffers[kmer_bucket], sizeof(struct Kmer), KMER_BUFFER_LEN, fp_bucket) != KMER_BUFFER_LEN) {
 		fprintf (stderr, "Could not complete write to  file %s\n", bucket_file_names[kmer_bucket]);
 		exit(EXIT_FAILURE);
 	      }
+	      bucket_sizes[kmer_bucket] += KMER_BUFFER_LEN;
 	      fclose(fp_bucket);
 	    }
 	  }
@@ -211,13 +342,17 @@ void kmer_bucket_sort_genome( FILE * fp_fasta, char * genome_file_name, uint16_t
     }
   }
   free(fasta_line);
-  return;
+  return (new_red_files);
 }
 
 int
 main (int argc, char **argv)
 {
   char *genomes_file = NULL;
+  int num_red_files = 0; /* this is the number of files/buckets for the reduced k-mers, one for each of the contigs in the first genome, and one per genome after that */
+  int num_first_genome_contigs; /* this is the number of contigs in the first genome */
+  int red_file_number; /* index of reduced k-mer file */
+  char red_file_name[100]; /* used to convert the red_file_number into a file name */
   int index;
   int getopt_return;
   FILE * fp_file_names;
@@ -229,13 +364,29 @@ main (int argc, char **argv)
   bool max_genomes_exceeded = false; /* set if too many genomes for a uint16_t (65,536) */
   struct Kmer ** kmer_buffers; /* this is the malloced array of arrays for each kmer buffer in the top level buckets used to buffer for output */
   struct Kmer * kmer_buffers_pool; /* this is the pool of malloc storage to use for the k-mer buffer arrays */
+  struct Kmer * kmer_array; /* this is the pool of malloc storage to use for the k-mer array containing one bucket of k-mers */
   int * kmer_buffer_indices; /* malloced array of indices into the kmer buffers */
+  struct red_Kmer ** red_kmer_buffers; /* this is the malloced array of arrays for each kmer buffer in the top level buckets used to buffer for output */
+  struct red_Kmer * red_kmer_buffers_pool; /* this is the pool of malloc storage to use for the k-mer buffer arrays */
+  struct red_Kmer * red_kmer_array; /* this is the pool of malloc storage to use for the reduced k-mer array containing one bucket of reduced k-mers */
+  int * red_kmer_buffer_indices; /* malloced array of indices into the kmer buffers */
+  size_t * bucket_sizes; /* malloced array of bucket sizes */
+  size_t * red_bucket_sizes; /* malloced array of reduced k-mer bucket sizes */
   char bps[4] = {'A','C','G','T'};
   char ** bucket_file_names; /* array of malloced fixed length strings for bucket file names */
   char * bucket_file_names_pool; /* this is the pool pf malloc storage for the bucket file names */
   char tmp_file_dir_name[12];
   int i,j,k,l,m,n,o,p,q;
-
+  FILE * fp_file_name;
+  FILE * fp_anchors;
+  int file_name_len;
+  char * fasta_line = NULL;
+  size_t fasta_line_malloc_len = 0;
+  char prev_char, cur_car;
+  int32_t prev_pos, cur_pos;
+  int cur_file_pos, cur_file_contig, cur_file_genome, prev_genome, cur_genome;
+  int 	anchor_number = 1; /* the anchor/medoid number initialized here to 1 */
+  
   opterr = 0;
 
   while ((getopt_return = getopt (argc, argv, "g:")) != -1) {
@@ -332,6 +483,13 @@ main (int argc, char **argv)
     }
   }
 
+  /* allocate the array of indices for each kmer bucket size */
+  bucket_sizes = (size_t *) malloc((size_t) (KMER_BUFFER_NUMBER * sizeof(size_t)));
+  if (bucket_sizes == NULL) {
+      fprintf (stderr, "Could not allocate memory for bucket_sizes\n");
+    exit(EXIT_FAILURE);
+  }
+
   /* allocate the array of indices for each kmer bucket buffer */
   kmer_buffer_indices = (int *) malloc((size_t) (KMER_BUFFER_NUMBER * sizeof(int)));
   if (kmer_buffer_indices == NULL) {
@@ -342,6 +500,7 @@ main (int argc, char **argv)
   /* initialize the kmer bucket buffer indices to 0 */
   for (index = 0; index < KMER_BUFFER_NUMBER; index++) {
     kmer_buffer_indices[index] = 0;
+    bucket_sizes[index] = 0;
   }
 
   /* allocate the array of pointers to the kmer buffers */
@@ -371,8 +530,6 @@ main (int argc, char **argv)
 
   /* loop through each genome in the genomes file input file */
   while ((getline_return = getline(&file_name_line, &file_name_line_malloc_len, fp_file_names)) != -1) {
-    FILE * fp_file_name;
-    int file_name_len;
     if (max_genomes_exceeded) {
       fprintf (stderr, "Maximum number of genomes: %d exceeded!\n", genome_number);
       exit(EXIT_FAILURE);
@@ -392,7 +549,10 @@ main (int argc, char **argv)
       fprintf (stderr, "Could not open file %s\n", file_name_line);
       exit(EXIT_FAILURE);
     }
-    kmer_bucket_sort_genome(fp_file_name, file_name_line, genome_number, bucket_file_names, kmer_buffers, kmer_buffer_indices);
+    num_red_files += kmer_bucket_sort_genome(fp_file_name, file_name_line, genome_number, bucket_file_names, kmer_buffers, kmer_buffer_indices, bucket_sizes);
+    if (genome_number == 0) {
+      num_first_genome_contigs = num_red_files;
+    }
     if (genome_number == 65535) {
       max_genomes_exceeded = true;
     } else {
@@ -412,12 +572,315 @@ main (int argc, char **argv)
 	fprintf (stderr, "Could not open file %s\n", bucket_file_names[index]);
 	exit(EXIT_FAILURE);
       }
-      if (fwrite(kmer_buffers[index], sizeof(struct Kmer), kmer_buffer_indices[index], fp_bucket) != kmer_buffer_indices[index]) {
-	fprintf (stderr, "Could not complete write to  file %s\n", bucket_file_names[index]);
+      if (fwrite((void *) kmer_buffers[index], sizeof(struct Kmer), kmer_buffer_indices[index], fp_bucket) != kmer_buffer_indices[index]) {
+	fprintf (stderr, "Could not complete write to file %s\n", bucket_file_names[index]);
 	exit(EXIT_FAILURE);
       }
+      bucket_sizes[index] += kmer_buffer_indices[index];
       fclose(fp_bucket);
     }
   }
+
+  /* free memory used for bucket file write buffers */
+  free ((void *) kmer_buffer_indices);
+  free ((void *) kmer_buffers);
+  free ((void *) kmer_buffers_pool);
+
+  /* allocate the array of indices for each reduced kmer bucket buffer */
+  red_kmer_buffer_indices = (int *) malloc((size_t) (num_red_files * sizeof(int)));
+  if (red_kmer_buffer_indices == NULL) {
+      fprintf (stderr, "Could not allocate memory for red_kmer_buffer_indices\n");
+    exit(EXIT_FAILURE);
+  }
+
+  /* allocate the array of indices for each reducedkmer bucket size */
+  red_bucket_sizes = (size_t *) malloc((size_t) (num_red_files * sizeof(size_t)));
+  if (red_bucket_sizes == NULL) {
+      fprintf (stderr, "Could not allocate memory for reduced k-mer bucket_sizes\n");
+    exit(EXIT_FAILURE);
+  }
+
+  /* initialize the kmer bucket buffer indices to 0 */
+  for (index = 0; index < num_red_files; index++) {
+    red_kmer_buffer_indices[index] = 0;
+    red_bucket_sizes[index] = 0;
+  }
+
+  /* allocate the array of pointers to the kmer buffers */
+  red_kmer_buffers = (struct red_Kmer **) malloc((size_t) (num_red_files * sizeof(struct red_Kmer *)));
+  if (red_kmer_buffers == NULL) {
+      fprintf (stderr, "Could not allocate memory for red_kmer_buffers\n");
+    exit(EXIT_FAILURE);
+  }
+
+  /* allocate the pool of storage for the kmer buffers */
+  red_kmer_buffers_pool = (struct red_Kmer *) malloc((size_t) (num_red_files * KMER_BUFFER_LEN * sizeof(struct red_Kmer)));
+  if (red_kmer_buffers_pool == NULL) {
+    fprintf (stderr, "Could not allocate memory for red_kmer_buffers_pool\n");
+    exit(EXIT_FAILURE);
+  }
+
+  /* set up the kmer buffers to point to the assigned storage buffer within the storage pool */
+  for (index = 0; index < num_red_files; index++) {
+    red_kmer_buffers[index] = red_kmer_buffers_pool + (size_t) (index * KMER_BUFFER_LEN * sizeof(struct red_Kmer));
+  }
+  
+  /* read in one bucket at a time and sort it */
+  for (index = 0; index < KMER_BUFFER_NUMBER; index++) {
+    kmer_array = (struct Kmer *) malloc((size_t) (bucket_sizes[index] * sizeof(struct Kmer)));
+    if (kmer_array == NULL) {
+      fprintf (stderr, "Could not allocate memory for kmer_array\n");
+      exit(EXIT_FAILURE);
+    }
+    fp_bucket = fopen(bucket_file_names[index], "r");
+    if (fp_bucket == NULL) {
+      fprintf (stderr, "Could not open file %s for reading\n", bucket_file_names[index]);
+      exit(EXIT_FAILURE);
+    }
+    if (fread((void *) kmer_array, sizeof(struct Kmer), bucket_sizes[index], fp_bucket) != bucket_sizes[index]) {
+      fprintf (stderr, "Could not complete read of file %s\n", bucket_file_names[index]);
+      exit(EXIT_FAILURE);
+    }
+    qsort((void *) kmer_array, bucket_sizes[index], sizeof(struct Kmer), kmer_sort);
+    for (i = 0; i <  bucket_sizes[index];) {
+      struct Kmer first_array_kmer, prev_array_kmer;
+      bool duplicate_kmer = false;
+      first_array_kmer = kmer_array[i];
+      prev_array_kmer = first_array_kmer;
+      for (i++; first_array_kmer.kmer == kmer_array[i].kmer; i++) {
+	if (prev_array_kmer.genome == kmer_array[i].genome) {
+	  duplicate_kmer = true;
+	}
+	prev_array_kmer = kmer_array[i];
+      }
+      if (! duplicate_kmer) {
+	if (first_array_kmer.genome == 0) {
+	  red_file_number = first_array_kmer.contig;
+	} else {
+	  red_file_number = num_first_genome_contigs + (first_array_kmer.genome - 1);
+	}
+	if (first_array_kmer.pos < 0) {
+	  red_kmer_buffers[red_file_number][kmer_buffer_indices[red_file_number]].pos = - first_array_kmer.pos;
+	} else {
+	  red_kmer_buffers[red_file_number][kmer_buffer_indices[red_file_number]].pos = first_array_kmer.pos;
+	}
+	red_kmer_buffers[red_file_number][kmer_buffer_indices[red_file_number]].genome = first_array_kmer.genome;
+	red_kmer_buffers[red_file_number][kmer_buffer_indices[red_file_number]].contig = first_array_kmer.contig;
+	red_kmer_buffer_indices[red_file_number]++;
+	if (red_kmer_buffer_indices[red_file_number] == KMER_BUFFER_LEN) {
+	  /* kmer bucket buffer is full so output it and reset index */
+	  red_kmer_buffer_indices[red_file_number] = 0;
+	  sprintf(red_file_name, "%i", red_file_number);
+	  fp_bucket = fopen(red_file_name, "a");
+	  if (fp_bucket == NULL) {
+	    fprintf (stderr, "Could not open file %s\n", red_file_name);
+	    exit(EXIT_FAILURE);
+	  }
+	  if (fwrite(red_kmer_buffers[red_file_number], sizeof(struct red_Kmer), KMER_BUFFER_LEN, fp_bucket) != KMER_BUFFER_LEN) {
+	    fprintf (stderr, "Could not complete write to  file %s\n", red_file_name);
+	    exit(EXIT_FAILURE);
+	  }
+	  red_bucket_sizes[red_file_number] += KMER_BUFFER_LEN;
+	  fclose(fp_bucket);
+	}
+      }
+    }
+    free ((void *) kmer_array);
+    fclose(fp_bucket);
+  }
+
+  /* flush any reduced k-mers remaining in the reduced kmer buffers */
+  for (index = 0; index < num_red_files; index++) {
+    if (red_kmer_buffer_indices[index] != 0) {
+      sprintf(red_file_name, "%i", index);
+      fp_bucket = fopen(red_file_name, "a");
+      if (fp_bucket == NULL) {
+	fprintf (stderr, "Could not open file %s\n", red_file_name);
+	exit(EXIT_FAILURE);
+      }
+      if (fwrite((void *) red_kmer_buffers[index], sizeof(struct red_Kmer), red_kmer_buffer_indices[index], fp_bucket) != red_kmer_buffer_indices[index]) {
+	fprintf (stderr, "Could not complete write to file %s\n", red_file_name);
+	exit(EXIT_FAILURE);
+      }
+      bucket_sizes[index] += red_kmer_buffer_indices[index];
+      fclose(fp_bucket);
+    }
+  }
+
+  /* loop through each genome in the genomes file input file as needed to determine anchors*/
+  fp_file_names = fopen(genomes_file, "r");
+  if (fp_file_names == NULL) {
+      fprintf (stderr, "Could not open file %s\n", genomes_file);
+    exit(EXIT_FAILURE);
+  }
+
+  getline_return = getline(&file_name_line, &file_name_line_malloc_len, fp_file_names);
+  if (getline_return == -1) {
+    fprintf (stderr, "Unexpected end of genome names file: %s!\n", genomes_file);
+    exit(EXIT_FAILURE);
+  }
+  if (file_name_line == NULL) {
+    fprintf (stderr, "file_name_line is NULL!\n");
+    exit(EXIT_FAILURE);
+  }
+  file_name_len = strlen(file_name_line);
+  if (file_name_len <= 1) {
+    fprintf (stderr, "Unexpected empty line in genomes file: %s\n", genomes_file);
+    exit(EXIT_FAILURE);
+  }
+  file_name_line[file_name_len - 1] = '\0';
+  fp_file_name = fopen(file_name_line, "r");
+  if (fp_file_name == NULL) {
+    fprintf (stderr, "Could not open file %s\n", file_name_line);
+    exit(EXIT_FAILURE);
+  }
+  if ((getline_return = getline(&fasta_line, &fasta_line_malloc_len, fp_file_name)) == -1) {
+    fprintf(stderr, "%s appears to be empty.\n", file_name_line);
+    exit(EXIT_FAILURE);
+  }
+  if (fasta_line[0] != '>') {
+    fprintf(stderr, "First line of fasta file %s does not begin with a >.\n%s", file_name_line, fasta_line);
+    exit(EXIT_FAILURE);
+  }
+  cur_file_pos = 1;
+  cur_file_contig = 0;
+  cur_file_genome = 0;
+  cur_genome = 0;
+  prev_genome = 0;
+
+  fp_anchors = fopen("medoids.fasta", "w");
+  if (fp_anchors == NULL) {
+    fprintf (stderr, "Could not open anchors/medoids file for output\n");
+    exit(EXIT_FAILURE);
+  }
+
+  /* read in reduced k-mers from contig/genome buckets and produce anchors */
+  for (index = 0; index < num_red_files; index++) {
+    char contig_seq[CONTIG_SEQ_BUFFER_LEN];
+    int prev_pos, cur_pos, prev_contig, cur_contig, contig_seq_pos;
+    
+    red_kmer_array = (struct red_Kmer *) malloc((size_t) (red_bucket_sizes[index] * sizeof(struct red_Kmer)));
+    if (red_kmer_array == NULL) {
+      fprintf (stderr, "Could not allocate memory for red_kmer_array\n");
+      exit(EXIT_FAILURE);
+    }
+    sprintf(red_file_name, "%i", index);
+    fp_bucket = fopen(red_file_name, "r");
+    if (fp_bucket == NULL) {
+      fprintf (stderr, "Could not open file %s\n", red_file_name);
+      exit(EXIT_FAILURE);
+    }
+    if (fread((void *) red_kmer_array, sizeof(struct red_Kmer), red_bucket_sizes[index], fp_bucket) != red_bucket_sizes[index]) {
+      fprintf (stderr, "Could not complete read of file %s\n", red_file_name);
+      exit(EXIT_FAILURE);
+    }
+    qsort((void *) red_kmer_array, red_bucket_sizes[index], sizeof(struct red_Kmer), red_kmer_sort);
+    prev_pos = -1;
+    prev_contig = -1;
+    contig_seq_pos = 0;
+    for (i = 0; i <  red_bucket_sizes[index]; i++) {
+      if ((contig_seq_pos + (KMER_SIZE - 1)) >= CONTIG_SEQ_BUFFER_LEN) {
+	/* Buffer full - output first half of current anchors buffer */
+	anchor_number += write_anchors(fp_anchors, anchor_number, contig_seq, (int) (CONTIG_SEQ_BUFFER_LEN / 2));
+	/* Copy second half of buffer into first half of buffer */
+	memcpy((void *) contig_seq, (void *) &contig_seq[(CONTIG_SEQ_BUFFER_LEN / 2)], (size_t) (CONTIG_SEQ_BUFFER_LEN / 2));
+	contig_seq_pos -= (CONTIG_SEQ_BUFFER_LEN / 2);
+      }
+      cur_pos = (int) red_kmer_array[i].pos;
+      cur_contig = (int) red_kmer_array[i].contig;
+      cur_genome = (int) red_kmer_array[i].genome;
+      if (cur_genome != cur_file_genome) {
+	fprintf (stderr, "Current genome number %d does not match stored genome number %d\n", cur_genome, cur_file_genome);
+	exit(EXIT_FAILURE);
+      }
+      if (cur_contig != prev_contig) {
+	prev_pos = -1;
+      }
+      if (prev_pos == -1) {
+	if ((prev_contig != -1) && (contig_seq_pos > 0)){
+	  /* Switched contigs - output current anchors buffer */
+	  anchor_number += write_anchors(fp_anchors, anchor_number, contig_seq, contig_seq_pos);
+	}
+	contig_seq_pos = 0;
+	cur_file_contig = read_fasta_kmer(file_name_line, fp_file_name, cur_file_pos, cur_file_contig, cur_contig, cur_pos, KMER_SIZE, contig_seq, contig_seq_pos);
+	contig_seq_pos += KMER_SIZE;
+	cur_file_pos = cur_pos + KMER_SIZE;
+      } else {
+	if ((cur_pos - prev_pos) > KMER_SIZE) {
+	  /* Break in unique k-mers - output current anchors buffer */
+	  anchor_number += write_anchors(fp_anchors, anchor_number, contig_seq, contig_seq_pos);
+	  contig_seq_pos = 0;
+	  cur_file_contig = read_fasta_kmer(file_name_line, fp_file_name, cur_file_pos, cur_file_contig, cur_contig, cur_pos, KMER_SIZE, contig_seq, contig_seq_pos);
+	  contig_seq_pos += KMER_SIZE;
+	  cur_file_pos = cur_pos + KMER_SIZE;
+	} else {
+	  cur_file_contig = read_fasta_kmer(file_name_line, fp_file_name, cur_file_pos, cur_file_contig, cur_contig, cur_file_pos, (cur_pos - prev_pos), contig_seq, contig_seq_pos);
+	  contig_seq_pos += (cur_pos - prev_pos);
+	  cur_file_pos += (cur_pos - prev_pos);
+	}
+      }
+      prev_pos = cur_pos;
+      prev_contig = cur_contig;
+    }
+    if (contig_seq_pos > 0) {
+      /* Flush remaining anchors buffer */
+	  anchor_number += write_anchors(fp_anchors, anchor_number, contig_seq, contig_seq_pos);
+    }
+    free ((void *) red_kmer_array);
+    fclose(fp_bucket);
+
+    /* check if we need to switch to a new genome or just a new contig in first genome */
+    if (index < (num_first_genome_contigs - 1)) {
+    } else {
+      getline_return = getline(&file_name_line, &file_name_line_malloc_len, fp_file_names);
+      if (getline_return == -1) {
+	fprintf (stderr, "Unexpected end of genome names file: %s!\n", genomes_file);
+	exit(EXIT_FAILURE);
+      }
+      if (file_name_line == NULL) {
+	fprintf (stderr, "file_name_line is NULL!\n");
+	exit(EXIT_FAILURE);
+      }
+      file_name_len = strlen(file_name_line);
+      if (file_name_len <= 1) {
+	fprintf (stderr, "Unexpected empty line in genomes file: %s\n", genomes_file);
+	exit(EXIT_FAILURE);
+      }
+      file_name_line[file_name_len - 1] = '\0';
+      fclose(fp_file_name);
+      fp_file_name = fopen(file_name_line, "r");
+      if (fp_file_name == NULL) {
+	fprintf (stderr, "Could not open file %s\n", file_name_line);
+	exit(EXIT_FAILURE);
+      }
+      if ((getline_return = getline(&fasta_line, &fasta_line_malloc_len, fp_file_name)) == -1) {
+	fprintf(stderr, "%s appears to be empty.\n", file_name_line);
+	exit(EXIT_FAILURE);
+      }
+      if (fasta_line[0] != '>') {
+	fprintf(stderr, "First line of fasta file %s does not begin with a >.\n%s", file_name_line, fasta_line);
+	exit(EXIT_FAILURE);
+      }
+      cur_file_pos = 1;
+      cur_file_contig = 0;
+      cur_file_genome++;
+      prev_genome = cur_genome;
+      cur_genome++;
+    }
+  }
+
+  free(fasta_line);
+  free(file_name_line);
+
+  fclose(fp_file_name);
+  fclose(fp_file_names);
+  fclose(fp_anchors);
+
+  /* free memory used for bucket file write buffers */
+  free ((void *) red_kmer_buffer_indices);
+  free ((void *) red_kmer_buffers);
+  free ((void *) red_kmer_buffers_pool);
+
   exit(EXIT_SUCCESS);
 }
+
