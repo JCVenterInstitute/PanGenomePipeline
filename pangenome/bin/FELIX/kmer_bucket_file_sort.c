@@ -125,7 +125,7 @@ int read_fasta_kmer(char * genome_file_name, FILE * fp_fasta, int cur_file_pos, 
 /*
 This subroutine writes anchors/medoid sequences out to a file based on an anchor buffer and returns the number of anchors written
 */
-int write_anchors(FILE * fp_anchors, int anchor_number, char * contig_seq, int stop_pos)
+int write_anchors(FILE * fp_pgg, FILE * fp_anchors, int anchor_number, char * contig_seq, int stop_pos, bool anchor_break)
 {
   int num_anchors_written = 0;
   int i,j;
@@ -140,6 +140,9 @@ int write_anchors(FILE * fp_anchors, int anchor_number, char * contig_seq, int s
 	exit(EXIT_FAILURE);
       }
       fputc('\n', fp_anchors);
+    }
+    if (! anchor_break) {
+      fprintf(fp_pgg, "(%d_3,%d_5)\t1)\n", (anchor_number - 1), anchor_number);
     }
     num_anchors_written++;
   } else {
@@ -162,6 +165,11 @@ int write_anchors(FILE * fp_anchors, int anchor_number, char * contig_seq, int s
 	  exit(EXIT_FAILURE);
 	}
 	fputc('\n', fp_anchors);
+      }
+      if (! anchor_break) {
+	fprintf(fp_pgg, "(%d_3,%d_5)\t1)\n", (anchor_number - 1), anchor_number);
+      } else {
+	anchor_break = false;
       }
       anchor_number++;
       num_anchors_written++;
@@ -379,23 +387,31 @@ main (int argc, char **argv)
   int i,j,k,l,m,n,o,p,q;
   FILE * fp_file_name;
   FILE * fp_anchors;
+  FILE * fp_pgg;
   int file_name_len;
   char * fasta_line = NULL;
   size_t fasta_line_malloc_len = 0;
   char prev_char, cur_car;
   int32_t prev_pos, cur_pos;
   int cur_file_pos, cur_file_contig, cur_file_genome, prev_genome, cur_genome;
-  int 	anchor_number = 1; /* the anchor/medoid number initialized here to 1 */
+  int anchor_number = 1; /* the anchor/medoid number initialized here to 1 */
+  int kmer_threshold = 1; /* the minimum number of genomes a k-mer must be present in to be used as an anchor */
   
   opterr = 0;
 
-  while ((getopt_return = getopt (argc, argv, "g:")) != -1) {
+  while ((getopt_return = getopt (argc, argv, "g:t:")) != -1) {
     switch (getopt_return) {
       case 'g':
         genomes_file = optarg;
         break;
+      case 't':
+        kmer_threshold = atoi(optarg);
+	if (kmer_threshold <= 0) {
+	  fprintf(stderr, "k-mer threshold must be greater than 0 not: %s\n", optarg);
+	}
+        break;
       case '?':
-        if (optopt == 'g') {
+        if ((optopt == 'g') || (optopt == 't')) {
           fprintf (stderr, "Option -%c requires an argument.\n", optopt);
         } else if (isprint (optopt)) {
           fprintf (stderr, "Unknown option `-%c'.\n", optopt);
@@ -424,7 +440,7 @@ main (int argc, char **argv)
 
   /* this is the pool of storage for the bucket file names - relies on the file names being 12 characters including the null '\0' character */
   bucket_file_names_pool = (char *) malloc((size_t) (KMER_BUFFER_NUMBER * 12 * sizeof(char)));
-  if (kmer_buffers_pool == NULL) {
+  if (bucket_file_names_pool == NULL) {
     fprintf (stderr, "Could not allocate memory for bucket_file_names_pool\n");
     exit(EXIT_FAILURE);
   }
@@ -586,6 +602,10 @@ main (int argc, char **argv)
   free ((void *) kmer_buffers);
   free ((void *) kmer_buffers_pool);
 
+  if (kmer_threshold > genome_number) {
+    fprintf(stderr, "k-mer threshold (%d) must not be greater than the number of genomes (%d)\n", kmer_threshold, genome_number);
+  }
+  
   /* allocate the array of indices for each reduced kmer bucket buffer */
   red_kmer_buffer_indices = (int *) malloc((size_t) (num_red_files * sizeof(int)));
   if (red_kmer_buffer_indices == NULL) {
@@ -645,15 +665,18 @@ main (int argc, char **argv)
     for (i = 0; i <  bucket_sizes[index];) {
       struct Kmer first_array_kmer, prev_array_kmer;
       bool duplicate_kmer = false;
+      int kmer_count = 1;
       first_array_kmer = kmer_array[i];
       prev_array_kmer = first_array_kmer;
       for (i++; first_array_kmer.kmer == kmer_array[i].kmer; i++) {
 	if (prev_array_kmer.genome == kmer_array[i].genome) {
 	  duplicate_kmer = true;
+	} else {
+	  kmer_count++;
 	}
 	prev_array_kmer = kmer_array[i];
       }
-      if (! duplicate_kmer) {
+      if ((! duplicate_kmer) && (kmer_count >= kmer_threshold)) {
 	if (first_array_kmer.genome == 0) {
 	  red_file_number = first_array_kmer.contig;
 	} else {
@@ -754,10 +777,17 @@ main (int argc, char **argv)
     exit(EXIT_FAILURE);
   }
 
+  fp_pgg = fopen("pgg.txt", "w");
+  if (fp_pgg == NULL) {
+    fprintf (stderr, "Could not open pgg file for output\n");
+    exit(EXIT_FAILURE);
+  }
+
   /* read in reduced k-mers from contig/genome buckets and produce anchors */
   for (index = 0; index < num_red_files; index++) {
     char contig_seq[CONTIG_SEQ_BUFFER_LEN];
     int prev_pos, cur_pos, prev_contig, cur_contig, contig_seq_pos;
+    bool anchor_break = true; /* this is true if the previous anchor is from a different contig or genome or there is no previous anchor */
     
     red_kmer_array = (struct red_Kmer *) malloc((size_t) (red_bucket_sizes[index] * sizeof(struct red_Kmer)));
     if (red_kmer_array == NULL) {
@@ -781,7 +811,8 @@ main (int argc, char **argv)
     for (i = 0; i <  red_bucket_sizes[index]; i++) {
       if ((contig_seq_pos + (KMER_SIZE - 1)) >= CONTIG_SEQ_BUFFER_LEN) {
 	/* Buffer full - output first half of current anchors buffer */
-	anchor_number += write_anchors(fp_anchors, anchor_number, contig_seq, (int) (CONTIG_SEQ_BUFFER_LEN / 2));
+	anchor_number += write_anchors(fp_pgg, fp_anchors, anchor_number, contig_seq, (int) (CONTIG_SEQ_BUFFER_LEN / 2), anchor_break);
+	anchor_break = false;
 	/* Copy second half of buffer into first half of buffer */
 	memcpy((void *) contig_seq, (void *) &contig_seq[(CONTIG_SEQ_BUFFER_LEN / 2)], (size_t) (CONTIG_SEQ_BUFFER_LEN / 2));
 	contig_seq_pos -= (CONTIG_SEQ_BUFFER_LEN / 2);
@@ -799,8 +830,9 @@ main (int argc, char **argv)
       if (prev_pos == -1) {
 	if ((prev_contig != -1) && (contig_seq_pos > 0)){
 	  /* Switched contigs - output current anchors buffer */
-	  anchor_number += write_anchors(fp_anchors, anchor_number, contig_seq, contig_seq_pos);
+	  anchor_number += write_anchors(fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break);
 	}
+	anchor_break = true;
 	contig_seq_pos = 0;
 	cur_file_contig = read_fasta_kmer(file_name_line, fp_file_name, cur_file_pos, cur_file_contig, cur_contig, cur_pos, KMER_SIZE, contig_seq, contig_seq_pos);
 	contig_seq_pos += KMER_SIZE;
@@ -808,7 +840,8 @@ main (int argc, char **argv)
       } else {
 	if ((cur_pos - prev_pos) > KMER_SIZE) {
 	  /* Break in unique k-mers - output current anchors buffer */
-	  anchor_number += write_anchors(fp_anchors, anchor_number, contig_seq, contig_seq_pos);
+	  anchor_number += write_anchors(fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break);
+	  anchor_break = false;
 	  contig_seq_pos = 0;
 	  cur_file_contig = read_fasta_kmer(file_name_line, fp_file_name, cur_file_pos, cur_file_contig, cur_contig, cur_pos, KMER_SIZE, contig_seq, contig_seq_pos);
 	  contig_seq_pos += KMER_SIZE;
@@ -824,7 +857,7 @@ main (int argc, char **argv)
     }
     if (contig_seq_pos > 0) {
       /* Flush remaining anchors buffer */
-	  anchor_number += write_anchors(fp_anchors, anchor_number, contig_seq, contig_seq_pos);
+	  anchor_number += write_anchors(fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break);
     }
     free ((void *) red_kmer_array);
     fclose(fp_bucket);
@@ -875,6 +908,7 @@ main (int argc, char **argv)
   fclose(fp_file_name);
   fclose(fp_file_names);
   fclose(fp_anchors);
+  fclose(fp_pgg);
 
   /* free memory used for bucket file write buffers */
   free ((void *) red_kmer_buffer_indices);
