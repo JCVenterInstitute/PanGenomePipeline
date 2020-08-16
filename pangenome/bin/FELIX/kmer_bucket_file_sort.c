@@ -350,6 +350,7 @@ int kmer_bucket_sort_genome(FILE * fp_fasta, char * genome_file_name, uint16_t g
 	    }
 	  }
 	} else {
+	  reset_kmer = false;
 	  kmer_bp_count = 0;
 	  cur_kmer = 0;
 	  revc_kmer = 0;
