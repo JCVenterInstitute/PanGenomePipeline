@@ -202,6 +202,7 @@ int kmer_bucket_sort_genome(FILE * fp_fasta, char * genome_file_name, uint16_t g
   int contig_pos = 0;
   int kmer_bucket;
   int new_red_files = 0;
+  int output_kmer_count = 0; /* just used for debugging */
   
   if ((getline_return = getline(&fasta_line, &fasta_line_malloc_len, fp_fasta)) == -1) {
     fprintf(stderr, "%s appears to be empty.\n", genome_file_name);
@@ -211,6 +212,7 @@ int kmer_bucket_sort_genome(FILE * fp_fasta, char * genome_file_name, uint16_t g
     fprintf(stderr, "First line of fasta file %s does not begin with a >.\n%s", genome_file_name, fasta_line);
     exit(EXIT_FAILURE);
   }
+  fprintf(stderr, "Genome: %s contig %d\n%s", genome_file_name, contig_number, fasta_line);
   new_red_files++; /* this gets incremented for every contig in the first genome, and only once for each other genome */
   prev_char = '\n';
   while ((fgetc_return = fgetc(fp_fasta)) != EOF) {
@@ -283,6 +285,7 @@ int kmer_bucket_sort_genome(FILE * fp_fasta, char * genome_file_name, uint16_t g
 	      new_red_files++; /* this gets incremented for every contig in the first genome, and only once for each other genome */
 	    }
 	    contig_number++;
+	    fprintf(stderr, "Genome: %s contig %d\n>%s", genome_file_name, contig_number, fasta_line);
 	  } else {
 	    fprintf (stderr, "Unexpected > not at beginning of line in fasta file %s.\n", genome_file_name);
 	    exit(EXIT_FAILURE);
@@ -297,6 +300,7 @@ int kmer_bucket_sort_genome(FILE * fp_fasta, char * genome_file_name, uint16_t g
 	  exit(EXIT_FAILURE);
 	}
       if (new_contig) {
+	new_contig = false;
 	prev_char = '\n';
 	kmer_bp_count = 0; 
 	contig_pos = 0;
@@ -311,6 +315,10 @@ int kmer_bucket_sort_genome(FILE * fp_fasta, char * genome_file_name, uint16_t g
 	  cur_kmer = ((cur_kmer << 2) & kmer_mask) | cur_bp;
 	  revc_kmer = (revc_kmer | revc_bp) >> 2;
 	  if (kmer_bp_count >= 23) {
+	    output_kmer_count++;
+	    if ((output_kmer_count % 100000) == 0) {
+	      fprintf(stderr, "%d\n", output_kmer_count);
+	    }
 	    if (cur_kmer < revc_kmer) { /* use canonical kmer which ever is less */
 	      kmer_bucket = (int) ((bucket_mask & cur_kmer) >> 28);
 	      kmer_buffers[kmer_bucket][kmer_buffer_indices[kmer_bucket]].kmer = cur_kmer;
