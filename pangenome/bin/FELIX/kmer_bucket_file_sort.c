@@ -469,7 +469,7 @@ main (int argc, char **argv)
 	  for (m = 0; m < 4; m++) {
 	    tmp_file_dir_name[5] = bps[m];
 	    for (n = 0; n < 4; n++) {
-	      tmp_file_dir_name[6] = bps[m];
+	      tmp_file_dir_name[6] = bps[n];
 	      tmp_file_dir_name[7] = '\0';
 	      if (mkdir(tmp_file_dir_name, 0777)) {
 		fprintf (stderr, "Could not make directory %s\n", tmp_file_dir_name);
