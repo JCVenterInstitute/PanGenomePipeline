@@ -321,12 +321,16 @@ int kmer_bucket_sort_genome(FILE * fp_fasta, char * genome_file_name, uint16_t g
 	    }
 	    if (cur_kmer < revc_kmer) { /* use canonical kmer which ever is less */
 	      kmer_bucket = (int) ((bucket_mask & cur_kmer) >> 28);
+	      fprintf(stderr, "%d\n", kmer_bucket);
+	      fflush(stderr);
 	      kmer_buffers[kmer_bucket][kmer_buffer_indices[kmer_bucket]].kmer = cur_kmer;
 	      kmer_buffers[kmer_bucket][kmer_buffer_indices[kmer_bucket]].pos = contig_pos;
 	      kmer_buffers[kmer_bucket][kmer_buffer_indices[kmer_bucket]].genome = genome_number;
 	      kmer_buffers[kmer_bucket][kmer_buffer_indices[kmer_bucket]].contig = contig_number;
 	    } else {
 	      kmer_bucket = (int) ((bucket_mask & revc_kmer) >> 28);
+	      fprintf(stderr, "%d\n", kmer_bucket);
+	      fflush(stderr);
 	      kmer_buffers[kmer_bucket][kmer_buffer_indices[kmer_bucket]].kmer = revc_kmer;
 	      kmer_buffers[kmer_bucket][kmer_buffer_indices[kmer_bucket]].pos = -contig_pos;
 	      kmer_buffers[kmer_bucket][kmer_buffer_indices[kmer_bucket]].genome = genome_number;
