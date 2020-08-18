@@ -321,32 +321,32 @@ int kmer_bucket_sort_genome(FILE * fp_fasta, char * genome_file_name, uint16_t g
 	    }
 	    if (cur_kmer < revc_kmer) { /* use canonical kmer which ever is less */
 	      kmer_bucket = (int) ((bucket_mask & cur_kmer) >> 28);
-	      fprintf(stderr, "%d\n", kmer_bucket);
+	      /*fprintf(stderr, "%d\n", kmer_bucket);
 	      fflush(stderr);
 	      fprintf(stderr, "%d:%d:%d:%d\n", cur_kmer, contig_pos, genome_number, contig_number);
 	      fflush(stderr);
 	      fprintf(stderr, "%d\n", kmer_buffer_indices[kmer_bucket]);
 	      fflush(stderr);
-	      fprintf(stderr, "%d\n", kmer_buffers[kmer_bucket][kmer_buffer_indices[kmer_bucket]].kmer);
-	      fflush(stderr);
-	      kmer_buffers[kmer_bucket][kmer_buffer_indices[kmer_bucket]].kmer = cur_kmer;
-	      kmer_buffers[kmer_bucket][kmer_buffer_indices[kmer_bucket]].pos = contig_pos;
-	      kmer_buffers[kmer_bucket][kmer_buffer_indices[kmer_bucket]].genome = genome_number;
-	      kmer_buffers[kmer_bucket][kmer_buffer_indices[kmer_bucket]].contig = contig_number;
+	      fprintf(stderr, "%d\n", ((*(kmer_buffers + kmer_bucket)) + kmer_buffer_indices[kmer_bucket])->kmer);
+	      fflush(stderr);*/
+	      ((*(kmer_buffers + kmer_bucket)) + kmer_buffer_indices[kmer_bucket])->kmer = cur_kmer;
+	      ((*(kmer_buffers + kmer_bucket)) + kmer_buffer_indices[kmer_bucket])->pos = contig_pos - KMER_SIZE;
+	      ((*(kmer_buffers + kmer_bucket)) + kmer_buffer_indices[kmer_bucket])->genome = genome_number;
+	      ((*(kmer_buffers + kmer_bucket)) + kmer_buffer_indices[kmer_bucket])->contig = contig_number;
 	    } else {
 	      kmer_bucket = (int) ((bucket_mask & revc_kmer) >> 28);
-	      fprintf(stderr, "%d\n", kmer_bucket);
+	      /*fprintf(stderr, "%d\n", kmer_bucket);
 	      fflush(stderr);
 	      fprintf(stderr, "%d:%d:%d:%d\n", revc_kmer, contig_pos, genome_number, contig_number);
 	      fflush(stderr);
 	      fprintf(stderr, "%d\n", kmer_buffer_indices[kmer_bucket]);
 	      fflush(stderr);
-	      fprintf(stderr, "%d\n", kmer_buffers[kmer_bucket][kmer_buffer_indices[kmer_bucket]].kmer);
-	      fflush(stderr);
-	      kmer_buffers[kmer_bucket][kmer_buffer_indices[kmer_bucket]].kmer = revc_kmer;
-	      kmer_buffers[kmer_bucket][kmer_buffer_indices[kmer_bucket]].pos = -contig_pos;
-	      kmer_buffers[kmer_bucket][kmer_buffer_indices[kmer_bucket]].genome = genome_number;
-	      kmer_buffers[kmer_bucket][kmer_buffer_indices[kmer_bucket]].contig = contig_number;
+	      fprintf(stderr, "%d\n", ((*(kmer_buffers + kmer_bucket)) + kmer_buffer_indices[kmer_bucket])->kmer);
+	      fflush(stderr);*/
+	      ((*(kmer_buffers + kmer_bucket)) + kmer_buffer_indices[kmer_bucket])->kmer = revc_kmer;
+	      ((*(kmer_buffers + kmer_bucket)) + kmer_buffer_indices[kmer_bucket])->pos = -(contig_pos - KMER_SIZE);
+	      ((*(kmer_buffers + kmer_bucket)) + kmer_buffer_indices[kmer_bucket])->genome = genome_number;
+	      ((*(kmer_buffers + kmer_bucket)) + kmer_buffer_indices[kmer_bucket])->contig = contig_number;
 	    }
 	    kmer_buffer_indices[kmer_bucket]++;
 	    if (kmer_buffer_indices[kmer_bucket] == KMER_BUFFER_LEN) {
@@ -472,7 +472,7 @@ main (int argc, char **argv)
 
   /* assign the correct storage pool area for each bucket file name */
   for (index = 0; index < KMER_BUFFER_NUMBER; index++) {
-   bucket_file_names[index] = bucket_file_names_pool + (size_t) (index * 12 * sizeof(char));
+   bucket_file_names[index] = bucket_file_names_pool + (index * 12);
   }
 
   /* create two level directory structure based on 3mers and bucket file names including the first and second level directories */
@@ -560,7 +560,7 @@ main (int argc, char **argv)
 
   /* set up the kmer buffers to point to the assigned storage buffer within the storage pool */
   for (index = 0; index < KMER_BUFFER_NUMBER; index++) {
-    kmer_buffers[index] = kmer_buffers_pool + (size_t) (index * KMER_BUFFER_LEN * sizeof(struct Kmer));
+    kmer_buffers[index] = kmer_buffers_pool + (index * KMER_BUFFER_LEN);
   }
   
   fp_file_names = fopen(genomes_file, "r");
@@ -667,7 +667,7 @@ main (int argc, char **argv)
 
   /* set up the kmer buffers to point to the assigned storage buffer within the storage pool */
   for (index = 0; index < num_red_files; index++) {
-    red_kmer_buffers[index] = red_kmer_buffers_pool + (size_t) (index * KMER_BUFFER_LEN * sizeof(struct red_Kmer));
+    red_kmer_buffers[index] = red_kmer_buffers_pool + (index * KMER_BUFFER_LEN);
   }
   
   /* read in one bucket at a time and sort it */
@@ -708,12 +708,12 @@ main (int argc, char **argv)
 	  red_file_number = num_first_genome_contigs + (first_array_kmer.genome - 1);
 	}
 	if (first_array_kmer.pos < 0) {
-	  red_kmer_buffers[red_file_number][kmer_buffer_indices[red_file_number]].pos = - first_array_kmer.pos;
+	  ((*(red_kmer_buffers + red_file_number)) + kmer_buffer_indices[red_file_number])->pos = - first_array_kmer.pos;
 	} else {
-	  red_kmer_buffers[red_file_number][kmer_buffer_indices[red_file_number]].pos = first_array_kmer.pos;
+	  ((*(red_kmer_buffers + red_file_number)) + kmer_buffer_indices[red_file_number])->pos = first_array_kmer.pos;
 	}
-	red_kmer_buffers[red_file_number][kmer_buffer_indices[red_file_number]].genome = first_array_kmer.genome;
-	red_kmer_buffers[red_file_number][kmer_buffer_indices[red_file_number]].contig = first_array_kmer.contig;
+	((*(red_kmer_buffers + red_file_number)) + kmer_buffer_indices[red_file_number])->genome = first_array_kmer.genome;
+	((*(red_kmer_buffers + red_file_number)) + kmer_buffer_indices[red_file_number])->contig = first_array_kmer.contig;
 	red_kmer_buffer_indices[red_file_number]++;
 	if (red_kmer_buffer_indices[red_file_number] == KMER_BUFFER_LEN) {
 	  /* kmer bucket buffer is full so output it and reset index */
