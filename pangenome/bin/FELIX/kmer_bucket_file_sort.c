@@ -707,7 +707,9 @@ main (int argc, char **argv)
       fprintf (stderr, "Could not complete read of file %s\n", bucket_file_names[index]);
       exit(EXIT_FAILURE);
     }
+    /* fprintf(stderr, "qsort %s %d\n", bucket_file_names[index], bucket_sizes[index]);*/
     qsort((void *) kmer_array, bucket_sizes[index], sizeof(struct Kmer), kmer_sort);
+    /* fprintf(stderr, "Finished qsort\n");*/
     for (i = 0; i <  bucket_sizes[index];) {
       struct Kmer first_array_kmer, prev_array_kmer;
       bool duplicate_kmer = false;
@@ -729,12 +731,12 @@ main (int argc, char **argv)
 	  red_file_number = num_first_genome_contigs + (first_array_kmer.genome - 1);
 	}
 	if (first_array_kmer.pos < 0) {
-	  ((*(red_kmer_buffers + red_file_number)) + kmer_buffer_indices[red_file_number])->pos = - first_array_kmer.pos;
+	  ((*(red_kmer_buffers + red_file_number)) + red_kmer_buffer_indices[red_file_number])->pos = - first_array_kmer.pos;
 	} else {
-	  ((*(red_kmer_buffers + red_file_number)) + kmer_buffer_indices[red_file_number])->pos = first_array_kmer.pos;
+	  ((*(red_kmer_buffers + red_file_number)) + red_kmer_buffer_indices[red_file_number])->pos = first_array_kmer.pos;
 	}
-	((*(red_kmer_buffers + red_file_number)) + kmer_buffer_indices[red_file_number])->genome = first_array_kmer.genome;
-	((*(red_kmer_buffers + red_file_number)) + kmer_buffer_indices[red_file_number])->contig = first_array_kmer.contig;
+	((*(red_kmer_buffers + red_file_number)) + red_kmer_buffer_indices[red_file_number])->genome = first_array_kmer.genome;
+	((*(red_kmer_buffers + red_file_number)) + red_kmer_buffer_indices[red_file_number])->contig = first_array_kmer.contig;
 	red_kmer_buffer_indices[red_file_number]++;
 	if (red_kmer_buffer_indices[red_file_number] == KMER_BUFFER_LEN) {
 	  /* kmer bucket buffer is full so output it and reset index */
