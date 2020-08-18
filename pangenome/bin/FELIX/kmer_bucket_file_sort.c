@@ -701,7 +701,8 @@ main (int argc, char **argv)
     fp_bucket = fopen(bucket_file_names[index], "r");
     if (fp_bucket == NULL) {
       fprintf (stderr, "Could not open file %s for reading\n", bucket_file_names[index]);
-      exit(EXIT_FAILURE);
+      continue; /* some buckets may not have any data */
+      /* exit(EXIT_FAILURE);*/
     }
     if (fread((void *) kmer_array, sizeof(struct Kmer), bucket_sizes[index], fp_bucket) != bucket_sizes[index]) {
       fprintf (stderr, "Could not complete read of file %s\n", bucket_file_names[index]);
@@ -856,7 +857,8 @@ main (int argc, char **argv)
     fp_red_bucket = fopen(red_file_name, "r");
     if (fp_red_bucket == NULL) {
       fprintf (stderr, "Could not open file %s\n", red_file_name);
-      exit(EXIT_FAILURE);
+      continue; /* Some reduced buckets may not have any data */
+      /* exit(EXIT_FAILURE);*/
     }
     if (fread((void *) red_kmer_array, sizeof(struct red_Kmer), red_bucket_sizes[index], fp_red_bucket) != red_bucket_sizes[index]) {
       fprintf (stderr, "Could not complete read of file %s\n", red_file_name);
