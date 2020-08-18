@@ -323,6 +323,12 @@ int kmer_bucket_sort_genome(FILE * fp_fasta, char * genome_file_name, uint16_t g
 	      kmer_bucket = (int) ((bucket_mask & cur_kmer) >> 28);
 	      fprintf(stderr, "%d\n", kmer_bucket);
 	      fflush(stderr);
+	      fprintf(stderr, "%d:%d:%d:%d\n", cur_kmer, contig_pos, genome_number, contig_number);
+	      fflush(stderr);
+	      fprintf(stderr, "%d\n", kmer_buffer_indices[kmer_bucket]);
+	      fflush(stderr);
+	      fprintf(stderr, "%d\n", kmer_buffers[kmer_bucket][kmer_buffer_indices[kmer_bucket]].kmer);
+	      fflush(stderr);
 	      kmer_buffers[kmer_bucket][kmer_buffer_indices[kmer_bucket]].kmer = cur_kmer;
 	      kmer_buffers[kmer_bucket][kmer_buffer_indices[kmer_bucket]].pos = contig_pos;
 	      kmer_buffers[kmer_bucket][kmer_buffer_indices[kmer_bucket]].genome = genome_number;
@@ -330,6 +336,12 @@ int kmer_bucket_sort_genome(FILE * fp_fasta, char * genome_file_name, uint16_t g
 	    } else {
 	      kmer_bucket = (int) ((bucket_mask & revc_kmer) >> 28);
 	      fprintf(stderr, "%d\n", kmer_bucket);
+	      fflush(stderr);
+	      fprintf(stderr, "%d:%d:%d:%d\n", revc_kmer, contig_pos, genome_number, contig_number);
+	      fflush(stderr);
+	      fprintf(stderr, "%d\n", kmer_buffer_indices[kmer_bucket]);
+	      fflush(stderr);
+	      fprintf(stderr, "%d\n", kmer_buffers[kmer_bucket][kmer_buffer_indices[kmer_bucket]].kmer);
 	      fflush(stderr);
 	      kmer_buffers[kmer_bucket][kmer_buffer_indices[kmer_bucket]].kmer = revc_kmer;
 	      kmer_buffers[kmer_bucket][kmer_buffer_indices[kmer_bucket]].pos = -contig_pos;
