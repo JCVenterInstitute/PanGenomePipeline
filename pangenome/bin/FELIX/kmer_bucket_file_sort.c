@@ -390,6 +390,7 @@ main (int argc, char **argv)
   int getopt_return;
   FILE * fp_file_names;
   FILE * fp_bucket;
+  FILE * fp_red_bucket;
   char * file_name_line = NULL;
   size_t file_name_line_malloc_len = 0;
   size_t getline_return;
@@ -449,11 +450,14 @@ main (int argc, char **argv)
     }
   }
 
-  fprintf (stderr, "Genomes File = %s\n", genomes_file);
+  fprintf (stderr, "Genomes File = %s\nK-mer threshold = %d\n", genomes_file, kmer_threshold);
 
   for (index = optind; index < argc; index++) {
     fprintf (stderr, "Non-option argument %s\n", argv[index]);
   }
+
+
+  fprintf (stderr, "Generating directories to store k-mer %d buckets\n", KMER_BUFFER_NUMBER);
 
   /* generate and store directories and files names for the 262,144 buckets to sort 23mers into */
   /* this is the array of bucket files names */
@@ -524,6 +528,8 @@ main (int argc, char **argv)
     }
   }
 
+  fprintf (stderr, "Allocating output buffers for k-mer buckets\n");
+
   /* allocate the array of indices for each kmer bucket size */
   bucket_sizes = (size_t *) malloc((size_t) (KMER_BUFFER_NUMBER * sizeof(size_t)));
   if (bucket_sizes == NULL) {
@@ -569,6 +575,9 @@ main (int argc, char **argv)
     exit(EXIT_FAILURE);
   }
 
+
+  fprintf (stderr, "Reading genome file names from %s\n", genomes_file);
+
   /* loop through each genome in the genomes file input file */
   while ((getline_return = getline(&file_name_line, &file_name_line_malloc_len, fp_file_names)) != -1) {
     if (max_genomes_exceeded) {
@@ -590,6 +599,9 @@ main (int argc, char **argv)
       fprintf (stderr, "Could not open file %s\n", file_name_line);
       exit(EXIT_FAILURE);
     }
+
+    fprintf (stderr, "Reading genome from %s\n", file_name_line);
+
     num_red_files += kmer_bucket_sort_genome(fp_file_name, file_name_line, genome_number, bucket_file_names, kmer_buffers, kmer_buffer_indices, bucket_sizes);
     if (genome_number == 0) {
       num_first_genome_contigs = num_red_files;
@@ -604,6 +616,8 @@ main (int argc, char **argv)
   free(file_name_line);
 
   fclose(fp_file_names);
+
+  fprintf (stderr, "Flushing k-mer bucket output buffers\n");
 
   /* flush any 23mers remaining in the kmer buffers */
   for (index = 0; index < KMER_BUFFER_NUMBER; index++) {
@@ -622,6 +636,8 @@ main (int argc, char **argv)
     }
   }
 
+  fprintf (stderr, "Freeing k-mer bucket buffers\n");
+
   /* free memory used for bucket file write buffers */
   free ((void *) kmer_buffer_indices);
   free ((void *) kmer_buffers);
@@ -631,6 +647,8 @@ main (int argc, char **argv)
     fprintf(stderr, "k-mer threshold (%d) must not be greater than the number of genomes (%d)\n", kmer_threshold, genome_number);
   }
   
+  fprintf (stderr, "Allocating output buffers for reduced k-mer buckets\n");
+
   /* allocate the array of indices for each reduced kmer bucket buffer */
   red_kmer_buffer_indices = (int *) malloc((size_t) (num_red_files * sizeof(int)));
   if (red_kmer_buffer_indices == NULL) {
@@ -670,6 +688,9 @@ main (int argc, char **argv)
     red_kmer_buffers[index] = red_kmer_buffers_pool + (index * KMER_BUFFER_LEN);
   }
   
+
+  fprintf (stderr, "Sort each k-mer bucket and output to %d reduced buckets files\n", num_red_files);
+
   /* read in one bucket at a time and sort it */
   for (index = 0; index < KMER_BUFFER_NUMBER; index++) {
     kmer_array = (struct Kmer *) malloc((size_t) (bucket_sizes[index] * sizeof(struct Kmer)));
@@ -719,17 +740,17 @@ main (int argc, char **argv)
 	  /* kmer bucket buffer is full so output it and reset index */
 	  red_kmer_buffer_indices[red_file_number] = 0;
 	  sprintf(red_file_name, "%i", red_file_number);
-	  fp_bucket = fopen(red_file_name, "a");
-	  if (fp_bucket == NULL) {
+	  fp_red_bucket = fopen(red_file_name, "a");
+	  if (fp_red_bucket == NULL) {
 	    fprintf (stderr, "Could not open file %s\n", red_file_name);
 	    exit(EXIT_FAILURE);
 	  }
-	  if (fwrite(red_kmer_buffers[red_file_number], sizeof(struct red_Kmer), KMER_BUFFER_LEN, fp_bucket) != KMER_BUFFER_LEN) {
+	  if (fwrite(red_kmer_buffers[red_file_number], sizeof(struct red_Kmer), KMER_BUFFER_LEN, fp_red_bucket) != KMER_BUFFER_LEN) {
 	    fprintf (stderr, "Could not complete write to  file %s\n", red_file_name);
 	    exit(EXIT_FAILURE);
 	  }
 	  red_bucket_sizes[red_file_number] += KMER_BUFFER_LEN;
-	  fclose(fp_bucket);
+	  fclose(fp_red_bucket);
 	}
       }
     }
@@ -737,23 +758,27 @@ main (int argc, char **argv)
     fclose(fp_bucket);
   }
 
+  fprintf (stderr, "Flushing reduced k-mer bucket output buffers\n");
+
   /* flush any reduced k-mers remaining in the reduced kmer buffers */
   for (index = 0; index < num_red_files; index++) {
     if (red_kmer_buffer_indices[index] != 0) {
       sprintf(red_file_name, "%i", index);
-      fp_bucket = fopen(red_file_name, "a");
-      if (fp_bucket == NULL) {
+      fp_red_bucket = fopen(red_file_name, "a");
+      if (fp_red_bucket == NULL) {
 	fprintf (stderr, "Could not open file %s\n", red_file_name);
 	exit(EXIT_FAILURE);
       }
-      if (fwrite((void *) red_kmer_buffers[index], sizeof(struct red_Kmer), red_kmer_buffer_indices[index], fp_bucket) != red_kmer_buffer_indices[index]) {
+      if (fwrite((void *) red_kmer_buffers[index], sizeof(struct red_Kmer), red_kmer_buffer_indices[index], fp_red_bucket) != red_kmer_buffer_indices[index]) {
 	fprintf (stderr, "Could not complete write to file %s\n", red_file_name);
 	exit(EXIT_FAILURE);
       }
       bucket_sizes[index] += red_kmer_buffer_indices[index];
-      fclose(fp_bucket);
+      fclose(fp_red_bucket);
     }
   }
+
+  fprintf (stderr, "Reading genome file names from %s\n", genomes_file);
 
   /* loop through each genome in the genomes file input file as needed to determine anchors*/
   fp_file_names = fopen(genomes_file, "r");
@@ -777,6 +802,9 @@ main (int argc, char **argv)
     exit(EXIT_FAILURE);
   }
   file_name_line[file_name_len - 1] = '\0';
+
+  fprintf (stderr, "Reading genome from %s\n", file_name_line);
+
   fp_file_name = fopen(file_name_line, "r");
   if (fp_file_name == NULL) {
     fprintf (stderr, "Could not open file %s\n", file_name_line);
@@ -795,6 +823,9 @@ main (int argc, char **argv)
   cur_file_genome = 0;
   cur_genome = 0;
   prev_genome = 0;
+
+
+  fprintf (stderr, "Opening medoids.fasta file for anchors and pgg.txt for PGG\n");
 
   fp_anchors = fopen("medoids.fasta", "w");
   if (fp_anchors == NULL) {
@@ -820,12 +851,12 @@ main (int argc, char **argv)
       exit(EXIT_FAILURE);
     }
     sprintf(red_file_name, "%i", index);
-    fp_bucket = fopen(red_file_name, "r");
-    if (fp_bucket == NULL) {
+    fp_red_bucket = fopen(red_file_name, "r");
+    if (fp_red_bucket == NULL) {
       fprintf (stderr, "Could not open file %s\n", red_file_name);
       exit(EXIT_FAILURE);
     }
-    if (fread((void *) red_kmer_array, sizeof(struct red_Kmer), red_bucket_sizes[index], fp_bucket) != red_bucket_sizes[index]) {
+    if (fread((void *) red_kmer_array, sizeof(struct red_Kmer), red_bucket_sizes[index], fp_red_bucket) != red_bucket_sizes[index]) {
       fprintf (stderr, "Could not complete read of file %s\n", red_file_name);
       exit(EXIT_FAILURE);
     }
@@ -885,7 +916,7 @@ main (int argc, char **argv)
 	  anchor_number += write_anchors(fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break);
     }
     free ((void *) red_kmer_array);
-    fclose(fp_bucket);
+    fclose(fp_red_bucket);
 
     /* check if we need to switch to a new genome or just a new contig in first genome */
     if (index < (num_first_genome_contigs - 1)) {
@@ -906,6 +937,9 @@ main (int argc, char **argv)
       }
       file_name_line[file_name_len - 1] = '\0';
       fclose(fp_file_name);
+
+      fprintf (stderr, "Reading genome from %s\n", file_name_line);
+
       fp_file_name = fopen(file_name_line, "r");
       if (fp_file_name == NULL) {
 	fprintf (stderr, "Could not open file %s\n", file_name_line);
@@ -935,6 +969,8 @@ main (int argc, char **argv)
   fclose(fp_anchors);
   fclose(fp_pgg);
 
+  fprintf (stderr, "Freeing reduced k-mer bucket buffers\n");
+
   /* free memory used for bucket file write buffers */
   free ((void *) red_kmer_buffer_indices);
   free ((void *) red_kmer_buffers);
@@ -942,4 +978,3 @@ main (int argc, char **argv)
 
   exit(EXIT_SUCCESS);
 }
-
