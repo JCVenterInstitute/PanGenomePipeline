@@ -142,7 +142,7 @@ int write_anchors(FILE * fp_pgg, FILE * fp_anchors, int anchor_number, char * co
       fputc('\n', fp_anchors);
     }
     if (! anchor_break) {
-      fprintf(fp_pgg, "(%d_3,%d_5)\t1)\n", (anchor_number - 1), anchor_number);
+      fprintf(fp_pgg, "(%d_3,%d_5)\t1\n", (anchor_number - 1), anchor_number);
     }
     num_anchors_written++;
   } else {
@@ -845,12 +845,12 @@ main (int argc, char **argv)
   /* read in reduced k-mers from contig/genome buckets and produce anchors */
   for (index = 0; index < num_red_files; index++) {
     char contig_seq[CONTIG_SEQ_BUFFER_LEN];
-    int prev_pos, cur_pos, prev_contig, cur_contig, contig_seq_pos;
+    int prev_pos, cur_pos, prev_contig, cur_contig, contig_seq_pos, num_anchors_written;
     bool anchor_break = true; /* this is true if the previous anchor is from a different contig or genome or there is no previous anchor */
     
     red_kmer_array = (struct red_Kmer *) malloc((size_t) (red_bucket_sizes[index] * sizeof(struct red_Kmer)));
     if (red_kmer_array == NULL) {
-      fprintf (stderr, "Could not allocate memory for red_kmer_array\n");
+      fprintf (stderr, "Could not allocate memory for red_kmer_array %d\n", (red_bucket_sizes[index] * sizeof(struct red_Kmer)));
       exit(EXIT_FAILURE);
     }
     sprintf(red_file_name, "%i", index);
@@ -900,8 +900,11 @@ main (int argc, char **argv)
       } else {
 	if ((cur_pos - prev_pos) > KMER_SIZE) {
 	  /* Break in unique k-mers - output current anchors buffer */
-	  anchor_number += write_anchors(fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break);
-	  anchor_break = false;
+	  num_anchors_written= write_anchors(fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break);
+	  anchor_number += num_anchors_written;
+	  if (num_anchors_written) {
+	    anchor_break = false;
+	  }
 	  contig_seq_pos = 0;
 	  cur_file_contig = read_fasta_kmer(file_name_line, fp_file_name, cur_file_pos, cur_file_contig, cur_contig, cur_pos, KMER_SIZE, contig_seq, contig_seq_pos);
 	  contig_seq_pos += KMER_SIZE;
