@@ -135,7 +135,7 @@ int write_anchors(FILE * fp_pgg, FILE * fp_anchors, int anchor_number, char * co
     fprintf(fp_anchors, ">medoid_%d\n", anchor_number);
     for (j = 0; j < stop_pos; j += 60) {
       int out_len = (stop_pos - j) < 60 ? (stop_pos - j) : 60;
-      if (fwrite(&contig_seq[j], sizeof(char), (size_t) out_len, fp_anchors) != KMER_BUFFER_LEN) {
+      if (fwrite(&contig_seq[j], sizeof(char), (size_t) out_len, fp_anchors) != out_len) {
 	fprintf (stderr, "Could not complete write to anchors file for anchor %d\n", anchor_number);
 	exit(EXIT_FAILURE);
       }
@@ -160,7 +160,7 @@ int write_anchors(FILE * fp_pgg, FILE * fp_anchors, int anchor_number, char * co
       fprintf(fp_anchors, ">medoid_%d\n", anchor_number);
       for (j = i * anchor_len; j < anchor_stop_pos; j += 60) {
 	int out_len = (stop_pos - j) < 60 ? (stop_pos - j) : 60;
-	if (fwrite(&contig_seq[j], sizeof(char), (size_t) out_len, fp_anchors) != KMER_BUFFER_LEN) {
+	if (fwrite(&contig_seq[j], sizeof(char), (size_t) out_len, fp_anchors) != out_len) {
 	  fprintf (stderr, "Could not complete write to anchors file for anchor %d\n", anchor_number);
 	  exit(EXIT_FAILURE);
 	}
