@@ -850,7 +850,7 @@ main (int argc, char **argv)
     
     sprintf(red_file_name, "%i", index);
 
-    fprintf (stderr, "Reading %z reduced k-mers from %s\n", red_bucket_sizes[index], red_file_name);
+    fprintf (stderr, "Reading %lu reduced k-mers from %s\n", red_bucket_sizes[index], red_file_name);
 
     fp_red_bucket = fopen(red_file_name, "r");
     if (fp_red_bucket == NULL) {
@@ -860,7 +860,7 @@ main (int argc, char **argv)
     }
     red_kmer_array = (struct red_Kmer *) malloc((size_t) (red_bucket_sizes[index] * sizeof(struct red_Kmer)));
     if (red_kmer_array == NULL) {
-      fprintf (stderr, "Could not allocate memory for red_kmer_array %z\n", (red_bucket_sizes[index] * sizeof(struct red_Kmer)));
+      fprintf (stderr, "Could not allocate memory for red_kmer_array %lu\n", (red_bucket_sizes[index] * sizeof(struct red_Kmer)));
       exit(EXIT_FAILURE);
     }
     if (fread((void *) red_kmer_array, sizeof(struct red_Kmer), red_bucket_sizes[index], fp_red_bucket) != red_bucket_sizes[index]) {
