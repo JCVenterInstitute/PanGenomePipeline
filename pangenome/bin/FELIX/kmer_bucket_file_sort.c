@@ -789,6 +789,7 @@ main (int argc, char **argv)
   }
 
   fprintf (stderr, "Reading genome file names from %s\n", genomes_file);
+  fprintf (stderr, "%lu in red_bucket_sizes[14]\n", red_bucket_sizes[14]);
 
   /* loop through each genome in the genomes file input file as needed to determine anchors*/
   fp_file_names = fopen(genomes_file, "r");
@@ -814,6 +815,7 @@ main (int argc, char **argv)
   file_name_line[file_name_len - 1] = '\0';
 
   fprintf (stderr, "Reading genome from %s\n", file_name_line);
+  fprintf (stderr, "%lu in red_bucket_sizes[14]\n", red_bucket_sizes[14]);
 
   fp_file_name = fopen(file_name_line, "r");
   if (fp_file_name == NULL) {
@@ -836,6 +838,7 @@ main (int argc, char **argv)
 
 
   fprintf (stderr, "Opening medoids.fasta file for anchors and pgg.txt for PGG\n");
+  fprintf (stderr, "%lu in red_bucket_sizes[14]\n", red_bucket_sizes[14]);
 
   fp_anchors = fopen("medoids.fasta", "w");
   if (fp_anchors == NULL) {
@@ -849,6 +852,7 @@ main (int argc, char **argv)
     exit(EXIT_FAILURE);
   }
 
+  fprintf (stderr, "%lu in red_bucket_sizes[14]\n", red_bucket_sizes[14]);
   /* read in reduced k-mers from contig/genome buckets and produce anchors */
   for (index = 0; index < num_red_files; index++) {
     char contig_seq[CONTIG_SEQ_BUFFER_LEN];
@@ -883,6 +887,7 @@ main (int argc, char **argv)
       if (red_bucket_sizes[14] > 10000000) {
 	fprintf (stderr, "%lu in red_bucket_sizes[14]\n", red_bucket_sizes[14]);
 	fprintf (stderr, "Corrupted i=%d prev_pos=%d prev_contig=%d prev_genome=%d contig_seq_pos=%d\n", i, prev_pos, prev_contig, prev_genome, contig_seq_pos);
+	exit(EXIT_FAILURE);
       }
       if ((contig_seq_pos + (KMER_SIZE - 1)) >= CONTIG_SEQ_BUFFER_LEN) {
 	/* Buffer full - output first half of current anchors buffer */
