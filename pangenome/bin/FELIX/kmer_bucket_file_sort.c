@@ -753,6 +753,9 @@ main (int argc, char **argv)
 	    exit(EXIT_FAILURE);
 	  }
 	  red_bucket_sizes[red_file_number] += KMER_BUFFER_LEN;
+	  if ((red_bucket_sizes[red_file_number] % (KMER_BUFFER_LEN * 1000)) == 0) {
+	    fprintf (stderr, "%lu reduced k-mers in %d\n", red_bucket_sizes[red_file_number], red_file_number);
+	  }
 	  fclose(fp_red_bucket);
 	}
       }
@@ -761,6 +764,8 @@ main (int argc, char **argv)
     fclose(fp_bucket);
   }
 
+  free ((void *) bucket_sizes);
+  
   fprintf (stderr, "Flushing reduced k-mer bucket output buffers\n");
 
   /* flush any reduced k-mers remaining in the reduced kmer buffers */
@@ -776,9 +781,11 @@ main (int argc, char **argv)
 	fprintf (stderr, "Could not complete write to file %s\n", red_file_name);
 	exit(EXIT_FAILURE);
       }
-      bucket_sizes[index] += red_kmer_buffer_indices[index];
+      red_bucket_sizes[index] += red_kmer_buffer_indices[index];
       fclose(fp_red_bucket);
     }
+
+    fprintf (stderr, "%lu reduced k-mers in %d\n", red_bucket_sizes[index], index);
   }
 
   fprintf (stderr, "Reading genome file names from %s\n", genomes_file);
@@ -985,6 +992,7 @@ main (int argc, char **argv)
   free ((void *) red_kmer_buffer_indices);
   free ((void *) red_kmer_buffers);
   free ((void *) red_kmer_buffers_pool);
+  free ((void *) red_bucket_sizes);
 
   exit(EXIT_SUCCESS);
 }
