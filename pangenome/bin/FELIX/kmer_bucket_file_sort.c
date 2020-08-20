@@ -118,7 +118,7 @@ int read_fasta_kmer(char * genome_file_name, FILE * fp_fasta, int cur_file_pos, 
       cur_file_pos++;
     }
   }
-  free(fasta_line);
+  free((void *) fasta_line);
   return (cur_file_contig);
 }
 
@@ -374,14 +374,14 @@ int kmer_bucket_sort_genome(FILE * fp_fasta, char * genome_file_name, uint16_t g
       }
     }
   }
-  free(fasta_line);
+  free((void *) fasta_line);
   return (new_red_files);
 }
 
 int
 main (int argc, char **argv)
 {
-  char *genomes_file = NULL;
+  char * genomes_file = NULL;
   int num_red_files = 0; /* this is the number of files/buckets for the reduced k-mers, one for each of the contigs in the first genome, and one per genome after that */
   int num_first_genome_contigs; /* this is the number of contigs in the first genome */
   int red_file_number; /* index of reduced k-mer file */
@@ -613,7 +613,7 @@ main (int argc, char **argv)
     }
     fclose(fp_file_name);
   }
-  free(file_name_line);
+  /* free((void *) file_name_line);*/
 
   fclose(fp_file_names);
 
@@ -798,7 +798,9 @@ main (int argc, char **argv)
     exit(EXIT_FAILURE);
   }
 
+  fprintf (stderr, "%lu in red_bucket_sizes[14]\n", red_bucket_sizes[14]);
   getline_return = getline(&file_name_line, &file_name_line_malloc_len, fp_file_names);
+  fprintf (stderr, "%lu in red_bucket_sizes[14]\n", red_bucket_sizes[14]);
   if (getline_return == -1) {
     fprintf (stderr, "Unexpected end of genome names file: %s!\n", genomes_file);
     exit(EXIT_FAILURE);
@@ -988,8 +990,8 @@ main (int argc, char **argv)
     }
   }
 
-  free(fasta_line);
-  free(file_name_line);
+  free((void *) fasta_line);
+  free((void *) file_name_line);
 
   fclose(fp_file_name);
   fclose(fp_file_names);
