@@ -858,6 +858,7 @@ main (int argc, char **argv)
     sprintf(red_file_name, "%i", index);
 
     fprintf (stderr, "Reading %lu reduced k-mers from %s\n", red_bucket_sizes[index], red_file_name);
+    fprintf (stderr, "%lu in red_bucket_sizes[14]\n", red_bucket_sizes[14]);
 
     fp_red_bucket = fopen(red_file_name, "r");
     if (fp_red_bucket == NULL) {
@@ -879,6 +880,10 @@ main (int argc, char **argv)
     prev_contig = -1;
     contig_seq_pos = 0;
     for (i = 0; i <  red_bucket_sizes[index]; i++) {
+      if (red_bucket_sizes[14] > 10000000) {
+	fprintf (stderr, "%lu in red_bucket_sizes[14]\n", red_bucket_sizes[14]);
+	fprintf (stderr, "Corrupted i=%d prev_pos=%d prev_contig=%d prev_genome=%d contig_seq_pos=%d\n", i, prev_pos, prev_contig, prev_genome, contig_seq_pos);
+      }
       if ((contig_seq_pos + (KMER_SIZE - 1)) >= CONTIG_SEQ_BUFFER_LEN) {
 	/* Buffer full - output first half of current anchors buffer */
 	anchor_number += write_anchors(fp_pgg, fp_anchors, anchor_number, contig_seq, (int) (CONTIG_SEQ_BUFFER_LEN / 2), anchor_break);
