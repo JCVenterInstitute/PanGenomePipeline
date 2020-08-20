@@ -167,7 +167,7 @@ int write_anchors(FILE * fp_pgg, FILE * fp_anchors, int anchor_number, char * co
 	fputc('\n', fp_anchors);
       }
       if (! anchor_break) {
-	fprintf(fp_pgg, "(%d_3,%d_5)\t1)\n", (anchor_number - 1), anchor_number);
+	fprintf(fp_pgg, "(%d_3,%d_5)\t1\n", (anchor_number - 1), anchor_number);
       } else {
 	anchor_break = false;
       }
@@ -848,17 +848,20 @@ main (int argc, char **argv)
     int prev_pos, cur_pos, prev_contig, cur_contig, contig_seq_pos, num_anchors_written;
     bool anchor_break = true; /* this is true if the previous anchor is from a different contig or genome or there is no previous anchor */
     
-    red_kmer_array = (struct red_Kmer *) malloc((size_t) (red_bucket_sizes[index] * sizeof(struct red_Kmer)));
-    if (red_kmer_array == NULL) {
-      fprintf (stderr, "Could not allocate memory for red_kmer_array %d\n", (red_bucket_sizes[index] * sizeof(struct red_Kmer)));
-      exit(EXIT_FAILURE);
-    }
     sprintf(red_file_name, "%i", index);
+
+    fprintf (stderr, "Reading %z reduced k-mers from %s\n", red_bucket_sizes[index], red_file_name);
+
     fp_red_bucket = fopen(red_file_name, "r");
     if (fp_red_bucket == NULL) {
       fprintf (stderr, "Could not open file %s\n", red_file_name);
       continue; /* Some reduced buckets may not have any data */
       /* exit(EXIT_FAILURE);*/
+    }
+    red_kmer_array = (struct red_Kmer *) malloc((size_t) (red_bucket_sizes[index] * sizeof(struct red_Kmer)));
+    if (red_kmer_array == NULL) {
+      fprintf (stderr, "Could not allocate memory for red_kmer_array %z\n", (red_bucket_sizes[index] * sizeof(struct red_Kmer)));
+      exit(EXIT_FAILURE);
     }
     if (fread((void *) red_kmer_array, sizeof(struct red_Kmer), red_bucket_sizes[index], fp_red_bucket) != red_bucket_sizes[index]) {
       fprintf (stderr, "Could not complete read of file %s\n", red_file_name);
