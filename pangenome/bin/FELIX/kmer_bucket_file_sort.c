@@ -316,33 +316,17 @@ int kmer_bucket_sort_genome(FILE * fp_fasta, char * genome_file_name, uint16_t g
 	  revc_kmer = (revc_kmer | revc_bp) >> 2;
 	  if (kmer_bp_count >= 23) {
 	    output_kmer_count++;
-	    if ((output_kmer_count % 100000) == 0) {
+	    if ((output_kmer_count % 1000000) == 0) {
 	      fprintf(stderr, "%d\n", output_kmer_count);
 	    }
 	    if (cur_kmer < revc_kmer) { /* use canonical kmer which ever is less */
 	      kmer_bucket = (int) ((bucket_mask & cur_kmer) >> 28);
-	      /*fprintf(stderr, "%d\n", kmer_bucket);
-	      fflush(stderr);
-	      fprintf(stderr, "%d:%d:%d:%d\n", cur_kmer, contig_pos, genome_number, contig_number);
-	      fflush(stderr);
-	      fprintf(stderr, "%d\n", kmer_buffer_indices[kmer_bucket]);
-	      fflush(stderr);
-	      fprintf(stderr, "%d\n", ((*(kmer_buffers + kmer_bucket)) + kmer_buffer_indices[kmer_bucket])->kmer);
-	      fflush(stderr);*/
 	      ((*(kmer_buffers + kmer_bucket)) + kmer_buffer_indices[kmer_bucket])->kmer = cur_kmer;
 	      ((*(kmer_buffers + kmer_bucket)) + kmer_buffer_indices[kmer_bucket])->pos = contig_pos - KMER_SIZE;
 	      ((*(kmer_buffers + kmer_bucket)) + kmer_buffer_indices[kmer_bucket])->genome = genome_number;
 	      ((*(kmer_buffers + kmer_bucket)) + kmer_buffer_indices[kmer_bucket])->contig = contig_number;
 	    } else {
 	      kmer_bucket = (int) ((bucket_mask & revc_kmer) >> 28);
-	      /*fprintf(stderr, "%d\n", kmer_bucket);
-	      fflush(stderr);
-	      fprintf(stderr, "%d:%d:%d:%d\n", revc_kmer, contig_pos, genome_number, contig_number);
-	      fflush(stderr);
-	      fprintf(stderr, "%d\n", kmer_buffer_indices[kmer_bucket]);
-	      fflush(stderr);
-	      fprintf(stderr, "%d\n", ((*(kmer_buffers + kmer_bucket)) + kmer_buffer_indices[kmer_bucket])->kmer);
-	      fflush(stderr);*/
 	      ((*(kmer_buffers + kmer_bucket)) + kmer_buffer_indices[kmer_bucket])->kmer = revc_kmer;
 	      ((*(kmer_buffers + kmer_bucket)) + kmer_buffer_indices[kmer_bucket])->pos = -(contig_pos - KMER_SIZE);
 	      ((*(kmer_buffers + kmer_bucket)) + kmer_buffer_indices[kmer_bucket])->genome = genome_number;
@@ -708,9 +692,7 @@ main (int argc, char **argv)
       fprintf (stderr, "Could not complete read of file %s\n", bucket_file_names[index]);
       exit(EXIT_FAILURE);
     }
-    /* fprintf(stderr, "qsort %s %d\n", bucket_file_names[index], bucket_sizes[index]);*/
     qsort((void *) kmer_array, bucket_sizes[index], sizeof(struct Kmer), kmer_sort);
-    /* fprintf(stderr, "Finished qsort\n");*/
     for (i = 0; i <  bucket_sizes[index];) {
       struct Kmer first_array_kmer, prev_array_kmer;
       bool duplicate_kmer = false;
@@ -753,9 +735,6 @@ main (int argc, char **argv)
 	    exit(EXIT_FAILURE);
 	  }
 	  red_bucket_sizes[red_file_number] += KMER_BUFFER_LEN;
-	  if ((red_bucket_sizes[red_file_number] % (KMER_BUFFER_LEN * 1000)) == 0) {
-	    fprintf (stderr, "%lu reduced k-mers in %d\n", red_bucket_sizes[red_file_number], red_file_number);
-	  }
 	  fclose(fp_red_bucket);
 	}
       }
@@ -789,7 +768,6 @@ main (int argc, char **argv)
   }
 
   fprintf (stderr, "Reading genome file names from %s\n", genomes_file);
-  fprintf (stderr, "%lu in red_bucket_sizes[14]\n", red_bucket_sizes[14]);
 
   /* loop through each genome in the genomes file input file as needed to determine anchors*/
   fp_file_names = fopen(genomes_file, "r");
@@ -798,9 +776,7 @@ main (int argc, char **argv)
     exit(EXIT_FAILURE);
   }
 
-  fprintf (stderr, "%lu in red_bucket_sizes[14]\n", red_bucket_sizes[14]);
   getline_return = getline(&file_name_line, &file_name_line_malloc_len, fp_file_names);
-  fprintf (stderr, "%lu in red_bucket_sizes[14]\n", red_bucket_sizes[14]);
   if (getline_return == -1) {
     fprintf (stderr, "Unexpected end of genome names file: %s!\n", genomes_file);
     exit(EXIT_FAILURE);
@@ -817,7 +793,6 @@ main (int argc, char **argv)
   file_name_line[file_name_len - 1] = '\0';
 
   fprintf (stderr, "Reading genome from %s\n", file_name_line);
-  fprintf (stderr, "%lu in red_bucket_sizes[14]\n", red_bucket_sizes[14]);
 
   fp_file_name = fopen(file_name_line, "r");
   if (fp_file_name == NULL) {
@@ -840,7 +815,6 @@ main (int argc, char **argv)
 
 
   fprintf (stderr, "Opening medoids.fasta file for anchors and pgg.txt for PGG\n");
-  fprintf (stderr, "%lu in red_bucket_sizes[14]\n", red_bucket_sizes[14]);
 
   fp_anchors = fopen("medoids.fasta", "w");
   if (fp_anchors == NULL) {
@@ -854,7 +828,6 @@ main (int argc, char **argv)
     exit(EXIT_FAILURE);
   }
 
-  fprintf (stderr, "%lu in red_bucket_sizes[14]\n", red_bucket_sizes[14]);
   /* read in reduced k-mers from contig/genome buckets and produce anchors */
   for (index = 0; index < num_red_files; index++) {
     char contig_seq[CONTIG_SEQ_BUFFER_LEN];
@@ -864,7 +837,6 @@ main (int argc, char **argv)
     sprintf(red_file_name, "%i", index);
 
     fprintf (stderr, "Reading %lu reduced k-mers from %s\n", red_bucket_sizes[index], red_file_name);
-    fprintf (stderr, "%lu in red_bucket_sizes[14]\n", red_bucket_sizes[14]);
 
     fp_red_bucket = fopen(red_file_name, "r");
     if (fp_red_bucket == NULL) {
@@ -886,11 +858,6 @@ main (int argc, char **argv)
     prev_contig = -1;
     contig_seq_pos = 0;
     for (i = 0; i <  red_bucket_sizes[index]; i++) {
-      if (red_bucket_sizes[14] > 10000000) {
-	fprintf (stderr, "%lu in red_bucket_sizes[14]\n", red_bucket_sizes[14]);
-	fprintf (stderr, "Corrupted i=%d prev_pos=%d prev_contig=%d prev_genome=%d contig_seq_pos=%d\n", i, prev_pos, prev_contig, prev_genome, contig_seq_pos);
-	exit(EXIT_FAILURE);
-      }
       if ((contig_seq_pos + (KMER_SIZE - 1)) >= CONTIG_SEQ_BUFFER_LEN) {
 	/* Buffer full - output first half of current anchors buffer */
 	anchor_number += write_anchors(fp_pgg, fp_anchors, anchor_number, contig_seq, (int) (CONTIG_SEQ_BUFFER_LEN / 2), anchor_break);
@@ -948,7 +915,7 @@ main (int argc, char **argv)
     fclose(fp_red_bucket);
 
     /* check if we need to switch to a new genome or just a new contig in first genome */
-    if (index < (num_first_genome_contigs - 1)) {
+    if ((index < (num_first_genome_contigs - 1)) || (index == (num_red_files - 1))) {
     } else {
       getline_return = getline(&file_name_line, &file_name_line_malloc_len, fp_file_names);
       if (getline_return == -1) {
