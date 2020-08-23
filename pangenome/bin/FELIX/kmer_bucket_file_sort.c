@@ -53,6 +53,7 @@ struct red_Kmer { /* this struct is a reduced version of the Kmer struct which d
   int32_t  pos; /* the position of the last basepair of the 23mer within the contig, the first basepair of a contig has position 1, a negative value indicates the reverse complement of the 23mer appears in the contig */
   uint16_t  genome; /* the genome number of the 23mer based on the order of the genome in the input file names file beginning with 0 */
   uint16_t   contig; /* the contig number of the 23mer based on the order of the contig in the multifasta genome file beginning with 0 */
+  uint16_t   prevalence; /* the number of genomes containing this k-mer */
 };
 
 /*
@@ -125,7 +126,7 @@ int read_fasta_kmer(char * genome_file_name, FILE * fp_fasta, int cur_file_pos, 
 /*
 This subroutine writes anchors/medoid sequences out to a file based on an anchor buffer and returns the number of anchors written
 */
-int write_anchors(FILE * fp_pgg, FILE * fp_anchors, int anchor_number, char * contig_seq, int stop_pos, bool anchor_break)
+int write_anchors(int anchor_prevalence, FILE * fp_single, FILE * fp_cluster, FILE * fp_match, FILE * fp_pgg, FILE * fp_anchors, int anchor_number, char * contig_seq, int stop_pos, bool anchor_break, bool core_anchor)
 {
   int num_anchors_written = 0;
   int i,j;
@@ -133,6 +134,11 @@ int write_anchors(FILE * fp_pgg, FILE * fp_anchors, int anchor_number, char * co
   if (stop_pos < MIN_ANCHOR_LEN) {
   } else if (stop_pos < ((3 * OPT_ANCHOR_LEN) / 2)) {
     fprintf(fp_anchors, ">medoid_%d\n", anchor_number);
+    if (core_anchor) {
+      fprintf(fp_single, "%d\n", anchor_number);
+    }
+    fprintf(fp_cluster, "%d\t%d\n", anchor_number, anchor_prevalence);
+    fprintf(fp_match, "%d\tmedoid_%d\n", anchor_number, anchor_number);
     for (j = 0; j < stop_pos; j += 60) {
       int out_len = (stop_pos - j) < 60 ? (stop_pos - j) : 60;
       if (fwrite(&contig_seq[j], sizeof(char), (size_t) out_len, fp_anchors) != out_len) {
@@ -158,6 +164,11 @@ int write_anchors(FILE * fp_pgg, FILE * fp_anchors, int anchor_number, char * co
     for (i = 0; i < anchors_in_buffer; i++) {
       int anchor_stop_pos = (((i + 1) * anchor_len) > stop_pos) ? stop_pos : ((i + 1) * anchor_len);
       fprintf(fp_anchors, ">medoid_%d\n", anchor_number);
+      if (core_anchor) {
+	fprintf(fp_single, "%d\n", anchor_number);
+      }
+      fprintf(fp_cluster, "%d\t%d\n", anchor_number, anchor_prevalence);
+      fprintf(fp_match, "%d\tmedoid_%d\n", anchor_number, anchor_number);
       for (j = i * anchor_len; j < anchor_stop_pos; j += 60) {
 	int out_len = (stop_pos - j) < 60 ? (stop_pos - j) : 60;
 	if (fwrite(&contig_seq[j], sizeof(char), (size_t) out_len, fp_anchors) != out_len) {
@@ -398,6 +409,9 @@ main (int argc, char **argv)
   FILE * fp_file_name;
   FILE * fp_anchors;
   FILE * fp_pgg;
+  FILE * fp_single;
+  FILE * fp_cluster;
+  FILE * fp_match;
   int file_name_len;
   char * fasta_line = NULL;
   size_t fasta_line_malloc_len = 0;
@@ -406,10 +420,11 @@ main (int argc, char **argv)
   int cur_file_pos, cur_file_contig, cur_file_genome, prev_genome, cur_genome;
   int anchor_number = 1; /* the anchor/medoid number initialized here to 1 */
   int kmer_threshold = 1; /* the minimum number of genomes a k-mer must be present in to be used as an anchor */
+  int core_threshold = 95; /* percentage of genomes needed to be core */
   
   opterr = 0;
 
-  while ((getopt_return = getopt (argc, argv, "g:t:")) != -1) {
+  while ((getopt_return = getopt (argc, argv, "g:t:c:")) != -1) {
     switch (getopt_return) {
       case 'g':
         genomes_file = optarg;
@@ -420,8 +435,14 @@ main (int argc, char **argv)
 	  fprintf(stderr, "k-mer threshold must be greater than 0 not: %s\n", optarg);
 	}
         break;
+      case 'c':
+        core_threshold = atoi(optarg);
+	if ((core_threshold < 0) || (core_threshold > 100)){
+	  fprintf(stderr, "core threshold must be >= 0 and <= 100, not: %s\n", optarg);
+	}
+        break;
       case '?':
-        if ((optopt == 'g') || (optopt == 't')) {
+        if ((optopt == 'g') || (optopt == 't') || (optopt == 'c')) {
           fprintf (stderr, "Option -%c requires an argument.\n", optopt);
         } else if (isprint (optopt)) {
           fprintf (stderr, "Unknown option `-%c'.\n", optopt);
@@ -720,6 +741,7 @@ main (int argc, char **argv)
 	}
 	((*(red_kmer_buffers + red_file_number)) + red_kmer_buffer_indices[red_file_number])->genome = first_array_kmer.genome;
 	((*(red_kmer_buffers + red_file_number)) + red_kmer_buffer_indices[red_file_number])->contig = first_array_kmer.contig;
+	((*(red_kmer_buffers + red_file_number)) + red_kmer_buffer_indices[red_file_number])->prevalence = (uint16_t) kmer_count;
 	red_kmer_buffer_indices[red_file_number]++;
 	if (red_kmer_buffer_indices[red_file_number] == KMER_BUFFER_LEN) {
 	  /* kmer bucket buffer is full so output it and reset index */
@@ -818,13 +840,31 @@ main (int argc, char **argv)
 
   fp_anchors = fopen("medoids.fasta", "w");
   if (fp_anchors == NULL) {
-    fprintf (stderr, "Could not open anchors/medoids file for output\n");
+    fprintf (stderr, "Could not open anchors/medoids file medoids.fasta for output\n");
     exit(EXIT_FAILURE);
   }
 
   fp_pgg = fopen("pgg.txt", "w");
   if (fp_pgg == NULL) {
-    fprintf (stderr, "Could not open pgg file for output\n");
+    fprintf (stderr, "Could not open pgg.txt file for output\n");
+    exit(EXIT_FAILURE);
+  }
+
+  fp_single = fopen("single_copy_clusters.txt", "w");
+  if (fp_single == NULL) {
+    fprintf (stderr, "Could not open single_copy_clusters.txt file for output\n");
+    exit(EXIT_FAILURE);
+  }
+
+  fp_cluster = fopen("cluster_sizes.txt", "w");
+  if (fp_cluster == NULL) {
+    fprintf (stderr, "Could not open cluster_sizes.txt file for output\n");
+    exit(EXIT_FAILURE);
+  }
+
+  fp_match = fopen("matchtable.txt", "w");
+  if (fp_match == NULL) {
+    fprintf (stderr, "Could not open matchtable.txt file for output\n");
     exit(EXIT_FAILURE);
   }
 
@@ -833,6 +873,8 @@ main (int argc, char **argv)
     char contig_seq[CONTIG_SEQ_BUFFER_LEN];
     int prev_pos, cur_pos, prev_contig, cur_contig, contig_seq_pos, num_anchors_written;
     bool anchor_break = true; /* this is true if the previous anchor is from a different contig or genome or there is no previous anchor */
+    int prev_prevalence = 0, anchor_prevalence;
+    bool core_anchor = false;
     
     sprintf(red_file_name, "%i", index);
 
@@ -860,7 +902,7 @@ main (int argc, char **argv)
     for (i = 0; i <  red_bucket_sizes[index]; i++) {
       if ((contig_seq_pos + (KMER_SIZE - 1)) >= CONTIG_SEQ_BUFFER_LEN) {
 	/* Buffer full - output first half of current anchors buffer */
-	anchor_number += write_anchors(fp_pgg, fp_anchors, anchor_number, contig_seq, (int) (CONTIG_SEQ_BUFFER_LEN / 2), anchor_break);
+	anchor_number += write_anchors(anchor_prevalence, fp_single, fp_cluster, fp_match, fp_pgg, fp_anchors, anchor_number, contig_seq, (int) (CONTIG_SEQ_BUFFER_LEN / 2), anchor_break, core_anchor);
 	anchor_break = false;
 	/* Copy second half of buffer into first half of buffer */
 	memcpy((void *) contig_seq, (void *) &contig_seq[(CONTIG_SEQ_BUFFER_LEN / 2)], (size_t) (CONTIG_SEQ_BUFFER_LEN / 2));
@@ -869,6 +911,7 @@ main (int argc, char **argv)
       cur_pos = (int) red_kmer_array[i].pos;
       cur_contig = (int) red_kmer_array[i].contig;
       cur_genome = (int) red_kmer_array[i].genome;
+      anchor_prevalence = (int) red_kmer_array[i].prevalence;
       if (cur_genome != cur_file_genome) {
 	fprintf (stderr, "Current genome number %d does not match stored genome number %d\n", cur_genome, cur_file_genome);
 	exit(EXIT_FAILURE);
@@ -879,22 +922,20 @@ main (int argc, char **argv)
       if (prev_pos == -1) {
 	if ((prev_contig != -1) && (contig_seq_pos > 0)){
 	  /* Switched contigs - output current anchors buffer */
-	  anchor_number += write_anchors(fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break);
+	  anchor_number += write_anchors(anchor_prevalence, fp_single, fp_cluster, fp_match, fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break, core_anchor);
 	}
 	anchor_break = true;
-	contig_seq_pos = 0;
 	cur_file_contig = read_fasta_kmer(file_name_line, fp_file_name, cur_file_pos, cur_file_contig, cur_contig, cur_pos, KMER_SIZE, contig_seq, contig_seq_pos);
 	contig_seq_pos += KMER_SIZE;
 	cur_file_pos = cur_pos + KMER_SIZE;
       } else {
-	if ((cur_pos - prev_pos) > KMER_SIZE) {
-	  /* Break in unique k-mers - output current anchors buffer */
-	  num_anchors_written= write_anchors(fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break);
+	if (((cur_pos - prev_pos) > KMER_SIZE) || ((anchor_prevalence > ((120 * prev_prevalence) / 100)) || ((anchor_prevalence < ((80 * prev_prevalence) / 100))))) {
+	  /* Break in unique k-mers or significant change in anchor prevalence - output current anchors buffer */
+	  num_anchors_written= write_anchors(anchor_prevalence, fp_single, fp_cluster, fp_match, fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break, core_anchor);
 	  anchor_number += num_anchors_written;
 	  if (num_anchors_written) {
 	    anchor_break = false;
 	  }
-	  contig_seq_pos = 0;
 	  cur_file_contig = read_fasta_kmer(file_name_line, fp_file_name, cur_file_pos, cur_file_contig, cur_contig, cur_pos, KMER_SIZE, contig_seq, contig_seq_pos);
 	  contig_seq_pos += KMER_SIZE;
 	  cur_file_pos = cur_pos + KMER_SIZE;
@@ -906,10 +947,16 @@ main (int argc, char **argv)
       }
       prev_pos = cur_pos;
       prev_contig = cur_contig;
+      prev_prevalence = (((contig_seq_pos - KMER_SIZE) * prev_prevalence) + anchor_prevalence) / ((contig_seq_pos - KMER_SIZE) + 1);
+      if (prev_prevalence >= ((core_threshold * prev_prevalence) / 100)) {
+	core_anchor = true;
+      } else {
+	core_anchor = false;
+      }
     }
     if (contig_seq_pos > 0) {
       /* Flush remaining anchors buffer */
-	  anchor_number += write_anchors(fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break);
+	  anchor_number += write_anchors(anchor_prevalence, fp_single, fp_cluster, fp_match, fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break, core_anchor);
     }
     free ((void *) red_kmer_array);
     fclose(fp_red_bucket);

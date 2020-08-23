@@ -2312,6 +2312,11 @@ sub process_medoids {  # read in the medoids for the PGG
 	    die ("ERROR: Bad medoid cluster number in header expecting $cluster_num but found $2\n>$title\nin file $medoids_path!\n");
 	    }
 	    $title = ">$1$renumber[$cluster_num]$3\n";
+	} elsif ($title =~ /(medoid_)(\d+)(.*)/) {
+	    if ($2 != $cluster_num) {
+	    die ("ERROR: Bad medoid cluster number in header expecting $cluster_num but found $2\n>$title\nin file $medoids_path!\n");
+	    }
+	    $title = ">$1$renumber[$cluster_num]$3\n";
 	} else {
 	    die ("ERROR: Bad medoid header formatting\n>$title\nin file $medoids_path!\n");
 	}
