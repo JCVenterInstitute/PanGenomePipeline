@@ -923,6 +923,7 @@ main (int argc, char **argv)
 	if ((prev_contig != -1) && (contig_seq_pos > 0)){
 	  /* Switched contigs - output current anchors buffer */
 	  anchor_number += write_anchors(anchor_prevalence, fp_single, fp_cluster, fp_match, fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break, core_anchor);
+	  contig_seq_pos = 0;
 	}
 	anchor_break = true;
 	cur_file_contig = read_fasta_kmer(file_name_line, fp_file_name, cur_file_pos, cur_file_contig, cur_contig, cur_pos, KMER_SIZE, contig_seq, contig_seq_pos);
@@ -932,6 +933,7 @@ main (int argc, char **argv)
 	if (((cur_pos - prev_pos) > KMER_SIZE) || ((anchor_prevalence > ((120 * prev_prevalence) / 100)) || ((anchor_prevalence < ((80 * prev_prevalence) / 100))))) {
 	  /* Break in unique k-mers or significant change in anchor prevalence - output current anchors buffer */
 	  num_anchors_written= write_anchors(anchor_prevalence, fp_single, fp_cluster, fp_match, fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break, core_anchor);
+	  contig_seq_pos = 0;
 	  anchor_number += num_anchors_written;
 	  if (num_anchors_written) {
 	    anchor_break = false;
@@ -1011,6 +1013,9 @@ main (int argc, char **argv)
   fclose(fp_file_names);
   fclose(fp_anchors);
   fclose(fp_pgg);
+  fclose(fp_single);
+  fclose(fp_cluster);
+  fclose(fp_match);
 
   fprintf (stderr, "Freeing reduced k-mer bucket buffers\n");
 
