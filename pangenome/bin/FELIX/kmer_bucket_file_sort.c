@@ -421,7 +421,6 @@ main (int argc, char **argv)
   int anchor_number = 1; /* the anchor/medoid number initialized here to 1 */
   int kmer_threshold = 1; /* the minimum number of genomes a k-mer must be present in to be used as an anchor */
   int core_threshold = 50; /* percentage of genomes needed to be core */
-  int * mode; /* temporary storage for mode calculation of prevalence */
   
   opterr = 0;
 
@@ -870,11 +869,6 @@ main (int argc, char **argv)
   }
 
   /* read in reduced k-mers from contig/genome buckets and produce anchors */
-  mode = (int *) malloc((size_t) ((genome_number + 1) * sizeof(int)));
-  if (mode == NULL) {
-    fprintf (stderr, "Could not allocate memory for mode calcualtion\n");
-    exit(EXIT_FAILURE);
-  }
   for (index = 0; index < num_red_files; index++) {
     char contig_seq[CONTIG_SEQ_BUFFER_LEN];
     int prev_pos, cur_pos, prev_contig, cur_contig, contig_seq_pos, num_anchors_written;
@@ -911,9 +905,6 @@ main (int argc, char **argv)
 
     /* first smooth out dips in prevalence due to presumed variability changing k-mers */
     
-    for (i = 0; i <= genome_number; i++) {
-      mode[i] = 0;
-    }
     prev_pos = -1;
     prev_contig = -1;
     first_red_kmer = 0;
@@ -938,7 +929,6 @@ main (int argc, char **argv)
 	first_red_kmer = i;
 	last_red_kmer = i;
 	prev_prevalence = (float) anchor_prevalence;
-	mode[anchor_prevalence]++;
       } else if ((cur_pos - prev_pos) > KMER_SIZE) {
 	/* Break in unique k-mers */
 	reset_prevalence = true;
@@ -953,44 +943,36 @@ main (int argc, char **argv)
 	last_red_kmer = i;
 	prev_prevalence = ((float)((num_so_far * prev_prevalence) + anchor_prevalence)) / ((float)(num_so_far + 1));
 	num_so_far++;
-	mode[anchor_prevalence]++;
       }
       if (reset_prevalence) {
-	int max_mode = 0;
-	int max_mode_index = 0;
-	for (j = 0; j <= genome_number; j++) {
-	  if (mode[i] >= max_mode) {
-	    max_mode = mode[j];
-	    max_mode_index = j;
+	int max_prevalence = 0;
+	fprintf(stderr, "reset:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%f\n", cur_pos, cur_contig, cur_genome, anchor_prevalence, first_red_kmer, last_red_kmer, num_outliers, num_so_far, prev_pos, prev_contig, prev_prevalence);
+	for (j = first_red_kmer; j <= last_red_kmer; j++) {
+	  if (red_kmer_array[j].prevalence > max_prevalence) {
+	    max_prevalence = red_kmer_array[j].prevalence;
 	  }
-	  mode[j] = 0;
 	}
 	for (j = first_red_kmer; j <= last_red_kmer; j++) {
-	  red_kmer_array[j].prevalence = (uint16_t) max_mode_index;
+	  red_kmer_array[j].prevalence = (uint16_t) max_prevalence;
 	}
 	reset_prevalence = false;
 	num_so_far = 0;
 	num_outliers = 0;
-	if (last_red_kmer == (i - 1)) {
-	  i--;
-	} else {
-	  i = last_red_kmer;
-	}
+	i = last_red_kmer;
       }
       prev_pos = cur_pos;
       prev_contig = cur_contig;
     }
     { /* reset prevalence at the end */
-      int max_mode = 0;
-      int max_mode_index = 0;
-      for (j = 0; j <= genome_number; j++) {
-	if (mode[i] >= max_mode) {
-	  max_mode = mode[j];
-	  max_mode_index = j;
+      int max_prevalence = 0;
+      fprintf(stderr, "last%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%f\n", cur_pos, cur_contig, cur_genome, anchor_prevalence, first_red_kmer, last_red_kmer, num_outliers, num_so_far, prev_pos, prev_contig, prev_prevalence);
+      for (j = first_red_kmer; j <= last_red_kmer; j++) {
+	if (red_kmer_array[j].prevalence > max_prevalence) {
+	  max_prevalence = red_kmer_array[j].prevalence;
 	}
       }
       for (j = first_red_kmer; j <= last_red_kmer; j++) {
-	red_kmer_array[j].prevalence = (uint16_t) max_mode_index;
+	red_kmer_array[j].prevalence = (uint16_t) max_prevalence;
       }
     }
 
