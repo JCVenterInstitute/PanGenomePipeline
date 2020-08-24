@@ -921,11 +921,13 @@ main (int argc, char **argv)
     reset_prevalence = false;
     num_outliers = 0;
     num_so_far = 0;
+    prev_prevalence = 0.0;
     for (i = 0; i < red_bucket_sizes[index]; i++) {
       cur_pos = (int) red_kmer_array[i].pos;
       cur_contig = (int) red_kmer_array[i].contig;
       cur_genome = (int) red_kmer_array[i].genome;
       anchor_prevalence = (int) red_kmer_array[i].prevalence;
+      fprintf(stderr, "%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%f\n", cur_pos, cur_contig, cur_genome, anchor_prevalence, first_red_kmer, last_red_kmer, num_outliers, num_so_far, prev_pos, prev_contig, prev_prevalence);
       if ((cur_contig != prev_contig) && (prev_pos != -1)) {
 	/* start of a new contig and old contig k-mers need to be reset */
 	prev_pos = -1;
