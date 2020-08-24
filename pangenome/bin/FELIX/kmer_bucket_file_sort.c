@@ -420,7 +420,8 @@ main (int argc, char **argv)
   int cur_file_pos, cur_file_contig, cur_file_genome, prev_genome, cur_genome;
   int anchor_number = 1; /* the anchor/medoid number initialized here to 1 */
   int kmer_threshold = 1; /* the minimum number of genomes a k-mer must be present in to be used as an anchor */
-  int core_threshold = 95; /* percentage of genomes needed to be core */
+  int core_threshold = 50; /* percentage of genomes needed to be core */
+  int * mode; /* temporary storage for mode calculation of prevalence */
   
   opterr = 0;
 
@@ -869,12 +870,23 @@ main (int argc, char **argv)
   }
 
   /* read in reduced k-mers from contig/genome buckets and produce anchors */
+  mode = (int *) malloc((size_t) ((genome_number + 1) * sizeof(int)));
+  if (mode == NULL) {
+    fprintf (stderr, "Could not allocate memory for mode calcualtion\n");
+    exit(EXIT_FAILURE);
+  }
   for (index = 0; index < num_red_files; index++) {
     char contig_seq[CONTIG_SEQ_BUFFER_LEN];
     int prev_pos, cur_pos, prev_contig, cur_contig, contig_seq_pos, num_anchors_written;
     bool anchor_break = true; /* this is true if the previous anchor is from a different contig or genome or there is no previous anchor */
-    int prev_prevalence = 0, anchor_prevalence;
+    float prev_prevalence;
+    int anchor_prevalence;
     bool core_anchor = false;
+    int first_red_kmer;
+    int last_red_kmer;
+    bool reset_prevalence;
+    int num_outliers;
+    int num_so_far;
     
     sprintf(red_file_name, "%i", index);
 
@@ -896,6 +908,91 @@ main (int argc, char **argv)
       exit(EXIT_FAILURE);
     }
     qsort((void *) red_kmer_array, red_bucket_sizes[index], sizeof(struct red_Kmer), red_kmer_sort);
+
+    /* first smooth out dips in prevalence due to presumed variability changing k-mers */
+    
+    for (i = 0; i <= genome_number; i++) {
+      mode[i] = 0;
+    }
+    prev_pos = -1;
+    prev_contig = -1;
+    first_red_kmer = 0;
+    last_red_kmer = 0;
+    reset_prevalence = false;
+    num_outliers = 0;
+    num_so_far = 0;
+    for (i = 0; i < red_bucket_sizes[index]; i++) {
+      cur_pos = (int) red_kmer_array[i].pos;
+      cur_contig = (int) red_kmer_array[i].contig;
+      cur_genome = (int) red_kmer_array[i].genome;
+      anchor_prevalence = (int) red_kmer_array[i].prevalence;
+      if ((cur_contig != prev_contig) && (prev_pos != -1)) {
+	/* start of a new contig and old contig k-mers need to be reset */
+	prev_pos = -1;
+	reset_prevalence = true;
+      } else if ((prev_pos == -1) || (num_so_far == 0)) {
+	num_so_far++;
+	num_outliers = 0;
+	first_red_kmer = i;
+	last_red_kmer = i;
+	prev_prevalence = (float) anchor_prevalence;
+	mode[anchor_prevalence]++;
+      } else if ((cur_pos - prev_pos) > KMER_SIZE) {
+	/* Break in unique k-mers */
+	reset_prevalence = true;
+      } else if ((anchor_prevalence > ((110 * prev_prevalence) / 100)) || ((anchor_prevalence < ((90 * prev_prevalence) / 100)))) {
+	/* Significant change in anchor prevalence */
+	num_outliers++;
+	if (num_outliers > (2 * KMER_SIZE)) {
+	  reset_prevalence = true;
+	}
+      } else {
+	num_outliers = 0;
+	last_red_kmer = i;
+	prev_prevalence = ((float)((num_so_far * prev_prevalence) + anchor_prevalence)) / ((float)(num_so_far + 1));
+	num_so_far++;
+	mode[anchor_prevalence]++;
+      }
+      if (reset_prevalence) {
+	int max_mode = 0;
+	int max_mode_index = 0;
+	for (j = 0; j <= genome_number; j++) {
+	  if (mode[i] >= max_mode) {
+	    max_mode = mode[j];
+	    max_mode_index = j;
+	  }
+	  mode[j] = 0;
+	}
+	for (j = first_red_kmer; j <= last_red_kmer; j++) {
+	  red_kmer_array[j].prevalence = (uint16_t) max_mode_index;
+	}
+	reset_prevalence = false;
+	num_so_far = 0;
+	num_outliers = 0;
+	if (last_red_kmer == (i - 1)) {
+	  i--;
+	} else {
+	  i = last_red_kmer;
+	}
+      }
+      prev_pos = cur_pos;
+      prev_contig = cur_contig;
+    }
+    { /* reset prevalence at the end */
+      int max_mode = 0;
+      int max_mode_index = 0;
+      for (j = 0; j <= genome_number; j++) {
+	if (mode[i] >= max_mode) {
+	  max_mode = mode[j];
+	  max_mode_index = j;
+	}
+      }
+      for (j = first_red_kmer; j <= last_red_kmer; j++) {
+	red_kmer_array[j].prevalence = (uint16_t) max_mode_index;
+      }
+    }
+
+    /* determine and write out anchors/medoids and associated files */
     prev_pos = -1;
     prev_contig = -1;
     contig_seq_pos = 0;
@@ -930,7 +1027,7 @@ main (int argc, char **argv)
 	contig_seq_pos += KMER_SIZE;
 	cur_file_pos = cur_pos + KMER_SIZE;
       } else {
-	if (((cur_pos - prev_pos) > KMER_SIZE) || ((anchor_prevalence > ((120 * prev_prevalence) / 100)) || ((anchor_prevalence < ((80 * prev_prevalence) / 100))))) {
+	if (((cur_pos - prev_pos) > KMER_SIZE) || ((anchor_prevalence > ((110 * prev_prevalence) / 100)) || ((anchor_prevalence < ((90 * prev_prevalence) / 100))))) {
 	  /* Break in unique k-mers or significant change in anchor prevalence - output current anchors buffer */
 	  num_anchors_written= write_anchors(anchor_prevalence, fp_single, fp_cluster, fp_match, fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break, core_anchor);
 	  contig_seq_pos = 0;
@@ -949,8 +1046,8 @@ main (int argc, char **argv)
       }
       prev_pos = cur_pos;
       prev_contig = cur_contig;
-      prev_prevalence = (((contig_seq_pos - KMER_SIZE) * prev_prevalence) + anchor_prevalence) / ((contig_seq_pos - KMER_SIZE) + 1);
-      if (prev_prevalence >= ((core_threshold * prev_prevalence) / 100)) {
+      prev_prevalence = ((float)(((contig_seq_pos - KMER_SIZE) * prev_prevalence) + anchor_prevalence)) / ((float)((contig_seq_pos - KMER_SIZE) + 1));
+      if (prev_prevalence >= ((core_threshold * genome_number) / 100)) {
 	core_anchor = true;
       } else {
 	core_anchor = false;
