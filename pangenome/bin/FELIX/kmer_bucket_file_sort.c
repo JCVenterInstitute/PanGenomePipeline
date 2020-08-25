@@ -21,7 +21,6 @@ the second program. The four basepairs are encoded as two bits: A 00, C 01, G 10
 determination of 23mers but is included as part of the position within the contig.
 */
 
-#include <math.h>
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -985,7 +984,8 @@ main (int argc, char **argv)
     for (i = 0; i <  red_bucket_sizes[index]; i++) {
       if ((contig_seq_pos + (KMER_SIZE - 1)) >= CONTIG_SEQ_BUFFER_LEN) {
 	/* Buffer full - output first half of current anchors buffer */
-	anchor_number += write_anchors((int)ceilf(prev_prevalence), fp_single, fp_cluster, fp_match, fp_pgg, fp_anchors, anchor_number, contig_seq, (int) (CONTIG_SEQ_BUFFER_LEN / 2), anchor_break, core_anchor);
+	/* having linker issues for libm.a (-lm) with gcc on some platforms so using crude approximation for ceilf function */
+	anchor_number += write_anchors((int)(prev_prevalence + 0.999999999999), fp_single, fp_cluster, fp_match, fp_pgg, fp_anchors, anchor_number, contig_seq, (int) (CONTIG_SEQ_BUFFER_LEN / 2), anchor_break, core_anchor);
 	anchor_break = false;
 	/* Copy second half of buffer into first half of buffer */
 	memcpy((void *) contig_seq, (void *) &contig_seq[(CONTIG_SEQ_BUFFER_LEN / 2)], (size_t) (CONTIG_SEQ_BUFFER_LEN / 2));
@@ -1005,7 +1005,7 @@ main (int argc, char **argv)
       if (prev_pos == -1) {
 	if ((prev_contig != -1) && (contig_seq_pos > 0)){
 	  /* Switched contigs - output current anchors buffer */
-	  anchor_number += write_anchors((int)ceilf(prev_prevalence), fp_single, fp_cluster, fp_match, fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break, core_anchor);
+	  anchor_number += write_anchors((int)(prev_prevalence + 0.999999999999), fp_single, fp_cluster, fp_match, fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break, core_anchor);
 	  contig_seq_pos = 0;
 	}
 	anchor_break = true;
@@ -1015,7 +1015,7 @@ main (int argc, char **argv)
       } else {
 	if (((cur_pos - prev_pos) > KMER_SIZE) || ((anchor_prevalence > ((110 * prev_prevalence) / 100)) || ((anchor_prevalence < ((90 * prev_prevalence) / 100))))) {
 	  /* Break in unique k-mers or significant change in anchor prevalence - output current anchors buffer */
-	  num_anchors_written= write_anchors((int)ceilf(prev_prevalence), fp_single, fp_cluster, fp_match, fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break, core_anchor);
+	  num_anchors_written= write_anchors((int)(prev_prevalence + 0.999999999999), fp_single, fp_cluster, fp_match, fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break, core_anchor);
 	  contig_seq_pos = 0;
 	  anchor_number += num_anchors_written;
 	  if (num_anchors_written) {
@@ -1041,7 +1041,7 @@ main (int argc, char **argv)
     }
     if (contig_seq_pos > 0) {
       /* Flush remaining anchors buffer */
-	  anchor_number += write_anchors((int)ceilf(prev_prevalence), fp_single, fp_cluster, fp_match, fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break, core_anchor);
+	  anchor_number += write_anchors((int)(prev_prevalence + 0.999999999999), fp_single, fp_cluster, fp_match, fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break, core_anchor);
     }
     free ((void *) red_kmer_array);
     fclose(fp_red_bucket);
