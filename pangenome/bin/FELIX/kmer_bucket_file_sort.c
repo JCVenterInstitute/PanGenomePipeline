@@ -21,6 +21,7 @@ the second program. The four basepairs are encoded as two bits: A 00, C 01, G 10
 determination of 23mers but is included as part of the position within the contig.
 */
 
+#include <math.h>
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -918,7 +919,7 @@ main (int argc, char **argv)
       cur_contig = (int) red_kmer_array[i].contig;
       cur_genome = (int) red_kmer_array[i].genome;
       anchor_prevalence = (int) red_kmer_array[i].prevalence;
-      fprintf(stderr, "%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%f\n", cur_pos, cur_contig, cur_genome, anchor_prevalence, first_red_kmer, last_red_kmer, num_outliers, num_so_far, prev_pos, prev_contig, prev_prevalence);
+      /* fprintf(stderr, "%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%f\n", cur_pos, cur_contig, cur_genome, anchor_prevalence, first_red_kmer, last_red_kmer, num_outliers, num_so_far, prev_pos, prev_contig, prev_prevalence); */
       if ((cur_contig != prev_contig) && (prev_pos != -1)) {
 	/* start of a new contig and old contig k-mers need to be reset */
 	prev_pos = -1;
@@ -946,7 +947,7 @@ main (int argc, char **argv)
       }
       if (reset_prevalence) {
 	int max_prevalence = 0;
-	fprintf(stderr, "reset:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%f\n", cur_pos, cur_contig, cur_genome, anchor_prevalence, first_red_kmer, last_red_kmer, num_outliers, num_so_far, prev_pos, prev_contig, prev_prevalence);
+	/* fprintf(stderr, "reset:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%f\n", cur_pos, cur_contig, cur_genome, anchor_prevalence, first_red_kmer, last_red_kmer, num_outliers, num_so_far, prev_pos, prev_contig, prev_prevalence); */
 	for (j = first_red_kmer; j <= last_red_kmer; j++) {
 	  if (red_kmer_array[j].prevalence > max_prevalence) {
 	    max_prevalence = red_kmer_array[j].prevalence;
@@ -965,7 +966,7 @@ main (int argc, char **argv)
     }
     { /* reset prevalence at the end */
       int max_prevalence = 0;
-      fprintf(stderr, "last%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%f\n", cur_pos, cur_contig, cur_genome, anchor_prevalence, first_red_kmer, last_red_kmer, num_outliers, num_so_far, prev_pos, prev_contig, prev_prevalence);
+      /* fprintf(stderr, "last%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%f\n", cur_pos, cur_contig, cur_genome, anchor_prevalence, first_red_kmer, last_red_kmer, num_outliers, num_so_far, prev_pos, prev_contig, prev_prevalence); */
       for (j = first_red_kmer; j <= last_red_kmer; j++) {
 	if (red_kmer_array[j].prevalence > max_prevalence) {
 	  max_prevalence = red_kmer_array[j].prevalence;
@@ -980,10 +981,11 @@ main (int argc, char **argv)
     prev_pos = -1;
     prev_contig = -1;
     contig_seq_pos = 0;
+    prev_prevalence = 0;
     for (i = 0; i <  red_bucket_sizes[index]; i++) {
       if ((contig_seq_pos + (KMER_SIZE - 1)) >= CONTIG_SEQ_BUFFER_LEN) {
 	/* Buffer full - output first half of current anchors buffer */
-	anchor_number += write_anchors(anchor_prevalence, fp_single, fp_cluster, fp_match, fp_pgg, fp_anchors, anchor_number, contig_seq, (int) (CONTIG_SEQ_BUFFER_LEN / 2), anchor_break, core_anchor);
+	anchor_number += write_anchors((int)ceilf(prev_prevalence), fp_single, fp_cluster, fp_match, fp_pgg, fp_anchors, anchor_number, contig_seq, (int) (CONTIG_SEQ_BUFFER_LEN / 2), anchor_break, core_anchor);
 	anchor_break = false;
 	/* Copy second half of buffer into first half of buffer */
 	memcpy((void *) contig_seq, (void *) &contig_seq[(CONTIG_SEQ_BUFFER_LEN / 2)], (size_t) (CONTIG_SEQ_BUFFER_LEN / 2));
@@ -1003,7 +1005,7 @@ main (int argc, char **argv)
       if (prev_pos == -1) {
 	if ((prev_contig != -1) && (contig_seq_pos > 0)){
 	  /* Switched contigs - output current anchors buffer */
-	  anchor_number += write_anchors(anchor_prevalence, fp_single, fp_cluster, fp_match, fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break, core_anchor);
+	  anchor_number += write_anchors((int)ceilf(prev_prevalence), fp_single, fp_cluster, fp_match, fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break, core_anchor);
 	  contig_seq_pos = 0;
 	}
 	anchor_break = true;
@@ -1013,7 +1015,7 @@ main (int argc, char **argv)
       } else {
 	if (((cur_pos - prev_pos) > KMER_SIZE) || ((anchor_prevalence > ((110 * prev_prevalence) / 100)) || ((anchor_prevalence < ((90 * prev_prevalence) / 100))))) {
 	  /* Break in unique k-mers or significant change in anchor prevalence - output current anchors buffer */
-	  num_anchors_written= write_anchors(anchor_prevalence, fp_single, fp_cluster, fp_match, fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break, core_anchor);
+	  num_anchors_written= write_anchors((int)ceilf(prev_prevalence), fp_single, fp_cluster, fp_match, fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break, core_anchor);
 	  contig_seq_pos = 0;
 	  anchor_number += num_anchors_written;
 	  if (num_anchors_written) {
@@ -1039,7 +1041,7 @@ main (int argc, char **argv)
     }
     if (contig_seq_pos > 0) {
       /* Flush remaining anchors buffer */
-	  anchor_number += write_anchors(anchor_prevalence, fp_single, fp_cluster, fp_match, fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break, core_anchor);
+	  anchor_number += write_anchors((int)ceilf(prev_prevalence), fp_single, fp_cluster, fp_match, fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break, core_anchor);
     }
     free ((void *) red_kmer_array);
     fclose(fp_red_bucket);
