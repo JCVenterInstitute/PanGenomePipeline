@@ -2608,6 +2608,7 @@ sub compute_alignments
     $job_name = "pggstat_" . $$; #use a common job name so that qacct can access all of them together
     %job_ids = ();
     $num_jobs = 0;
+    $total_jobs = 0;
     foreach my $msa_file (@msa_files) {
 	my $stats_file = $msa_file;
 	$stats_file =~ s/\.afa$//;
@@ -2626,6 +2627,7 @@ sub compute_alignments
 	print STDERR "Launched $stats_exec\n" if ($DEBUG);
 	$job_ids{&launch_grid_job($job_name, $project, $working_dir, $stats_exec, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
 	$num_jobs++;
+	$total_jobs++;
 	if ($num_jobs >= $max_grid_jobs) {
 	    $num_jobs = &wait_for_grid_jobs($qsub_queue, $job_name, ((($max_grid_jobs - 10) > 0) ? ($max_grid_jobs - 10) : 0), \%job_ids);
 	}
@@ -2641,7 +2643,7 @@ sub compute_alignments
 	}
 	$num_jobs++;
     }
-    if ($num_jobs > ($max_grid_jobs / 2)) {
+    if ($num_jobs > ($total_jobs / 10)) {
 	die "Too many Alignment Stats grid jobs failed $num_jobs\n";
     } elsif ($num_jobs > 0) {
 	for (my $k=0; $k <= 2; $k++){ #try a maximum of 3 times on failed jobs
