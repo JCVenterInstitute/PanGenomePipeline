@@ -45,14 +45,14 @@ determination of 23mers but is included as part of the position within the conti
 struct Kmer { /* this struct captures the each 23mer and its context and is output to one of the 262,144 bucket files */
   uint64_t kmer; /* the lower 46 bits encodes a 23mer given a two bit encoding of each basepair */
   int32_t  pos; /* the position of the last basepair of the 23mer within the contig, the first basepair of a contig has position 1, a negative value indicates the reverse complement of the 23mer appears in the contig */
+  uint32_t   contig; /* the contig number of the 23mer based on the order of the contig in the multifasta genome file beginning with 0 */
   uint16_t  genome; /* the genome number of the 23mer based on the order of the genome in the input file names file beginning with 0 */
-  uint16_t   contig; /* the contig number of the 23mer based on the order of the contig in the multifasta genome file beginning with 0 */
 };
 
 struct red_Kmer { /* this struct is a reduced version of the Kmer struct which does not store the k-mer explicitly */
   int32_t  pos; /* the position of the last basepair of the 23mer within the contig, the first basepair of a contig has position 1, a negative value indicates the reverse complement of the 23mer appears in the contig */
+  uint32_t   contig; /* the contig number of the 23mer based on the order of the contig in the multifasta genome file beginning with 0 */
   uint16_t  genome; /* the genome number of the 23mer based on the order of the genome in the input file names file beginning with 0 */
-  uint16_t   contig; /* the contig number of the 23mer based on the order of the contig in the multifasta genome file beginning with 0 */
   uint16_t   prevalence; /* the number of genomes containing this k-mer */
 };
 
@@ -208,7 +208,7 @@ int kmer_bucket_sort_genome(FILE * fp_fasta, char * genome_file_name, uint16_t g
   bool new_contig = false;
   uint64_t kmer_mask = 01777777777777777; /* This is used to mask only the lower 46 bits used for the 23mer when shifting */
   uint64_t bucket_mask = 01777776000000000; /* This is used to select the upper 18 bits of the lower 46 bits to determine the 9 basepairs used for bucket sorting */
-  uint16_t contig_number = 0;
+  uint32_t contig_number = 0;
   int kmer_bp_count = 0;
   int contig_pos = 0;
   int kmer_bucket;
@@ -713,6 +713,8 @@ main (int argc, char **argv)
       fprintf (stderr, "Could not complete read of file %s\n", bucket_file_names[index]);
       exit(EXIT_FAILURE);
     }
+    fclose(fp_bucket);
+    unlink(bucket_file_names[index]);
     qsort((void *) kmer_array, bucket_sizes[index], sizeof(struct Kmer), kmer_sort);
     for (i = 0; i <  bucket_sizes[index];) {
       struct Kmer first_array_kmer, prev_array_kmer;
@@ -762,7 +764,6 @@ main (int argc, char **argv)
       }
     }
     free ((void *) kmer_array);
-    fclose(fp_bucket);
   }
 
   free ((void *) bucket_sizes);
@@ -1045,6 +1046,7 @@ main (int argc, char **argv)
     }
     free ((void *) red_kmer_array);
     fclose(fp_red_bucket);
+    unlink(red_file_name);
 
     /* check if we need to switch to a new genome or just a new contig in first genome */
     if ((index < (num_first_genome_contigs - 1)) || (index == (num_red_files - 1))) {
@@ -1107,6 +1109,37 @@ main (int argc, char **argv)
   free ((void *) red_kmer_buffers);
   free ((void *) red_kmer_buffers_pool);
   free ((void *) red_bucket_sizes);
+
+  /* remove two level directory structure based on 3mers */
+  for (i = 0; i < 4; i++) {
+    tmp_file_dir_name[0] = bps[i];
+    for (j = 0; j < 4; j++) {
+      tmp_file_dir_name[1] = bps[j];
+      for (k = 0; k < 4; k++) {
+	tmp_file_dir_name[2] = bps[k];
+	tmp_file_dir_name[3] = '/';
+	for (l = 0; l < 4; l++) {
+	  tmp_file_dir_name[4] = bps[l];
+	  for (m = 0; m < 4; m++) {
+	    tmp_file_dir_name[5] = bps[m];
+	    for (n = 0; n < 4; n++) {
+	      tmp_file_dir_name[6] = bps[n];
+	      tmp_file_dir_name[7] = '\0';
+	      if (rmdir(tmp_file_dir_name)) {
+		fprintf (stderr, "Could not remove directory %s\n", tmp_file_dir_name);
+		exit(EXIT_FAILURE);
+	      }
+	    }
+	  }
+	}
+	tmp_file_dir_name[3] = '\0';
+	if (rmdir(tmp_file_dir_name)) {
+	  fprintf (stderr, "Could not remove directory %s\n", tmp_file_dir_name);
+	  exit(EXIT_FAILURE);
+	}
+      }
+    }
+  }
 
   exit(EXIT_SUCCESS);
 }
