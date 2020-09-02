@@ -288,7 +288,7 @@ int kmer_bucket_sort_genome(FILE * fp_fasta, char * genome_file_name, uint16_t g
 	      exit(EXIT_FAILURE);
 	    }
 	    new_contig = true;
-	    if (contig_number == 65535) {
+	    if (contig_number == MAX_UINT32) {
 	      fprintf (stderr, "maximum number of contigs: %d exceeded for genome %s!\n", contig_number, genome_file_name);
 	      exit(EXIT_FAILURE);
 	    }
@@ -611,7 +611,7 @@ main (int argc, char **argv)
     if (genome_number == 0) {
       num_first_genome_contigs = num_red_files;
     }
-    if (genome_number == 65535) {
+    if (genome_number == MAX_UINT16) {
       max_genomes_exceeded = true;
     } else {
       genome_number++;
