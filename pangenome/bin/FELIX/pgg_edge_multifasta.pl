@@ -2603,6 +2603,10 @@ sub compute_alignments
 	    &wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
 	}
     }
+    if ($num_jobs > 0) {
+	die "Too many Muscle grid jobs failed $num_jobs\n";
+    }
+    `rm TMP_* *_stderr *_stdout`;
     print STDERR "$num_jobs failed Muscle jobs\n";
     my $stats_path = "$bin_directory/summarize_alignment.R";
     $job_name = "pggstat_" . $$; #use a common job name so that qacct can access all of them together
@@ -2675,7 +2679,11 @@ sub compute_alignments
 	    &wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
 	}
     }
+    if ($num_jobs > 0) {
+	die "Too many Alignment Stats grid jobs failed $num_jobs\n";
+    }
     print STDERR "$num_jobs failed Summarize alignment jobs\n";
+    `rm TMP_* *_stderr *_stdout`;
     return;
 }
 
