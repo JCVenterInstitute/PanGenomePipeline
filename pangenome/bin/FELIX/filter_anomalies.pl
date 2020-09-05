@@ -167,8 +167,18 @@ my $medoid_blast_path = "$bin_directory/medoid_blast_search.pl";
 # subroutine to handle substr for circular contigs
 sub circ_substr { # have to adjust coordinates because they are in 1 base based coordinates and perl strings start at 0
 
-    my ($seq, $beg, $end , $ctg_len) = @_; # beg and end are in 1 base coordinates
+    my ($file, $file_offset, $beg, $end , $ctg_len) = @_; # beg and end are in 1 base coordinates
+    my $seq;
     my $len = ($end - $beg) + 1;
+    my $local_save_input_separator = $/;
+    seek($file, $file_offset, 0);
+    $/="\n>";
+    $seq = <$file>;
+    $seq =~ s/[^a-zA-Z]//g; # remove any non-alphabet characters
+    $/ = $local_save_input_separator; # restore the input separator
+    if (length($seq) != $ctg_len) {
+	die ("ERROR: Length of contig from seek position different than from initial reading.\n");
+    }
     if ($end > $ctg_len) {
 	my $tmp_seq = substr($seq, ($beg - 1));
 	$tmp_seq .= substr($seq, 0, ($end - $ctg_len));
@@ -212,14 +222,25 @@ while ($pggdb_line = <$pggdbfile>) {
     $id =~ s/>\s*//; # remove leading > and spaces
     #$id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
     $sequence =~ s/[^a-zA-Z]//g; # remove any non-alphabet characters
-    $pggdb_contigs{$id} = $sequence;
     $pggdb_contig_len{$id} = length($sequence);
-    #print STDERR "\n";
     $title = ""; # clear the title for the next contig
     $sequence = ""; #clear out the sequence for the next contig
 }
 $/ = $pggdb_save_input_separator; # restore the input separator
 close ($pggdbfile);
+
+unless (open ($pggdbfile, "<", $PGGdb) )  {
+    die ("cannot open PGG database file: $PGGdb!\n");
+}
+while ($pggdb_line = <$pggdbfile>) {
+    if ($pggdb_line =~ /^>/) {
+	my @fields = split(/\s+/, $pggdb_line);  # split the scalar $line on space or tab (to separate the identifier from the header and store in array @line
+	my $id = $fields[0]; # unique orf identifier is in column 0, com_name is in rest
+	$id =~ s/>\s*//; # remove leading > and spaces
+	#$id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
+	$pggdb_contigs{$id} = tell($pggdbfile); # save location of start of sequence
+    }
+}
 
 #read in pggdb topolgy inforamtion for genome
 unless (open (CIRCFILE, "<", "$pggdb_topology_file") )  {
@@ -968,11 +989,11 @@ while (my $line = <$infile>)  {
 		$insertion = substr($query_seqs{$qid}, ($qstart - 1), (($qend - $qstart) + 1));
 		my $deletion = "";
 		if ($revcomp) {
-		    my $tmp_seq = &circ_substr($pggdb_contigs{$cur_sid}, $send, $sstart, $pggdb_contig_len{$cur_sid});
+		    my $tmp_seq = &circ_substr($pggdbfile, $pggdb_contigs{$cur_sid}, $send, $sstart, $pggdb_contig_len{$cur_sid});
 		    $deletion = reverse($tmp_seq);
 		    $deletion =~ tr/AGCTYRWSKMDVHBagctyrwskmdvhb/TCGARYWSMKHBDVtcgarywsmkhbdv/;
 		} else {
-		    $deletion = &circ_substr($pggdb_contigs{$cur_sid}, $sstart, $send, $pggdb_contig_len{$cur_sid});
+		    $deletion = &circ_substr($pggdbfile, $pggdb_contigs{$cur_sid}, $sstart, $send, $pggdb_contig_len{$cur_sid});
 		}
 		$mutations++;
 		my $del_len = length($deletion);
@@ -1050,19 +1071,19 @@ while (my $line = <$infile>)  {
 		if ($revcomp) {
 		    my $tmp_seq = "";
 		    if ($del_start >= $del_end) {
-			$tmp_seq = &circ_substr($pggdb_contigs{$cur_sid}, $del_end, $del_start, $pggdb_contig_len{$cur_sid});
+			$tmp_seq = &circ_substr($pggdbfile, $pggdb_contigs{$cur_sid}, $del_end, $del_start, $pggdb_contig_len{$cur_sid});
 		    } else {
 			$tandem_duplication = 1;
-			$tmp_seq = &circ_substr($pggdb_contigs{$cur_sid}, $del_start, $del_end, $pggdb_contig_len{$cur_sid});
+			$tmp_seq = &circ_substr($pggdbfile, $pggdb_contigs{$cur_sid}, $del_start, $del_end, $pggdb_contig_len{$cur_sid});
 		    }
 		    $deletion = reverse($tmp_seq);
 		    $deletion =~ tr/AGCTYRWSKMDVHBagctyrwskmdvhb/TCGARYWSMKHBDVtcgarywsmkhbdv/;
 		} else {
 		    if ($del_start <= $del_end) {
-			$deletion = &circ_substr($pggdb_contigs{$cur_sid}, $del_start, $del_end, $pggdb_contig_len{$cur_sid});
+			$deletion = &circ_substr($pggdbfile, $pggdb_contigs{$cur_sid}, $del_start, $del_end, $pggdb_contig_len{$cur_sid});
 		    } else {
 			$tandem_duplication = 1;
-			$deletion = &circ_substr($pggdb_contigs{$cur_sid}, $del_end, $del_start, $pggdb_contig_len{$cur_sid});
+			$deletion = &circ_substr($pggdbfile, $pggdb_contigs{$cur_sid}, $del_end, $del_start, $pggdb_contig_len{$cur_sid});
 		    }
 		}
 		if (($deletion !~ /NNNNN/) && (length($insertion) <= 200000) && (length($deletion) <= 200000)) { # do not believe sequences with gaps in them or are really long
@@ -1098,13 +1119,13 @@ while (my $line = <$infile>)  {
 		my $deletion = "";
 		if ($revcomp) {
 		    if ((($del_start - $del_end) + 1) > 0) {
-			my $tmp_seq = &circ_substr($pggdb_contigs{$cur_sid}, $del_end, $del_start, $pggdb_contig_len{$cur_sid});
+			my $tmp_seq = &circ_substr($pggdbfile, $pggdb_contigs{$cur_sid}, $del_end, $del_start, $pggdb_contig_len{$cur_sid});
 			$deletion = reverse($tmp_seq);
 			$deletion =~ tr/AGCTYRWSKMDVHBagctyrwskmdvhb/TCGARYWSMKHBDVtcgarywsmkhbdv/;
 		    }
 		} else {
 		    if ((($del_end - $del_start) + 1) > 0) {
-			$deletion = &circ_substr($pggdb_contigs{$cur_sid}, $del_start, $del_end, $pggdb_contig_len{$cur_sid});
+			$deletion = &circ_substr($pggdbfile, $pggdb_contigs{$cur_sid}, $del_start, $del_end, $pggdb_contig_len{$cur_sid});
 		    }
 		}
 		if (($deletion !~ /NNNNN/) && (length($insertion) <= 200000) && (length($deletion) <= 200000)) { # do not believe sequences with gaps in them or are really long
@@ -1128,6 +1149,7 @@ while (my $line = <$infile>)  {
 	    print PGG_BLAST_FILE "$btab\n";
 	}
     }
+    close ($pggdbfile);
     close(PGG_BLAST_FILE);
     close(CALLS_FILE);
     open(OUT_FEATURES, ">", $out_features) || die ("Couldn't open $out_features for writing\n");

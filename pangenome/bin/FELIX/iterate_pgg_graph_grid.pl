@@ -437,6 +437,7 @@ sub compute
 	my $job_name = "cpgg_" . $$ . "$i"; #use a common job name so that qacct can access all of them together
 	my %job_ids = ();
 	my $num_jobs = 0;
+	my $total_jobs = 0;
 	my $pgg_old = $pgg;
 	if ($debug) {print STDERR "Iteration $i\n";}
 	&do_neighbors;                                                                                 # run core_neighbor_finder
@@ -478,6 +479,7 @@ sub compute
 	    if ($debug) {print STDERR "qsub $shell_script\n";}
 	    $job_ids{&launch_grid_job($job_name, $project, $working_dir, $shell_script, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
 	    $num_jobs++;
+	    $total_jobs++;
 	    if ($num_jobs >= $max_grid_jobs) {
 		$num_jobs = &wait_for_grid_jobs($qsub_queue, $job_name, ((($max_grid_jobs - 10) > 0) ? ($max_grid_jobs - 10) : 0), \%job_ids);
 	    }
@@ -499,7 +501,7 @@ sub compute
 	    }
 	}
 	if ($debug) {print STDERR "$num_jobs FAILED resubmitting\n";}
-	if ($num_jobs > ($max_grid_jobs / 2)) {
+	if ($num_jobs > ($total_jobs / 10)) {
 	    die "Too many grid jobs failed $num_jobs\n";
 	} elsif ($num_jobs > 0) {
 	    for (my $k=0; $k <= 2; $k++){ #try a maximum of 3 times on failed jobs
@@ -541,6 +543,9 @@ sub compute
 		`rm -r TMP_*`;
 		if ($debug) {print STDERR "removed resubmitted TMP directories\n";}
 	    }
+	}
+	if ($num_jobs > 0) {
+	    die "Too many grid jobs failed $num_jobs\n";
 	}
 
 	for (my $j=0; $j <= $#genomes; $j++)
@@ -648,7 +653,7 @@ sub compute
 	if(compare("$pgg","$pgg_old") == 0)
 	{
 	    print STDERR "\nNo differences found in last iteration - PGG is stable!\n";
-	    `paste $stats gene_ANI rearrange SplitGene wgs_ANI > PGG_stats_$i.txt`;        #add in all columns that contain their own header (new columns)
+	    #`paste $stats gene_ANI rearrange SplitGene wgs_ANI > PGG_stats_$i.txt`;        #add in all columns that contain their own header (new columns)
 	    `mv output/ce_sizes.txt CE_sizes_$i.txt`;                                      # keep iterations of cluster and edge sizes
 	    `mv output/pgg.txt pgg.txt`;                                                   # set the current iteration as "old"
 	    `mv output/matchtable.txt matchtable.txt`;                                     # set the current iteration as "old"
@@ -659,12 +664,13 @@ sub compute
 	    `mv output/medoids.fasta medoids.fasta`;
 	    `mv output/single_copy_clusters.txt single_copy_clusters.txt`;
 	    `mv output/cluster_sizes.txt cluster_sizes.txt`;
+	    `mv output/edge_sizes.txt edge_sizes.txt`;
 	    last;
 	}
 	else
 	{
 	    print STDERR "\nDifferences found in last iteration - PGG is not stable :-(\n";
-	    `paste $stats gene_ANI rearrange SplitGene wgs_ANI > PGG_stats_$i.txt`;        #add in all columns that contain their own header (new columns)
+	    #`paste $stats gene_ANI rearrange SplitGene wgs_ANI > PGG_stats_$i.txt`;        #add in all columns that contain their own header (new columns)
 	    `mv output/ce_sizes.txt CE_sizes_$i.txt`;                                      # keep iterations of cluster and edge sizes
 	    `mv output/pgg.txt pgg.txt`;                                                   # set the current iteration as "old"
 	    `mv output/matchtable.txt matchtable.txt`;                                     # set the current iteration as "old"
@@ -675,6 +681,7 @@ sub compute
 	    `mv output/medoids.fasta medoids.fasta`;
 	    `mv output/single_copy_clusters.txt single_copy_clusters.txt`;
 	    `mv output/cluster_sizes.txt cluster_sizes.txt`;
+	    `mv output/edge_sizes.txt edge_sizes.txt`;
 	    $weights = $cwd . "/cluster_sizes.txt";
 	    $medoids = $cwd . "/medoids.fasta";                                                    # after first iteration, we want to use the medoids.fasta file, not the supplied medoids file
 	    $single_copy = $cwd . "/single_copy_clusters.txt";
@@ -683,14 +690,16 @@ sub compute
 	}
 	if ($debug) {print STDERR "Ending iteration $i\n\n";}
     }
-    `rm core_neighbors gene_ANI rearrange SplitGene wgs_ANI`;
-    `rm *_topology.txt`;
     `mv old.combined.att combined.att`;                                            # save a copy of attributes
-    `mkdir CPU CoreRegions Stderr Stdout`;
+    `rm core_neighbors gene_ANI rearrange SplitGene wgs_ANI old.AllEdges old.pgg.combined old.matchtable.col`;
+    `rm *_topology.txt`;
+    #`mkdir CPU CoreRegions Stderr Stdout CE_data`;
+    `mkdir CPU CoreRegions CE_data`;
+    `mv CE_sizes* CE_data`;
     `mv *_cpu* CPU`;
     `mv *_core_clus.txt CoreRegions`;
-    `mv *_stderr Stderr`;
-    `mv *_stdout Stdout`;
+    #`mv *_stderr Stderr`;
+    #`mv *_stdout Stdout`;
     if ($debug) {print STDERR "Ending compute\n";}
 }
 
