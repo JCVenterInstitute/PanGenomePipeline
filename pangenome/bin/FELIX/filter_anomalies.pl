@@ -818,11 +818,9 @@ while (my $line = <$infile>)  {
 
     my $out_predictions = $output . "_CALLS";
     my $out_genome = $output . "_GENOME";
-    my $out_genome_nsq = $out_genome . ".nsq";
-    my $out_genome_nhr = $out_genome . ".nhr";
-    my $out_genome_nin = $out_genome . ".nin";
-    my $out_genome_blast = $out_genome . ".btab";
+    my $out_genome_blast = $output . "_SELFBLAST.btab";
     my $out_PGG_blast = $output . "_PGG.btab";
+    my $filtered_PGG_blast = $output . "_filtered_PGG.btab";
     my $out_nrdb_blast = $output . "_NRDB.btab";
     my $out_engdb_blast = $output . "_ENGDB.btab";
     my $combined_btab = $output . "_COMBINED.btab";
@@ -835,7 +833,7 @@ while (my $line = <$infile>)  {
     `$cmd`;
     $cmd = "$blastn -query $out_fasta_seqs -db $out_genome -out $out_genome_blast -task $blast_task -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\" -culling_limit 3";
     `$cmd`;
-    `rm $out_genome $out_genome_nsq $out_genome_nin $out_genome_nhr`;
+    `rm $out_genome*`;
     #$cmd = "$blastn -query $out_fasta_seqs -db $engdb -out $out_engdb_blast -task $blast_task -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\" -culling_limit 2";
     #`$cmd`;
     #$cmd = "$blastn -query $out_fasta_seqs -db $PGGdb -out $out_PGG_blast -task $blast_task -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\"";
@@ -907,7 +905,7 @@ while (my $line = <$infile>)  {
     $count--;
     $#pgg_blast_results = $count; #make sure that if last blast result was not supposed to be saved that it is tuncated off
     close(PGG_BLAST_FILE);
-    open(PGG_BLAST_FILE, ">", $out_PGG_blast) || die ("Couldn't open $out_PGG_blast for writing\n");
+    open(PGG_BLAST_FILE, ">", $filtered_PGG_blast) || die ("Couldn't open $filtered_PGG_blast for writing\n");
     open(CALLS_FILE, ">", $out_predictions) || die ("Couldn't open $out_predictions for writing\n");
     print CALLS_FILE "Sample\tType\tQuery ID\t5pflank\t3pflank\tDeleted\tDeletion Length\tInserted\tInsertion Length\tSubject ID\tPercent Identity\tSubject Start\tSubject End\tQuery Start\tQuery End\n";
     my $mutations = 0;
@@ -1160,10 +1158,10 @@ while (my $line = <$infile>)  {
     open(COMBINED_BTAB, ">", $combined_btab) || die ("Couldn't open $combined_btab for writing\n");
     print COMBINED_BTAB "qseqid\tsseqid\tpident\tqstart\tqend\tqlen\tsstart\tsend\tslen\tevalue\tbitscore\tstitle\n";
     close (COMBINED_BTAB);
-    #`cat $out_genome_blast $out_nrdb_blast $out_engdb_blast $out_PGG_blast | sort -k1,1 -k11,11nr >> $combined_btab`;
-    #`rm $out_genome_blast $out_nrdb_blast $out_engdb_blast $out_PGG_blast`;
-    `cat $out_genome_blast $out_PGG_blast | sort -k1,1 -k11,11nr >> $combined_btab`;
-    `rm $out_genome_blast $out_PGG_blast`;
+    #`cat $out_genome_blast $out_nrdb_blast $out_engdb_blast $filtered_PGG_blast | sort -k1,1 -k11,11nr >> $combined_btab`;
+    #`rm $out_genome_blast $out_nrdb_blast $out_engdb_blast $filtered_PGG_blast`;
+    `cat $out_genome_blast $filtered_PGG_blast | sort -k1,1 -k11,11nr >> $combined_btab`;
+    `rm $out_genome_blast $filtered_PGG_blast`;
 }
 
 exit(0);
