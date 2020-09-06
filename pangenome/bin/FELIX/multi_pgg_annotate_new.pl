@@ -781,7 +781,7 @@ sub compute
     `mv *_anomalies.txt Anomalies`;
     `mv *_cpu* CPU`;
     `mv *_core_clus.txt CoreRegions`;
-    `mv *_GENOME.btab *_QUERY_SEQS.fasta *_ranges.txt *_CALLS *_FEATURES *_COMBINED.btab CALLS`;
+    `mv *_GENOME.btab *_QUERY_SEQS.fasta *_ranges.txt *_CALLS *_FEATURES *_COMBINED.btab *_PGG.btab CALLS`;
     `mv *_stderr Stderr`;
     `mv *_stdout Stdout`;
 }
