@@ -26,8 +26,8 @@ use strict;
 use warnings;
 use Getopt::Std;
 use File::Basename;
-getopts ('j:I:RSALlDhb:B:m:p:P:a:g:t:M:s:T:Vk:FfC:Q:N:Xr:W:');
-our ($opt_j, $opt_I,$opt_S,$opt_A,$opt_L,$opt_l,$opt_D,$opt_h,$opt_b,$opt_m,$opt_p,$opt_P,$opt_a,$opt_g,$opt_t,$opt_M,$opt_r,$opt_R,$opt_B,$opt_s,$opt_T,$opt_V,$opt_k,$opt_F,$opt_f,$opt_C,$opt_Q,$opt_N,$opt_X,$opt_W);
+getopts ('j:I:RSALlDhb:B:m:p:P:a:g:t:M:s:T:Vk:FfC:Q:N:Xr:W:G:');
+our ($opt_j,$opt_I,$opt_S,$opt_A,$opt_L,$opt_l,$opt_D,$opt_h,$opt_b,$opt_m,$opt_p,$opt_P,$opt_a,$opt_g,$opt_t,$opt_M,$opt_r,$opt_R,$opt_B,$opt_s,$opt_T,$opt_V,$opt_k,$opt_F,$opt_f,$opt_C,$opt_Q,$opt_N,$opt_X,$opt_W,$opt_G);
 
 ## use boolean logic:  TRUE = 1, FALSE = 0
 
@@ -67,8 +67,13 @@ my $topology_file;
 my $strip_version = 0;
 my $qsub_queue = "himem";
 my $wall_time_limit = "24:00:00"; #set qsub wall time limit to 24 hours by default
+my $mem_req = "2gb"; #set qsub memory minimum requirement by default to 2 Gbyte
+
 if ($opt_W) { # should really check time format
     $wall_time_limit = $opt_W;
+}
+if ($opt_G) { # should really check memory format
+    $mem_req = $opt_G;
 }
 if ($opt_j) { # should really check that this a positive integer
     if (($opt_j =~ /^\d+$/) && ($opt_j > 0)) {
@@ -2383,7 +2388,7 @@ sub launch_grid_job {
 
     my ( $name, $project_code, $working_dir, $shell_script, $stdoutdir, $stderrdir, $queue, $job_array_max ) = @_;
 
-    my $qsub_command = "qsub -V -o $stdoutdir -e $stderrdir -r n -N $name -l walltime=$wall_time_limit";
+    my $qsub_command = "qsub -V -o $stdoutdir -e $stderrdir -r n -N $name -l walltime=$wall_time_limit,mem=$mem_req";
     if ($queue eq "NONE") {
 	$qsub_command .= " -d $working_dir";
     } else {
@@ -2738,6 +2743,8 @@ Version: $version
      -C: path to the Muslce executable for multiple sequence alignments - default /usr/local/bin/muscle
      -r: path to the Rscript executable for Rscript scripts - default /usr/local/bin/Rscript
      -Q: name of qsub queue to use for Muscle jobs - default himem
+     -G: minimum memory requirement for grid jobs in format (integer)gb where 2gb is the default
+     -W: maximum wall clock time a grid job is allowed before termination in hh:mm:ss format 24:00:00 is the default
      -D: DEBUG MODE (DEFAULT = off)
  Output: All stored within a directory specified using -b
           1) cluster_id.fasta:  a multifasta file containing the sequences in the specified cluster
