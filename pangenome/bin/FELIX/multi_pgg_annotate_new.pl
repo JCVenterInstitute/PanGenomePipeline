@@ -59,6 +59,7 @@ my $pggdb = "";
 my $qsub_queue = "himem";
 my $strip_version = 0;
 my $wall_time_limit = "24:00:00"; #set qsub wall time limit to 24 hours by default
+my $mem_req = "8gb"; #set qsub memory minimum requirement by default to 8 Gbyte
 
 GetOptions('genomes=s' => \ $genome_list_path,
 	   'new_genomes=s' => \ $new_genomes,
@@ -77,6 +78,7 @@ GetOptions('genomes=s' => \ $genome_list_path,
 	   'weights=s' => \ $weights,
 	   'project=s' => \ $project,
 	   'wall_time_limit=s' => \ $wall_time_limit,
+	   'mem_req=s' => \ $mem_req,
 	   'paralogs=s' => \ $paralogs,
 	   'pgg=s' => \ $pgg,                                                               # [pangenome_dir]/0_core_adjacency_vector.txt
 	   'medoids=s' => \ $medoids,
@@ -146,6 +148,7 @@ GetOptions('genomes=s' => \ genome_list_path,
 	   'weights=s' => \ weights,
 	   'project=s' => \ project,
 	   'wall_time_limit=s' => \ wall_time_limit,
+	   'mem_req=s' => \ mem_req,
 	   'paralogs=s' => \ paralogs,
 	   'pgg=s' => \ pgg,                                                               # [pangenome_dir]/0_core_adjacency_vector.txt
 	   'medoids=s' => \ medoids,
@@ -253,7 +256,7 @@ sub launch_grid_job {
 
     my ( $name, $project_code, $working_dir, $shell_script, $stdoutdir, $stderrdir, $queue, $job_array_max ) = @_;
 
-    my $qsub_command = "qsub -V -o $stdoutdir -e $stderrdir -r n -N $name -l walltime=$wall_time_limit";
+    my $qsub_command = "qsub -V -o $stdoutdir -e $stderrdir -r n -N $name -l walltime=$wall_time_limit,mem=$mem_req";
     if ($queue eq "NONE") {
 	$qsub_command .= " -d $working_dir";
     } else {
