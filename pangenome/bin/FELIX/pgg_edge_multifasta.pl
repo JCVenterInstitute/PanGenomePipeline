@@ -224,6 +224,7 @@ my %uniq_edge_alle_25_75 = (); # key = genome ID, value = number of unique allel
 my %uniq_edge_alle_0_25 = ();  # key = genome ID, value = number of unique alleles for edges in 0-25% of genomes
 my @renumber = ();             # maps old cluster numbers to new cluster numbers
 my @mf_files = ();             # a list of multifasta files which are created can can be aligned (not zero length and not singleton)
+my %feat_pres = ();            # key = sequence of feature, value = number of features with this sequence
  
 ######################################################################################################################################################################
 sub read_topology {
@@ -849,7 +850,7 @@ sub process_matchtable {
 	if ($cluster_num != $cluster_id) {
 	    die ("ERROR: clusters are not sequentially ordered starting from 1: expecting $cluster_num but got $cluster_id\n");
 	}
-	my %feat_pres = (); # key = sequence of feature, value = number of features with this sequence
+	%feat_pres = (); # key = sequence of feature, value = number of features with this sequence
 	my $target_sequence = ""; # sequence for the target genome if specified
 	my @tmp_array = @genome_array;
 	my $genome_tag;
@@ -1499,7 +1500,7 @@ sub process_pgg {
 	    die ("ERROR: Bad edge formatting $edge_id in file $pgg_file.\n");
 	}
 	#print STDERR "$edge_name:$edge_id\n";
-	my %feat_pres = (); # key = sequence of feature, value = number of features with this sequence
+	%feat_pres = (); # key = sequence of feature, value = number of features with this sequence
 	my $target_sequence = ""; # sequence for the target genome if specified
 	my $gene_count = 0;
 	my $single_genome = "";
