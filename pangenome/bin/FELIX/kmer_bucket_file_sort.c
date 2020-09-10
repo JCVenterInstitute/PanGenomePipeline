@@ -99,7 +99,6 @@ int read_fasta_kmer(char * genome_file_name, FILE * fp_fasta, int cur_contig, in
   if (strncmp(prev_genome_file_name, genome_file_name, (size_t) 1024) != 0) {
     cur_file_pos = 1;
     cur_file_contig = 0;
-  } else {
     strncpy(prev_genome_file_name, genome_file_name, (size_t) 1024);
   }
   
@@ -117,7 +116,7 @@ int read_fasta_kmer(char * genome_file_name, FILE * fp_fasta, int cur_contig, in
 	  fprintf (stderr, "empty contig fasta header: %d for genome %s!\n", cur_file_contig, genome_file_name);
 	  exit(EXIT_FAILURE);
 	}
-	fprintf (stderr, "contig fasta header: %d for genome %s!\n%s\n", cur_file_contig, genome_file_name, fasta_line);
+	fprintf (stderr, "contig fasta header: %d for genome %s\n%s\n", cur_file_contig, genome_file_name, fasta_line);
       } else {
 	fprintf (stderr, "Unexpected > not at beginning of line in fasta file %s.\n", genome_file_name);
 	exit(EXIT_FAILURE);
@@ -868,6 +867,7 @@ main (int argc, char **argv)
     fprintf(stderr, "First line of fasta file %s does not begin with a >.\n%s", file_name_line, fasta_line);
     exit(EXIT_FAILURE);
   }
+  fprintf (stderr, "contig fasta header: 0 for genome %s\n%s\n", file_name_line, fasta_line);
 
   fprintf (stderr, "Opening medoids.fasta file for anchors and pgg.txt for PGG\n");
 
@@ -1112,6 +1112,7 @@ main (int argc, char **argv)
 	fprintf(stderr, "First line of fasta file %s does not begin with a >.\n%s", file_name_line, fasta_line);
 	exit(EXIT_FAILURE);
       }
+      fprintf (stderr, "contig fasta header: 0 for genome %s\n%s\n", file_name_line, fasta_line);
     }
   }
 
