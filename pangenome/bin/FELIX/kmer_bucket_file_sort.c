@@ -143,7 +143,7 @@ int read_fasta_kmer(char * genome_file_name, FILE * fp_fasta, int cur_contig, in
 	  break;
 	default:
 	  if (isprint (cur_char)) {
-	    fprintf (stderr, "Contig %d position %d\nUnexpected character in fasta file %s: `-%c'.\n", cur_file_contig, cur_file_pos, genome_file_name, cur_char);
+	    fprintf (stderr, "Contig %d position %d\nUnexpected character in fasta file %s: `%c'.\n", cur_file_contig, cur_file_pos, genome_file_name, cur_char);
 	  } else {
 	    fprintf (stderr, "Contig %d position %d\nUnexpected unprintable character in fasta file %s: `\\x%x'.\n", cur_file_contig, cur_file_pos, genome_file_name, cur_char);
 	  }
@@ -340,7 +340,7 @@ int kmer_bucket_sort_genome(FILE * fp_fasta, char * genome_file_name, uint16_t g
 	  break;
 	default:
 	  if (isprint (cur_char)) {
-	    fprintf (stderr, "Unexpected character in fasta file %s: `-%c'.\n", genome_file_name, cur_char);
+	    fprintf (stderr, "Unexpected character in fasta file %s: `%c'.\n", genome_file_name, cur_char);
 	  } else {
 	    fprintf (stderr, "Unexpected unprintable character in fasta file %s: `\\x%x'.\n", genome_file_name, cur_char);
 	  }
@@ -1030,6 +1030,9 @@ main (int argc, char **argv)
       cur_contig = (int) red_kmer_array[i].contig;
       cur_genome = (int) red_kmer_array[i].genome;
       anchor_prevalence = (int) red_kmer_array[i].prevalence;
+      if ((cur_genome == 18) && (cur_contig == 0) && (cur_pos > 2900000)) {
+	fprintf(stderr, "%d:%d:%d:%d:%f:%d\n", cur_pos, cur_contig, cur_genome, anchor_prevalence, prev_prevalence, contig_seq_pos);
+      }
       if (cur_genome != cur_file_genome) {
 	fprintf (stderr, "Current genome number %d does not match stored genome number %d\n", cur_genome, cur_file_genome);
 	exit(EXIT_FAILURE);
