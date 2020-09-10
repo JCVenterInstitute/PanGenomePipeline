@@ -109,6 +109,7 @@ int read_fasta_kmer(char * genome_file_name, FILE * fp_fasta, int cur_contig, in
       prev_char = cur_char;
     } else if (cur_char == '>') {
       if (prev_char == '\n') {
+	fprintf(stderr, "Genome: %s contig %d last pos %d\n", genome_file_name, cur_file_contig, cur_file_pos);
 	cur_file_contig++;
 	cur_file_pos = 1;
 	/* Start of a new contig. Read in header line but ignore it other than incrementing contig number */
@@ -116,9 +117,9 @@ int read_fasta_kmer(char * genome_file_name, FILE * fp_fasta, int cur_contig, in
 	  fprintf (stderr, "empty contig fasta header: %d for genome %s!\n", cur_file_contig, genome_file_name);
 	  exit(EXIT_FAILURE);
 	}
-	fprintf (stderr, "contig fasta header: %d for genome %s\n%s\n", cur_file_contig, genome_file_name, fasta_line);
+	fprintf (stderr, "contig fasta header: %d for genome %s\n%s", cur_file_contig, genome_file_name, fasta_line);
       } else {
-	fprintf (stderr, "Unexpected > not at beginning of line in fasta file %s.\n", genome_file_name);
+	fprintf (stderr, "Unexpected > not at beginning of line in fasta file %s!\n", genome_file_name);
 	exit(EXIT_FAILURE);
       }
     } else { /* just read in a nucleotide either catching up to current anchor or part of the anchor */
@@ -143,9 +144,9 @@ int read_fasta_kmer(char * genome_file_name, FILE * fp_fasta, int cur_contig, in
 	  break;
 	default:
 	  if (isprint (cur_char)) {
-	    fprintf (stderr, "Contig %d position %d\nUnexpected character in fasta file %s: `%c'.\n", cur_file_contig, cur_file_pos, genome_file_name, cur_char);
+	    fprintf (stderr, "Contig %d position %d\nUnexpected character in fasta file %s: %c.\n", cur_file_contig, cur_file_pos, genome_file_name, cur_char);
 	  } else {
-	    fprintf (stderr, "Contig %d position %d\nUnexpected unprintable character in fasta file %s: `\\x%x'.\n", cur_file_contig, cur_file_pos, genome_file_name, cur_char);
+	    fprintf (stderr, "Contig %d position %d\nUnexpected unprintable character in fasta file %s: \\x%x.\n", cur_file_contig, cur_file_pos, genome_file_name, cur_char);
 	  }
 	  exit(EXIT_FAILURE);
 	}
@@ -154,6 +155,9 @@ int read_fasta_kmer(char * genome_file_name, FILE * fp_fasta, int cur_contig, in
       }
       cur_file_pos++;
     }
+  }
+  if (fgetc_return == EOF) {
+    fprintf(stderr, "Genome: %s contig %d last pos %d\n", genome_file_name, cur_file_contig, cur_file_pos);
   }
   free((void *) fasta_line);
   return (contig_seq_pos);
@@ -249,14 +253,13 @@ int kmer_bucket_sort_genome(FILE * fp_fasta, char * genome_file_name, uint16_t g
   int contig_pos = 0;
   int kmer_bucket;
   int new_red_files = 0;
-  int output_kmer_count = 0; /* just used for debugging */
   
   if ((getline_return = getline(&fasta_line, &fasta_line_malloc_len, fp_fasta)) == -1) {
     fprintf(stderr, "%s appears to be empty.\n", genome_file_name);
     exit(EXIT_FAILURE);
   }
   if (fasta_line[0] != '>') {
-    fprintf(stderr, "First line of fasta file %s does not begin with a >.\n%s", genome_file_name, fasta_line);
+    fprintf(stderr, "First line of fasta file %s does not begin with a >!\n%s", genome_file_name, fasta_line);
     exit(EXIT_FAILURE);
   }
   fprintf(stderr, "Genome: %s contig %d\n%s", genome_file_name, contig_number, fasta_line);
@@ -270,82 +273,83 @@ int kmer_bucket_sort_genome(FILE * fp_fasta, char * genome_file_name, uint16_t g
     } else {
       switch (cur_char) {
 	/* determine the next basepair and bit encoding for it both forward strand and reverse complement (starts at upper end of 46 bits) */
-	case 'a':
-	case 'A':
-	  cur_bp = 0;
-	  revc_bp = 06000000000000000;
-	  break;
-	case 'c':
-	case 'C':
-	  cur_bp = 01;
-	  revc_bp = 04000000000000000;
-	  break;
-	case 'g':
-	case 'G':
-	  cur_bp = 02;
-	  revc_bp = 02000000000000000;
-	  break;
-	case 't':
-	case 'T':
-	  cur_bp = 03;
-	  revc_bp = 0;
-	  break;
+      case 'a':
+      case 'A':
+	cur_bp = 0;
+	revc_bp = 06000000000000000;
+	break;
+      case 'c':
+      case 'C':
+	cur_bp = 01;
+	revc_bp = 04000000000000000;
+	break;
+      case 'g':
+      case 'G':
+	cur_bp = 02;
+	revc_bp = 02000000000000000;
+	break;
+      case 't':
+      case 'T':
+	cur_bp = 03;
+	revc_bp = 0;
+	break;
 	/* look for DNA ambiguity codes which terminates 23mer determination and restarts it with the next basepair */
-	case 'Y':
-	case 'R':
-	case 'W':
-	case 'S':
-	case 'K':
-	case 'M':
-	case 'D':
-	case 'V':
-	case 'H':
-	case 'B':
-	case 'N':
-	case 'y':
-	case 'r':
-	case 'w':
-	case 's':
-	case 'k':
-	case 'm':
-	case 'd':
-	case 'v':
-	case 'h':
-	case 'b':
-	case 'n': /* nucleotide ambiguity codes */
-	  num_ambs++;
-	  reset_kmer = true;
-	  break;
-	case '>':
-	  if (prev_char == '\n') {
-	    /* Start of a new contig. Read in header line but ignore it other than incrementing contig number */
-	    if ((getline_return = getline(&fasta_line, &fasta_line_malloc_len, fp_fasta)) == -1) {
-	      fprintf (stderr, "empty contig fasta header: %d for genome %s!\n", contig_number, genome_file_name);
-	      exit(EXIT_FAILURE);
-	    }
-	    new_contig = true;
-	    if (contig_number == MAX_UINT32) {
-	      fprintf (stderr, "maximum number of contigs: %d exceeded for genome %s!\n", contig_number, genome_file_name);
-	      exit(EXIT_FAILURE);
-	    }
-	    if (genome_number == 0) {
-	      new_red_files++; /* this gets incremented for every contig in the first genome, and only once for each other genome */
-	    }
-	    contig_number++;
-	    fprintf(stderr, "Genome: %s contig %d\n>%s", genome_file_name, contig_number, fasta_line);
-	  } else {
-	    fprintf (stderr, "Unexpected > not at beginning of line in fasta file %s.\n", genome_file_name);
+      case 'Y':
+      case 'R':
+      case 'W':
+      case 'S':
+      case 'K':
+      case 'M':
+      case 'D':
+      case 'V':
+      case 'H':
+      case 'B':
+      case 'N':
+      case 'y':
+      case 'r':
+      case 'w':
+      case 's':
+      case 'k':
+      case 'm':
+      case 'd':
+      case 'v':
+      case 'h':
+      case 'b':
+      case 'n': /* nucleotide ambiguity codes */
+	num_ambs++;
+	reset_kmer = true;
+	break;
+      case '>':
+	if (prev_char == '\n') {
+	  /* Start of a new contig. Read in header line but ignore it other than incrementing contig number */
+	  fprintf(stderr, "Genome: %s contig %d last pos %d\n", genome_file_name, contig_number, contig_pos);
+	  if ((getline_return = getline(&fasta_line, &fasta_line_malloc_len, fp_fasta)) == -1) {
+	    fprintf (stderr, "empty contig fasta header: %d for genome %s!\n", contig_number, genome_file_name);
 	    exit(EXIT_FAILURE);
 	  }
-	  break;
-	default:
-	  if (isprint (cur_char)) {
-	    fprintf (stderr, "Unexpected character in fasta file %s: `%c'.\n", genome_file_name, cur_char);
-	  } else {
-	    fprintf (stderr, "Unexpected unprintable character in fasta file %s: `\\x%x'.\n", genome_file_name, cur_char);
+	  new_contig = true;
+	  if (contig_number == MAX_UINT32) {
+	    fprintf (stderr, "maximum number of contigs: %d exceeded for genome %s!\n", contig_number, genome_file_name);
+	    exit(EXIT_FAILURE);
 	  }
+	  if (genome_number == 0) {
+	    new_red_files++; /* this gets incremented for every contig in the first genome, and only once for each other genome */
+	  }
+	  contig_number++;
+	  fprintf(stderr, "Genome: %s contig %d\n>%s", genome_file_name, contig_number, fasta_line);
+	} else {
+	  fprintf (stderr, "Unexpected > not at beginning of line in fasta file %s!\n", genome_file_name);
 	  exit(EXIT_FAILURE);
 	}
+	break;
+      default:
+	if (isprint (cur_char)) {
+	  fprintf (stderr, "Unexpected character in fasta file %s: %c.\n", genome_file_name, cur_char);
+	} else {
+	  fprintf (stderr, "Unexpected unprintable character in fasta file %s: \\x%x.\n", genome_file_name, cur_char);
+	}
+	exit(EXIT_FAILURE);
+      }
       if (new_contig) {
 	new_contig = false;
 	prev_char = '\n';
@@ -362,9 +366,8 @@ int kmer_bucket_sort_genome(FILE * fp_fasta, char * genome_file_name, uint16_t g
 	  cur_kmer = ((cur_kmer << 2) & kmer_mask) | cur_bp;
 	  revc_kmer = (revc_kmer | revc_bp) >> 2;
 	  if (kmer_bp_count >= 23) {
-	    output_kmer_count++;
-	    if ((output_kmer_count % 1000000) == 0) {
-	      fprintf(stderr, "%d\n", output_kmer_count);
+	    if ((contig_pos % 1000000) == 0) {
+	      fprintf(stderr, "%d\n", contig_pos);
 	    }
 	    if (cur_kmer < revc_kmer) { /* use canonical kmer which ever is less */
 	      kmer_bucket = (int) ((bucket_mask & cur_kmer) >> 28);
@@ -405,6 +408,7 @@ int kmer_bucket_sort_genome(FILE * fp_fasta, char * genome_file_name, uint16_t g
       }
     }
   }
+  fprintf(stderr, "Genome: %s contig %d last pos %d\n", genome_file_name, contig_number, contig_pos);
   free((void *) fasta_line);
   return (new_red_files);
 }
@@ -461,32 +465,32 @@ main (int argc, char **argv)
 
   while ((getopt_return = getopt (argc, argv, "g:t:c:")) != -1) {
     switch (getopt_return) {
-      case 'g':
-        genomes_file = optarg;
-        break;
-      case 't':
-        kmer_threshold = atoi(optarg);
-	if (kmer_threshold <= 0) {
-	  fprintf(stderr, "k-mer threshold must be greater than 0 not: %s\n", optarg);
-	}
-        break;
-      case 'c':
-        core_threshold = atoi(optarg);
-	if ((core_threshold < 0) || (core_threshold > 100)){
-	  fprintf(stderr, "core threshold must be >= 0 and <= 100, not: %s\n", optarg);
-	}
-        break;
-      case '?':
-        if ((optopt == 'g') || (optopt == 't') || (optopt == 'c')) {
-          fprintf (stderr, "Option -%c requires an argument.\n", optopt);
-        } else if (isprint (optopt)) {
-          fprintf (stderr, "Unknown option `-%c'.\n", optopt);
-        } else {
-          fprintf (stderr, "Unknown option character `\\x%x'.\n", optopt);
-	}
-        exit(EXIT_FAILURE);
-      default:
-        exit(EXIT_FAILURE);
+    case 'g':
+      genomes_file = optarg;
+      break;
+    case 't':
+      kmer_threshold = atoi(optarg);
+      if (kmer_threshold <= 0) {
+	fprintf(stderr, "k-mer threshold must be greater than 0 not: %s\n", optarg);
+      }
+      break;
+    case 'c':
+      core_threshold = atoi(optarg);
+      if ((core_threshold < 0) || (core_threshold > 100)){
+	fprintf(stderr, "core threshold must be >= 0 and <= 100, not: %s\n", optarg);
+      }
+      break;
+    case '?':
+      if ((optopt == 'g') || (optopt == 't') || (optopt == 'c')) {
+	fprintf (stderr, "Option -%c requires an argument.\n", optopt);
+      } else if (isprint (optopt)) {
+	fprintf (stderr, "Unknown option -%c.\n", optopt);
+      } else {
+	fprintf (stderr, "Unknown option character \\x%x.\n", optopt);
+      }
+      exit(EXIT_FAILURE);
+    default:
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -864,10 +868,10 @@ main (int argc, char **argv)
     exit(EXIT_FAILURE);
   }
   if (fasta_line[0] != '>') {
-    fprintf(stderr, "First line of fasta file %s does not begin with a >.\n%s", file_name_line, fasta_line);
+    fprintf(stderr, "First line of fasta file %s does not begin with a >!\n%s", file_name_line, fasta_line);
     exit(EXIT_FAILURE);
   }
-  fprintf (stderr, "contig fasta header: 0 for genome %s\n%s\n", file_name_line, fasta_line);
+  fprintf (stderr, "contig fasta header: 0 for genome %s\n%s", file_name_line, fasta_line);
 
   fprintf (stderr, "Opening medoids.fasta file for anchors and pgg.txt for PGG\n");
 
@@ -1051,7 +1055,7 @@ main (int argc, char **argv)
       } else {
 	if (((cur_pos - prev_pos) > KMER_SIZE) || ((anchor_prevalence > ((110 * prev_prevalence) / 100)) || ((anchor_prevalence < ((90 * prev_prevalence) / 100))))) {
 	  /* Break in unique k-mers or significant change in anchor prevalence - output current anchors buffer */
-	  num_anchors_written= write_anchors((int)(prev_prevalence + 0.999999999999), fp_single, fp_cluster, fp_match, fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break, core_anchor);
+	  num_anchors_written = write_anchors((int)(prev_prevalence + 0.999999999999), fp_single, fp_cluster, fp_match, fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break, core_anchor);
 	  contig_seq_pos = 0;
 	  anchor_number += num_anchors_written;
 	  if (num_anchors_written) {
@@ -1112,10 +1116,10 @@ main (int argc, char **argv)
 	exit(EXIT_FAILURE);
       }
       if (fasta_line[0] != '>') {
-	fprintf(stderr, "First line of fasta file %s does not begin with a >.\n%s", file_name_line, fasta_line);
+	fprintf(stderr, "First line of fasta file %s does not begin with a >!\n%s", file_name_line, fasta_line);
 	exit(EXIT_FAILURE);
       }
-      fprintf (stderr, "contig fasta header: 0 for genome %s\n%s\n", file_name_line, fasta_line);
+      fprintf (stderr, "contig fasta header: 0 for genome %s\n%s", file_name_line, fasta_line);
     }
   }
 
