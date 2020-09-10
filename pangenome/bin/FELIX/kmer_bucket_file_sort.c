@@ -1036,7 +1036,7 @@ main (int argc, char **argv)
       cur_contig = (int) red_kmer_array[i].contig;
       cur_genome = (int) red_kmer_array[i].genome;
       anchor_prevalence = (int) red_kmer_array[i].prevalence;
-      if (((cur_genome == 0) && (cur_contig == 0) && (cur_pos < 210000)) || ((cur_genome == 0) && (cur_contig == 1))) {
+      if (((cur_genome == 0) && (cur_contig == 0) && (cur_pos < 210000)) || ((cur_genome == 0) && (cur_contig == 0) && (cur_pos > 4000000)) || ((cur_genome == 0) && (cur_contig == 1))) {
 	fprintf(stderr, "%d:%d:%d:%d:%f:%d\n", cur_pos, cur_contig, cur_genome, anchor_prevalence, prev_prevalence, contig_seq_pos);
       }
       if (cur_genome != cur_file_genome) {
