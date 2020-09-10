@@ -87,8 +87,8 @@ This subroutine reads in a specified number of base pairs into an anchor buffer
 */
 int read_fasta_kmer(char * genome_file_name, FILE * fp_fasta, int cur_contig, int cur_pos, int num_basepairs, char * contig_seq, int contig_seq_pos)
 {
-  static int cur_file_pos;
-  static int cur_file_contig;
+  static int cur_file_pos = 0;
+  static int cur_file_contig = -1;
   static char prev_genome_file_name[1024] = "";
   int fgetc_return, getline_return;
   char cur_char;
@@ -97,6 +97,8 @@ int read_fasta_kmer(char * genome_file_name, FILE * fp_fasta, int cur_contig, in
   char * fasta_line = NULL;
 
   if (strncmp(prev_genome_file_name, genome_file_name, (size_t) 1024) != 0) {
+    fprintf(stderr, "Prev Genome: %s contig %d last pos %d\n", prev_genome_file_name, cur_file_contig, (cur_file_pos - 1));
+    fprintf(stderr, "Genome: %s Prev Genome: %sn", genome_file_name, prev_genome_file_name);
     cur_file_pos = 1;
     cur_file_contig = 0;
     strncpy(prev_genome_file_name, genome_file_name, (size_t) 1024);
@@ -109,7 +111,7 @@ int read_fasta_kmer(char * genome_file_name, FILE * fp_fasta, int cur_contig, in
       prev_char = cur_char;
     } else if (cur_char == '>') {
       if (prev_char == '\n') {
-	fprintf(stderr, "Genome: %s contig %d last pos %d\n", genome_file_name, cur_file_contig, cur_file_pos);
+	fprintf(stderr, "Genome: %s contig %d last pos %d\n", genome_file_name, cur_file_contig, (cur_file_pos - 1));
 	cur_file_contig++;
 	cur_file_pos = 1;
 	/* Start of a new contig. Read in header line but ignore it other than incrementing contig number */
@@ -157,7 +159,7 @@ int read_fasta_kmer(char * genome_file_name, FILE * fp_fasta, int cur_contig, in
     }
   }
   if (fgetc_return == EOF) {
-    fprintf(stderr, "Genome: %s contig %d last pos %d\n", genome_file_name, cur_file_contig, cur_file_pos);
+    fprintf(stderr, "Genome: %s contig %d last pos %d\n", genome_file_name, cur_file_contig, (cur_file_pos - 1));
   }
   free((void *) fasta_line);
   return (contig_seq_pos);
@@ -1034,7 +1036,7 @@ main (int argc, char **argv)
       cur_contig = (int) red_kmer_array[i].contig;
       cur_genome = (int) red_kmer_array[i].genome;
       anchor_prevalence = (int) red_kmer_array[i].prevalence;
-      if ((cur_genome == 18) && (cur_contig == 0) && (cur_pos > 2900000)) {
+      if (((cur_genome == 0) && (cur_contig == 0) && (cur_pos < 210000)) || ((cur_genome == 0) && (cur_contig == 1))) {
 	fprintf(stderr, "%d:%d:%d:%d:%f:%d\n", cur_pos, cur_contig, cur_genome, anchor_prevalence, prev_prevalence, contig_seq_pos);
       }
       if (cur_genome != cur_file_genome) {
