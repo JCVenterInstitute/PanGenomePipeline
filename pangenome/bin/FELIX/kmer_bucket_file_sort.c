@@ -95,10 +95,12 @@ int read_fasta_kmer(char * genome_file_name, FILE * fp_fasta, int cur_contig, in
   char prev_char = '\n';
   size_t fasta_line_malloc_len = 0;
   char * fasta_line = NULL;
+  
+  fprintf(stderr, "Genome: %s Prev Genome: %s %d:%d:%d:%d\n", genome_file_name, prev_genome_file_name, cur_contig, cur_pos, num_basepairs,  contig_seq_pos);
 
   if (strncmp(prev_genome_file_name, genome_file_name, (size_t) 1024) != 0) {
     fprintf(stderr, "Prev Genome: %s contig %d last pos %d\n", prev_genome_file_name, cur_file_contig, (cur_file_pos - 1));
-    fprintf(stderr, "Genome: %s Prev Genome: %sn", genome_file_name, prev_genome_file_name);
+    fprintf(stderr, "Genome: %s Prev Genome: %s\n", genome_file_name, prev_genome_file_name);
     cur_file_pos = 1;
     cur_file_contig = 0;
     strncpy(prev_genome_file_name, genome_file_name, (size_t) 1024);
@@ -1074,7 +1076,6 @@ main (int argc, char **argv)
 	  last_anchor_pos = cur_pos + (KMER_SIZE - 1);
 	} else {
 	  last_anchor_pos = cur_pos + (KMER_SIZE - 1);
-	  contig_seq_pos = read_fasta_kmer(file_name_line, fp_file_name, cur_contig, (prev_pos + KMER_SIZE), (cur_pos - prev_pos), contig_seq, contig_seq_pos);
 	}
       }
       prev_pos = cur_pos;
