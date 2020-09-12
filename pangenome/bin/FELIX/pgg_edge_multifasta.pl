@@ -182,7 +182,6 @@ my $num_shared_edge = 0;
 my $num_core_edge = 0;
 my $num_reduced_edge = 0;
 my $cpu_name = "$target_id" . "_pem_cpu_separate_stats";
-my %edge_hash = ();            # Key1 = edge ID Key2 = struct members with their values (5p,3p,gtag, contig)
 my %single_copy_core = ();     # key = cluster number, value is defined if single copy core otherwise undefiend
 my %is_circular = ();          # key1 = genome ID, key2 = contig_name, value = 1 if circular 0 otherwise
 my %feat_hash = ();            # Key1 = feat_name Key2 = struct members with their values (5p,3p,anno,gtag, contig)
@@ -224,7 +223,6 @@ my %uniq_edge_alle_25_75 = (); # key = genome ID, value = number of unique allel
 my %uniq_edge_alle_0_25 = ();  # key = genome ID, value = number of unique alleles for edges in 0-25% of genomes
 my @renumber = ();             # maps old cluster numbers to new cluster numbers
 my @mf_files = ();             # a list of multifasta files which are created can can be aligned (not zero length and not singleton)
-my %feat_pres = ();            # key = sequence of feature, value = number of features with this sequence
  
 ######################################################################################################################################################################
 sub read_topology {
@@ -850,19 +848,19 @@ sub process_matchtable {
 	if ($cluster_num != $cluster_id) {
 	    die ("ERROR: clusters are not sequentially ordered starting from 1: expecting $cluster_num but got $cluster_id\n");
 	}
-	%feat_pres = (); # key = sequence of feature, value = number of features with this sequence
+	my %feat_pres = (); # key = sequence of feature, value = number of features with this sequence
+	my @genome_seqs = ();
+	my @sizes = ();
 	my $target_sequence = ""; # sequence for the target genome if specified
 	my @tmp_array = @genome_array;
 	my $genome_tag;
 	my $gene_count = 0;
 	my $single_genome = "";
 	my $index = 0;
-	my @genome_seqs = ();
 	my $min = 10000000000;
 	my $max = 0;
 	my $sum = 0;
 	my $sumsquared = 0;
-	my @sizes = ();
 	my $div_by_three = 0;
 	my $seen = 0;
 	#print  STDERR "genome_array[0]=$genome_array[0] tmp_array[0]=$tmp_array[0]\n" if ($DEBUG);
@@ -1452,6 +1450,9 @@ sub process_matchtable {
 	    $renumber[$cluster_num] = 0;
 	}
 	$cluster_num++;
+	undef %feat_pres;
+	undef @genome_seqs;
+	undef @sizes;
     }
     if ($remake_files) {
 	close (OUTMATCHFILE);
@@ -1500,19 +1501,20 @@ sub process_pgg {
 	    die ("ERROR: Bad edge formatting $edge_id in file $pgg_file.\n");
 	}
 	#print STDERR "$edge_name:$edge_id\n";
-	%feat_pres = (); # key = sequence of feature, value = number of features with this sequence
+	my %feat_pres = (); # key = sequence of feature, value = number of features with this sequence
+	my @genome_seqs = ();
+	my %edge_hash = ();       # Key1 = genome tag Key2 = struct members with their values (5p,3p,gtag, contig)
+	my @sizes = ();
 	my $target_sequence = ""; # sequence for the target genome if specified
 	my $gene_count = 0;
 	my $single_genome = "";
 	my $index = 0;
-	my @genome_seqs = ();
 	my @tmp_array = @genome_array;
 	my $genome_tag;
 	my $min = 10000000000;
 	my $max = 0;
 	my $sum = 0;
 	my $sumsquared = 0;
-	my @sizes = ();
 	my $seen = 0;
 	if ($use_multifasta && !$no_stats) {
 	    my $edge_file = ($cluster1 < $cluster2) ? "full_$edge_id.fasta" : "full_$alt_edge_id.fasta";
@@ -1561,15 +1563,15 @@ sub process_pgg {
 		    if (!defined $genseq_hash{$genome_tag}) { # should not happen
 			die ("ERROR: genome tag identifier was not assigned for $pgg_file should have come from $att_file!\n");
 		    }
-		    $edge_hash{$genome_tag . $edge_id} = {};
-		    $edge_hash{$genome_tag . $edge_id}->{'gtag'} = $genome_tag;
-		    $edge_hash{$genome_tag . $edge_id}->{'contig'} = $contig1;
+		    $edge_hash{$genome_tag} = {};
+		    $edge_hash{$genome_tag}->{'gtag'} = $genome_tag;
+		    $edge_hash{$genome_tag}->{'contig'} = $contig1;
 		    if ($sequence eq "EMPTY") {
 			$seq_len = 0;
 		    }
-		    $edge_hash{$genome_tag . $edge_id}->{'len'} = $seq_len;
-		    $edge_hash{$genome_tag . $edge_id}->{'5p'} = $edge_5p;
-		    $edge_hash{$genome_tag . $edge_id}->{'3p'} = $edge_3p;
+		    $edge_hash{$genome_tag}->{'len'} = $seq_len;
+		    $edge_hash{$genome_tag}->{'5p'} = $edge_5p;
+		    $edge_hash{$genome_tag}->{'3p'} = $edge_3p;
 		    if (($genome_tag ne $target_id) && ($align_all || $remake_files || $compute_all || ($target_id ne ""))) {
 			if ($seq_len > $max) {
 			    $max = $seq_len;
@@ -1612,7 +1614,6 @@ sub process_pgg {
 	    } else {
 		print STDERR "$edge_file not found\n";
 	    }
-
 	}
 	@tmp_array = @genome_array;
 	$index = 0;
@@ -1677,9 +1678,9 @@ sub process_pgg {
 		$end2 = $feat_hash{$feat_name2}->{'5p'};
 	    }
 	    #print STDERR "$edge_value $feat_name1 $feat_name2 $genome_tag\n" if ($DEBUG);
-	    $edge_hash{$genome_tag . $edge_id} = {};
-	    $edge_hash{$genome_tag . $edge_id}->{'gtag'} = $genome_tag;
-	    $edge_hash{$genome_tag . $edge_id}->{'contig'} = $contig1;
+	    $edge_hash{$genome_tag} = {};
+	    $edge_hash{$genome_tag}->{'gtag'} = $genome_tag;
+	    $edge_hash{$genome_tag}->{'contig'} = $contig1;
 	    my $fivep_seq = "";
 	    my $threep_seq = "";
 	    my $seq_len;
@@ -1704,9 +1705,9 @@ sub process_pgg {
 			    $threep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($start2 - 1), $Gapped_Context);
 			    $fivep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($end1 - $Gapped_Context), $Gapped_Context);
 			    $seq_len = ($contig_len - $end1) + ($start2 - 1);
-			    $edge_hash{$genome_tag . $edge_id}->{'len'} = $seq_len;
-			    $edge_hash{$genome_tag . $edge_id}->{'5p'} = ($end1 < $contig_len) ? ($end1 + 1) : 1;
-			    $edge_hash{$genome_tag . $edge_id}->{'3p'} = ($end1 < $contig_len) ? (($start2 - 1) + $contig_len) : ($start2 - 1);
+			    $edge_hash{$genome_tag}->{'len'} = $seq_len;
+			    $edge_hash{$genome_tag}->{'5p'} = ($end1 < $contig_len) ? ($end1 + 1) : 1;
+			    $edge_hash{$genome_tag}->{'3p'} = ($end1 < $contig_len) ? (($start2 - 1) + $contig_len) : ($start2 - 1);
 			    #print STDERR "if $seq_len:$start2:$end1:$beg_offset:$end_offset\n" if ($DEBUG);
 			} else {
 			    $threep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($start2 -1), $Gapped_Context);
@@ -1718,9 +1719,9 @@ sub process_pgg {
 				$fivep_seq .= substr($genseq_hash{$genome_tag}->{$contig1}, 0, $extra);
 			    }
 			    $seq_len = ($start2 - 1) - $extra;
-			    $edge_hash{$genome_tag . $edge_id}->{'len'} = $seq_len;
-			    $edge_hash{$genome_tag . $edge_id}->{'5p'} = $extra + 1;
-			    $edge_hash{$genome_tag . $edge_id}->{'3p'} = $start2 - 1;
+			    $edge_hash{$genome_tag}->{'len'} = $seq_len;
+			    $edge_hash{$genome_tag}->{'5p'} = $extra + 1;
+			    $edge_hash{$genome_tag}->{'3p'} = $start2 - 1;
 			    #print STDERR "if $seq_len:$start2:$end1:$beg_offset:$end_offset\n" if ($DEBUG);
 			}
 			if ($seq_len <= 0) {
@@ -1750,9 +1751,9 @@ sub process_pgg {
 			    $fivep_seq .= substr($genseq_hash{$genome_tag}->{$contig1}, 0, $end1);
 			}
 			$seq_len = ($start2 - $end1) - 1;
-			$edge_hash{$genome_tag . $edge_id}->{'len'} = $seq_len;
-			$edge_hash{$genome_tag . $edge_id}->{'5p'} = $end1 + 1;
-			$edge_hash{$genome_tag . $edge_id}->{'3p'} = $start2 - 1;
+			$edge_hash{$genome_tag}->{'len'} = $seq_len;
+			$edge_hash{$genome_tag}->{'5p'} = $end1 + 1;
+			$edge_hash{$genome_tag}->{'3p'} = $start2 - 1;
 			#print STDERR "if $seq_len:$start2:$end1:$beg_offset:$end_offset\n" if ($DEBUG);
 			if ($seq_len <= 0) {
 			    $seq_len = 0;
@@ -1777,9 +1778,9 @@ sub process_pgg {
 			    $fivep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, 0, $end1);
 			}
 			$seq_len = ($start2 - $end1) - 1;
-			$edge_hash{$genome_tag . $edge_id}->{'len'} = $seq_len;
-			$edge_hash{$genome_tag . $edge_id}->{'5p'} = $end1 + 1;
-			$edge_hash{$genome_tag . $edge_id}->{'3p'} = $start2 - 1;
+			$edge_hash{$genome_tag}->{'len'} = $seq_len;
+			$edge_hash{$genome_tag}->{'5p'} = $end1 + 1;
+			$edge_hash{$genome_tag}->{'3p'} = $start2 - 1;
 			#print STDERR "if $seq_len:$start2:$end1:$beg_offset:$end_offset\n" if ($DEBUG);
 			if ($seq_len <= 0) {
 			    $seq_len = 0;
@@ -1808,9 +1809,9 @@ sub process_pgg {
 			    $threep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($start2 - $Gapped_Context), $Gapped_Context);
 			    $fivep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($end1 - 1), $Gapped_Context);
 			    $seq_len = ($contig_len - $start2) + ($end1 - 1);
-			    $edge_hash{$genome_tag . $edge_id}->{'len'} = $seq_len;
-			    $edge_hash{$genome_tag . $edge_id}->{'5p'} = ($start2 < $contig_len) ? (($end1 - 1) + $contig_len) : ($end1 - 1);
-			    $edge_hash{$genome_tag . $edge_id}->{'3p'} = ($start2 < $contig_len) ? ($start2 + 1) : 1;
+			    $edge_hash{$genome_tag}->{'len'} = $seq_len;
+			    $edge_hash{$genome_tag}->{'5p'} = ($start2 < $contig_len) ? (($end1 - 1) + $contig_len) : ($end1 - 1);
+			    $edge_hash{$genome_tag}->{'3p'} = ($start2 < $contig_len) ? ($start2 + 1) : 1;
 			    #print STDERR "if $seq_len:$start2:$end1:$beg_offset:$end_offset\n" if ($DEBUG);
 			} else {
 			    my $extra = $start2 - $contig_len;
@@ -1822,9 +1823,9 @@ sub process_pgg {
 			    }
 			    $fivep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, ($end1 - 1), $Gapped_Context);
 			    $seq_len = ($end1 - 1) - $extra;
-			    $edge_hash{$genome_tag . $edge_id}->{'len'} = $seq_len;
-			    $edge_hash{$genome_tag . $edge_id}->{'5p'} = $end1 - 1;
-			    $edge_hash{$genome_tag . $edge_id}->{'3p'} = $extra + 1;
+			    $edge_hash{$genome_tag}->{'len'} = $seq_len;
+			    $edge_hash{$genome_tag}->{'5p'} = $end1 - 1;
+			    $edge_hash{$genome_tag}->{'3p'} = $extra + 1;
 			    #print STDERR "if $seq_len:$start2:$end1:$beg_offset:$end_offset\n" if ($DEBUG);
 			}
 			if ($seq_len <= 0) {
@@ -1857,9 +1858,9 @@ sub process_pgg {
 			    $fivep_seq .= substr($genseq_hash{$genome_tag}->{$contig1}, 0, $end1);
 			}
 			$seq_len = ($end1 - $start2) - 1;
-			$edge_hash{$genome_tag . $edge_id}->{'len'} = $seq_len;
-			$edge_hash{$genome_tag . $edge_id}->{'5p'} = $end1 - 1;
-			$edge_hash{$genome_tag . $edge_id}->{'3p'} = $start2 + 1;
+			$edge_hash{$genome_tag}->{'len'} = $seq_len;
+			$edge_hash{$genome_tag}->{'5p'} = $end1 - 1;
+			$edge_hash{$genome_tag}->{'3p'} = $start2 + 1;
 			#print STDERR "if $seq_len:$start2:$end1:$beg_offset:$end_offset\n" if ($DEBUG);
 			if ($seq_len <= 0) {
 			    $seq_len = 0;
@@ -1886,9 +1887,9 @@ sub process_pgg {
 			    $fivep_seq = substr($genseq_hash{$genome_tag}->{$contig1}, 0, $start2);
 			}
 			$seq_len = ($end1 - $start2) - 1;
-			$edge_hash{$genome_tag . $edge_id}->{'len'} = $seq_len;
-			$edge_hash{$genome_tag . $edge_id}->{'5p'} = $end1 - 1;
-			$edge_hash{$genome_tag . $edge_id}->{'3p'} = $start2 + 1;
+			$edge_hash{$genome_tag}->{'len'} = $seq_len;
+			$edge_hash{$genome_tag}->{'5p'} = $end1 - 1;
+			$edge_hash{$genome_tag}->{'3p'} = $start2 + 1;
 			#print STDERR "if $seq_len:$start2:$end1:$beg_offset:$end_offset\n" if ($DEBUG);
 			if ($seq_len <= 0) {
 			    $seq_len = 0;
@@ -1902,7 +1903,7 @@ sub process_pgg {
 		}
 	    }
 	    if (($fivep_seq =~ /NNNNN/) || ($threep_seq =~ /NNNNN/)) {
-		$edge_hash{$genome_tag . $edge_id}->{'gapped'} = 1;
+		$edge_hash{$genome_tag}->{'gapped'} = 1;
 	    }
 	    if (($genome_tag ne $target_id) && ($align_all || $remake_files || $compute_all || ($target_id ne ""))) {
 		if ($seq_len > $max) {
@@ -2070,7 +2071,7 @@ sub process_pgg {
 			if (($gene_count == 1) && ($single_genome eq $genome_tag)) {
 			    $uniq_edge{$genome_tag}++;
 			} elsif (defined $genome_seqs[$index]) {
-			    my $feat_name = $genome_tag . $edge_id;
+			    my $feat_name = $genome_tag;
 			    if (!defined $feat_pres{$genome_seqs[$index]}) {
 				#print STDERR "$genome_tag:$index:$feat_name:\n$genome_seqs[$index]\n" if ($DEBUG);
 			    }
@@ -2134,7 +2135,7 @@ sub process_pgg {
 		    if (($gene_count == 0) && ($target_sequence ne "")) {
 			$uniq_edge{$target_id}++;
 		    } elsif ($target_sequence ne "") {
-			my $feat_name = $target_id . $edge_id;
+			my $feat_name = $target_id;
 			my $seq_len = $edge_hash{$feat_name}->{'len'};
 			my $ambig_count = $target_sequence =~ tr/ACGTacgt//c;
 			if (($target_sequence ne "EMPTY") && (($ambig_count >= 10) || ((($ambig_count * 100) / $seq_len) > 20))) {
@@ -2285,6 +2286,10 @@ sub process_pgg {
 		}
 	    }
 	}
+	undef %feat_pres;
+	undef %edge_hash;
+	undef @genome_seqs;
+	undef @sizes;
     }
     if ($remake_files) {
 	close (OUTPGGFILE);
