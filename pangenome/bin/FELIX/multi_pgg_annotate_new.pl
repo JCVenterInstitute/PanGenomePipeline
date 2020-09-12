@@ -664,10 +664,11 @@ sub compute
     `echo "rearrange" > rearrange`;
     `echo "SplitGene" > SplitGene`;
     `echo "wgsANI" > wgs_ANI`;
-    my $filter_genomes_file = "FILTER_GENOMES_FILE";
-    if (!$no_filter_anomalies) {
-	open(FGLIST, ">", $filter_genomes_file);
-    }
+    #currently doing this in compute_pgg_graph.pl
+    #my $filter_genomes_file = "FILTER_GENOMES_FILE";
+    #if (!$no_filter_anomalies) {
+	#open(FGLIST, ">", $filter_genomes_file);
+    #}
     for (my $j=0; $j <= $#genomes; $j++)
     {
 	if ($debug) {print STDERR "Genome $j\n\n";}
@@ -697,7 +698,7 @@ sub compute
 	my $genome_path = $genomes[$j][1];
 	my $anomalies_name_genome = "$identifier" . "_anomalies.txt";
 	if (!$no_filter_anomalies) {
-	    print FGLIST "$identifier\t$genome_path\t$topology_name\t$anomalies_name_genome\n";
+	    #print FGLIST "$identifier\t$genome_path\t$topology_name\t$anomalies_name_genome\n";
 	} else {
 	    `rm $topology_name`;
 	}
@@ -735,26 +736,26 @@ sub compute
 	`rm stats.tail stats.tail.col1 stats.tail.col345 stats.tail.col7plus uniq_clus uniq_edge $stats_name`;
     }
     if (!$no_filter_anomalies) {
-	close(FGLIST);
-	if ($blast_directory) {
-	    $filter_anomalies_path .= " -blast_directory $blast_directory ";
-	}	
-	if ($blast_task) {
-	    $filter_anomalies_path .= " -blast_task $blast_task ";
-	}	
-	if ($ld_load_directory) {
-	    $filter_anomalies_path .= " -ld_load_directory $ld_load_directory ";
-	}	
-	if ($strip_version) {
-	    $filter_anomalies_path .= " -strip_version ";
-	}
-	if ($debug) {print STDERR "\n/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -PGG_topology $topology_file -genomes $filter_genomes_file -engdb $engdb -nrdb $nrdb -pggdb $pggdb\n";}
-	`/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -PGG_topology $topology_file -genomes $filter_genomes_file -engdb $engdb -nrdb $nrdb -pggdb $pggdb`;
-	`echo "***$filter_anomalies_path***" >> overhead_cpustats`;
-	`cat tmp_cpu_stats >> overhead_cpustats`;
-	`rm tmp_cpu_stats`;
-	&bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -PGG_topology $topology_file -genomes $filter_genomes_file -engdb $engdb -nrdb $nrdb -pggdb $pggdb", $?, $!);
-	`rm $filter_genomes_file`;
+	#close(FGLIST);
+	#if ($blast_directory) {
+	    #$filter_anomalies_path .= " -blast_directory $blast_directory ";
+	#}	
+	#if ($blast_task) {
+	    #$filter_anomalies_path .= " -blast_task $blast_task ";
+	#}	
+	#if ($ld_load_directory) {
+	    #$filter_anomalies_path .= " -ld_load_directory $ld_load_directory ";
+	#}	
+	#if ($strip_version) {
+	    #$filter_anomalies_path .= " -strip_version ";
+	#}
+	#if ($debug) {print STDERR "\n/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -PGG_topology $topology_file -genomes $filter_genomes_file -engdb $engdb -nrdb $nrdb -pggdb $pggdb\n";}
+	#`/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -PGG_topology $topology_file -genomes $filter_genomes_file -engdb $engdb -nrdb $nrdb -pggdb $pggdb`;
+	#`echo "***$filter_anomalies_path***" >> overhead_cpustats`;
+	#`cat tmp_cpu_stats >> overhead_cpustats`;
+	#`rm tmp_cpu_stats`;
+	#&bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -PGG_topology $topology_file -genomes $filter_genomes_file -engdb $engdb -nrdb $nrdb -pggdb $pggdb", $?, $!);
+	#`rm $filter_genomes_file`;
 	for (my $j=0; $j <= $#genomes; $j++)
 	{
 	    if ($debug) {print STDERR "Genome $j\n\n";}
