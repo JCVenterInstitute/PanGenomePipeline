@@ -351,8 +351,9 @@ sub compute
 	    &bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -PGG_topology PGG_topology.txt -genomes $filter_genomes_name -engdb $engdb -nrdb $nrdb -pggdb $pggdb", $?, $!);
 	    `paste $stats_name $filter_features_name > $stats_name_genome`;
 	    `rm $filter_features_name $filter_genomes_name`;
+	} else {
+	    `mv $stats_name $stats_name_genome`;
 	}
-	`mv $stats_name $stats_name_genome`;
 	`rm -r output multifasta`;
     }
     `rm $blast_name`;

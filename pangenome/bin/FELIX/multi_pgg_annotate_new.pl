@@ -697,11 +697,10 @@ sub compute
 	my $topology_name = "$identifier" . "_topology.txt";
 	my $genome_path = $genomes[$j][1];
 	my $anomalies_name_genome = "$identifier" . "_anomalies.txt";
-	if (!$no_filter_anomalies) {
+	#if (!$no_filter_anomalies) {
 	    #print FGLIST "$identifier\t$genome_path\t$topology_name\t$anomalies_name_genome\n";
-	} else {
-	    `rm $topology_name`;
-	}
+	#}
+	`rm $topology_name`; # cannot remove this file here if doing filter_anomalies.pl here instead of in compute_pgg_graph.pl
 	if ($debug) {print STDERR "matchname: $match_name \t pggname: $pgg_name \n";}
 	die ("$match_name doesn't exist \n") unless (-e $match_name);
 	die ("$pgg_name doesn't exist \n") unless (-e $pgg_name);
@@ -735,7 +734,7 @@ sub compute
 	`paste stats.tail.col1  uniq_clus stats.tail.col345 uniq_edge stats.tail.col7plus >> PGG_stats.txt`;
 	`rm stats.tail stats.tail.col1 stats.tail.col345 stats.tail.col7plus uniq_clus uniq_edge $stats_name`;
     }
-    if (!$no_filter_anomalies) {
+    #if (!$no_filter_anomalies) {
 	#close(FGLIST);
 	#if ($blast_directory) {
 	    #$filter_anomalies_path .= " -blast_directory $blast_directory ";
@@ -756,33 +755,37 @@ sub compute
 	#`rm tmp_cpu_stats`;
 	#&bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -PGG_topology $topology_file -genomes $filter_genomes_file -engdb $engdb -nrdb $nrdb -pggdb $pggdb", $?, $!);
 	#`rm $filter_genomes_file`;
-	for (my $j=0; $j <= $#genomes; $j++)
-	{
-	    if ($debug) {print STDERR "Genome $j\n\n";}
-	    my $identifier = $genomes[$j][0];                                                 # get genome name
-	    my $filter_features_name = "$identifier" . "_FEATURES";
-	    my $topology_name = "$identifier" . "_topology.txt";
-	    if ($debug) {print STDERR "Genome $identifier $filter_features_name \n\n";}
-	    if ($j == 0) {
-		`cat $filter_features_name > ALL_FILTER_FEATURES`;
-	    } else {
-		`tail -n 1 $filter_features_name >> ALL_FILTER_FEATURES`;                                                      # generate file 2
-	    }
-	    `rm $topology_name`;
-	}
-    }
+	#for (my $j=0; $j <= $#genomes; $j++)
+	#{
+	    #if ($debug) {print STDERR "Genome $j\n\n";}
+	    #my $identifier = $genomes[$j][0];                                                 # get genome name
+	    #my $filter_features_name = "$identifier" . "_FEATURES";
+	    #my $topology_name = "$identifier" . "_topology.txt";
+	    #if ($debug) {print STDERR "Genome $identifier $filter_features_name \n\n";}
+	    #if ($j == 0) {
+		#`cat $filter_features_name > ALL_FILTER_FEATURES`;
+	    #} else {
+                #`tail -n 1 $filter_features_name >> ALL_FILTER_FEATURES`;                                                      # generate file 2
+	    #}
+            #`rm $filter_features_name`;
+	    #`rm $topology_name`;
+	#}
+    #}
     if ($duplicate) {
-	`paste PGG_stats.txt gene_ANI rearrange SplitGene wgs_ANI ALL_FILTER_FEATURES | sed -e 's/_ReDoDuP\t/\t/' > tmp.PGG_stats.txt`;                             #add in all columns that contain their own header (new columns)
+	#`paste PGG_stats.txt gene_ANI rearrange SplitGene wgs_ANI ALL_FILTER_FEATURES | sed -e 's/_ReDoDuP\t/\t/' > tmp.PGG_stats.txt`;                             #add in all columns that contain their own header (new columns)
+	`paste PGG_stats.txt gene_ANI rearrange SplitGene wgs_ANI | sed -e 's/_ReDoDuP\t/\t/' > tmp.PGG_stats.txt`;                             #add in all columns that contain their own header (new columns)
     } else {
-	`paste PGG_stats.txt gene_ANI rearrange SplitGene wgs_ANI ALL_FILTER_FEATURES > tmp.PGG_stats.txt`;                             #add in all columns that contain their own header (new columns)
+	#`paste PGG_stats.txt gene_ANI rearrange SplitGene wgs_ANI ALL_FILTER_FEATURES > tmp.PGG_stats.txt`;                             #add in all columns that contain their own header (new columns)
+	`paste PGG_stats.txt gene_ANI rearrange SplitGene wgs_ANI > tmp.PGG_stats.txt`;                             #add in all columns that contain their own header (new columns)
     }
     `mv tmp.PGG_stats.txt PGG_stats.txt`;
-    `rm core_neighbors $single_copy gene_ANI rearrange SplitGene wgs_ANI ALL_FILTER_FEATURES *_ce_sizes.txt`;
+    #`rm core_neighbors $single_copy gene_ANI rearrange SplitGene wgs_ANI ALL_FILTER_FEATURES *_ce_sizes.txt`;
+    `rm core_neighbors $single_copy gene_ANI rearrange SplitGene wgs_ANI *_ce_sizes.txt`;
     `mkdir Anomalies CPU CALLS CoreRegions Stderr Stdout`;
     `mv *_anomalies.txt Anomalies`;
     `mv *_cpu* CPU`;
     `mv *_core_clus.txt CoreRegions`;
-    `mv *_GENOME.btab *_QUERY_SEQS.fasta *_ranges.txt *_CALLS *_FEATURES *_COMBINED.btab *_PGG.btab CALLS`;
+    `mv *_SELFBLAST.btab *_QUERY_SEQS.fasta *_ranges.txt *_CALLS *_COMBINED.btab *_PGG.btab CALLS`;
     `mv *_stderr Stderr`;
     `mv *_stdout Stdout`;
 }
