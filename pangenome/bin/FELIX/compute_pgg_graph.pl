@@ -245,15 +245,15 @@ sub compute
     }
     if ($blast_directory) {
 	$medoid_blast_path .= " -blast_directory $blast_directory ";
-	#$filter_anomalies_path .= " -blast_directory $blast_directory ";
+	$filter_anomalies_path .= " -blast_directory $blast_directory ";
     }	
     if ($blast_task) {
 	$medoid_blast_path .= " -blast_task $blast_task ";
-	#$filter_anomalies_path .= " -blast_task $blast_task ";
+	$filter_anomalies_path .= " -blast_task $blast_task ";
     }	
     if ($ld_load_directory) {
 	$medoid_blast_path .= " -ld_load_directory $ld_load_directory ";
-	#$filter_anomalies_path .= " -ld_load_directory $ld_load_directory ";
+	$filter_anomalies_path .= " -ld_load_directory $ld_load_directory ";
     }	
     if ($strip_version) {
 	$medoid_blast_path .= " -strip_version ";
