@@ -96,7 +96,7 @@ int read_fasta_kmer(char * genome_file_name, FILE * fp_fasta, int cur_contig, in
   size_t fasta_line_malloc_len = 0;
   char * fasta_line = NULL;
   
-  /* fprintf(stderr, "Genome: %s Prev Genome: %s %d:%d:%d:%d\n", genome_file_name, prev_genome_file_name, cur_contig, cur_pos, num_basepairs,  contig_seq_pos); */
+  fprintf(stderr, "%s %d:%d:%d\n", genome_file_name, cur_contig, cur_pos, num_basepairs);
 
   if (strncmp(prev_genome_file_name, genome_file_name, (size_t) 1024) != 0) {
     /*  fprintf(stderr, "Prev Genome: %s contig %d last pos %d\n", prev_genome_file_name, cur_file_contig, (cur_file_pos - 1));
@@ -250,6 +250,7 @@ int kmer_bucket_sort_genome(FILE * fp_fasta, char * genome_file_name, uint16_t g
   int num_ambs = 0;
   bool reset_kmer = true;
   bool new_contig = false;
+  bool first_amb = true;
   uint64_t kmer_mask = 01777777777777777; /* This is used to mask only the lower 46 bits used for the 23mer when shifting */
   uint64_t bucket_mask = 01777776000000000; /* This is used to select the upper 18 bits of the lower 46 bits to determine the 9 basepairs used for bucket sorting */
   uint32_t contig_number = 0;
@@ -281,21 +282,25 @@ int kmer_bucket_sort_genome(FILE * fp_fasta, char * genome_file_name, uint16_t g
       case 'A':
 	cur_bp = 0;
 	revc_bp = 06000000000000000;
+	first_amb = true;
 	break;
       case 'c':
       case 'C':
 	cur_bp = 01;
 	revc_bp = 04000000000000000;
+	first_amb = true;
 	break;
       case 'g':
       case 'G':
 	cur_bp = 02;
 	revc_bp = 02000000000000000;
+	first_amb = true;
 	break;
       case 't':
       case 'T':
 	cur_bp = 03;
 	revc_bp = 0;
+	first_amb = true;
 	break;
 	/* look for DNA ambiguity codes which terminates 23mer determination and restarts it with the next basepair */
       case 'Y':
@@ -322,6 +327,10 @@ int kmer_bucket_sort_genome(FILE * fp_fasta, char * genome_file_name, uint16_t g
       case 'n': /* nucleotide ambiguity codes */
 	num_ambs++;
 	reset_kmer = true;
+	if (first_amb) {
+	  first_amb = false;
+	  fprintf(stderr, "Amb %d:%d:%d", (int) genome_number, (int) contig_number, contig_pos);
+	}
 	break;
       case '>':
 	if (prev_char == '\n') {
@@ -361,6 +370,7 @@ int kmer_bucket_sort_genome(FILE * fp_fasta, char * genome_file_name, uint16_t g
 	contig_pos = 0;
 	cur_kmer = 0;
 	revc_kmer = 0;
+	first_amb = true;
       } else {
 	prev_char = cur_char;
 	contig_pos++; /* increment the contig position before 23mer determination since we start numbering at 1 in the contig */
