@@ -96,8 +96,6 @@ int read_fasta_kmer(char * genome_file_name, FILE * fp_fasta, int cur_contig, in
   size_t fasta_line_malloc_len = 0;
   char * fasta_line = NULL;
   
-  fprintf(stderr, "%s %d:%d:%d\n", genome_file_name, cur_contig, cur_pos, num_basepairs);
-
   if (strncmp(prev_genome_file_name, genome_file_name, (size_t) 1024) != 0) {
     /*  fprintf(stderr, "Prev Genome: %s contig %d last pos %d\n", prev_genome_file_name, cur_file_contig, (cur_file_pos - 1));
 	fprintf(stderr, "Genome: %s Prev Genome: %s\n", genome_file_name, prev_genome_file_name); */
@@ -106,6 +104,8 @@ int read_fasta_kmer(char * genome_file_name, FILE * fp_fasta, int cur_contig, in
     strncpy(prev_genome_file_name, genome_file_name, (size_t) 1024);
   }
   
+  fprintf(stderr, "%s %d:%d:%d:%d:%d\n", genome_file_name, cur_contig, cur_pos, num_basepairs, cur_file_contig, cur_file_pos);
+
   while ((num_basepairs > 0) && ((fgetc_return = fgetc(fp_fasta)) != EOF)) {
     cur_char = (char) fgetc_return;
     if (isspace(cur_char)) {
@@ -329,7 +329,7 @@ int kmer_bucket_sort_genome(FILE * fp_fasta, char * genome_file_name, uint16_t g
 	reset_kmer = true;
 	if (first_amb) {
 	  first_amb = false;
-	  fprintf(stderr, "Amb %d:%d:%d", (int) genome_number, (int) contig_number, contig_pos);
+	  fprintf(stderr, "Amb %d:%d:%d/n", (int) genome_number, (int) contig_number, (contig_pos + 1));
 	}
 	break;
       case '>':
