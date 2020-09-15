@@ -901,7 +901,7 @@ main (int argc, char **argv)
     int num_so_far;
 
     /* check if we need to switch to a new genome or just a new contig in first genome */
-    if ((index > 0) && (index < (num_first_genome_contigs - 1))) {
+    if ((index > 0) && (index < num_first_genome_contigs)) {
     } else {
       getline_return = getline(&file_name_line, &file_name_line_malloc_len, fp_file_names);
       if (getline_return == -1) {
@@ -1064,7 +1064,7 @@ main (int argc, char **argv)
 	fprintf(stderr, "%d:%d:%d:%d:%f:%d:%d\n", cur_pos, cur_contig, cur_genome, anchor_prevalence, prev_prevalence, first_anchor_pos, last_anchor_pos);
 	} */
       if (cur_genome != cur_file_genome) {
-	fprintf (stderr, "Current genome number %d does not match stored genome number %d\n", cur_genome, cur_file_genome);
+	fprintf (stderr, "Current genome number %d does not match stored genome number %d\n", cur_file_genome, cur_genome);
 	exit(EXIT_FAILURE);
       }
       if (cur_contig != prev_contig) {
