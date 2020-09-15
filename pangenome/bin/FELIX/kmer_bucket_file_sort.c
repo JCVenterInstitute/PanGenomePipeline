@@ -104,7 +104,7 @@ int read_fasta_kmer(char * genome_file_name, FILE * fp_fasta, int cur_contig, in
     strncpy(prev_genome_file_name, genome_file_name, (size_t) 1024);
   }
 
-  /* fprintf(stderr, "%s %d:%d:%d:%d:%d\n", genome_file_name, cur_contig, cur_pos, num_basepairs, cur_file_contig, cur_file_pos); */
+  fprintf(stderr, "%s %d:%d:%d:%d:%d\n", genome_file_name, cur_contig, cur_pos, ((cur_pos + num_basepairs) - 1), cur_file_contig, cur_file_pos);
 
   if ((cur_contig == cur_file_contig) && (cur_pos < cur_file_pos)) {
     fprintf (stderr, "For genome %s, contig %d, cur_pos %d is < cur_file_pos %d!\n", genome_file_name, cur_contig, cur_pos, cur_file_pos);
@@ -1048,6 +1048,7 @@ main (int argc, char **argv)
     for (i = 0; i <  red_bucket_sizes[index]; i++) {
       if (((last_anchor_pos - first_anchor_pos) + 1) >= CONTIG_SEQ_BUFFER_LEN) {
 	/* Buffer full - output first half of current anchors buffer */
+	fprintf(stderr, "BB: ");
 	contig_seq_pos = read_fasta_kmer(file_name_line, fp_file_name, cur_contig, first_anchor_pos, (CONTIG_SEQ_BUFFER_LEN / 2), contig_seq, contig_seq_pos);
 	/* having linker issues for libm.a (-lm) with gcc on some platforms so using crude approximation for ceilf function */
 	anchor_number += write_anchors((int)(prev_prevalence + 0.999999999999), fp_single, fp_cluster, fp_match, fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break, core_anchor);
@@ -1070,6 +1071,7 @@ main (int argc, char **argv)
       if (cur_contig != prev_contig) {
 	if ((prev_contig != -1) && (((last_anchor_pos - first_anchor_pos) + 1) >= MIN_ANCHOR_LEN)) {
 	  /* Switched contigs - output current anchors buffer */
+	  fprintf(stderr, "PC: ");
 	  contig_seq_pos = read_fasta_kmer(file_name_line, fp_file_name, cur_contig, first_anchor_pos, ((last_anchor_pos - first_anchor_pos) + 1), contig_seq, contig_seq_pos);
 	  anchor_number += write_anchors((int)(prev_prevalence + 0.999999999999), fp_single, fp_cluster, fp_match, fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break, core_anchor);
 	}
@@ -1081,6 +1083,7 @@ main (int argc, char **argv)
 	if (((cur_pos - prev_pos) > KMER_SIZE) || ((anchor_prevalence > ((110 * prev_prevalence) / 100)) || ((anchor_prevalence < ((90 * prev_prevalence) / 100))))) {
 	  /* Break in unique k-mers or significant change in anchor prevalence - output current anchors buffer */
 	  if (((last_anchor_pos - first_anchor_pos) + 1) >= MIN_ANCHOR_LEN) {
+	    fprintf(stderr, "BR: ");
 	    contig_seq_pos = read_fasta_kmer(file_name_line, fp_file_name, cur_contig, first_anchor_pos, ((last_anchor_pos - first_anchor_pos) + 1), contig_seq, contig_seq_pos);
 	    num_anchors_written = write_anchors((int)(prev_prevalence + 0.999999999999), fp_single, fp_cluster, fp_match, fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break, core_anchor);
 	    anchor_number += num_anchors_written;
@@ -1110,6 +1113,7 @@ main (int argc, char **argv)
     }
     if (((last_anchor_pos - first_anchor_pos) + 1) >= MIN_ANCHOR_LEN) {
       /* Flush remaining anchors buffer */
+      fprintf(stderr, "EC: ");
       contig_seq_pos = read_fasta_kmer(file_name_line, fp_file_name, cur_contig, first_anchor_pos, ((last_anchor_pos - first_anchor_pos) + 1), contig_seq, contig_seq_pos);
       anchor_number += write_anchors((int)(prev_prevalence + 0.999999999999), fp_single, fp_cluster, fp_match, fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break, core_anchor);
     }
