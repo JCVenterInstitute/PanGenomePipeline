@@ -106,6 +106,11 @@ int read_fasta_kmer(char * genome_file_name, FILE * fp_fasta, int cur_contig, in
 
   fprintf(stderr, "%s %d:%d:%d:%d:%d\n", genome_file_name, cur_contig, cur_pos, ((cur_pos + num_basepairs) - 1), cur_file_contig, cur_file_pos);
 
+  if (cur_contig < cur_file_contig) {
+    fprintf (stderr, "For genome %s, cur_contig %d < cur_file_contig %d!\n", genome_file_name, cur_contig, cur_file_contig);
+    exit(EXIT_FAILURE);
+  }
+  
   if ((cur_contig == cur_file_contig) && (cur_pos < cur_file_pos)) {
     fprintf (stderr, "For genome %s, contig %d, cur_pos %d is < cur_file_pos %d!\n", genome_file_name, cur_contig, cur_pos, cur_file_pos);
     exit(EXIT_FAILURE);
@@ -121,6 +126,10 @@ int read_fasta_kmer(char * genome_file_name, FILE * fp_fasta, int cur_contig, in
 	/* fprintf(stderr, "Genome: %s contig %d last pos %d\n", genome_file_name, cur_file_contig, (cur_file_pos - 1)); */
 	cur_file_contig++;
 	cur_file_pos = 1;
+	if (cur_contig < cur_file_contig) {
+	  fprintf (stderr, "For genome %s, cur_contig %d < cur_file_contig %d!\n", genome_file_name, cur_contig, cur_file_contig);
+	  exit(EXIT_FAILURE);
+	}
 	/* Start of a new contig. Read in header line but ignore it other than incrementing contig number */
 	if ((getline_return = getline(&fasta_line, &fasta_line_malloc_len, fp_fasta)) == -1) {
 	  fprintf (stderr, "empty contig fasta header: %d for genome %s!\n", cur_file_contig, genome_file_name);
@@ -1072,7 +1081,7 @@ main (int argc, char **argv)
 	if ((prev_contig != -1) && (((last_anchor_pos - first_anchor_pos) + 1) >= MIN_ANCHOR_LEN)) {
 	  /* Switched contigs - output current anchors buffer */
 	  fprintf(stderr, "PC: ");
-	  contig_seq_pos = read_fasta_kmer(file_name_line, fp_file_name, cur_contig, first_anchor_pos, ((last_anchor_pos - first_anchor_pos) + 1), contig_seq, contig_seq_pos);
+	  contig_seq_pos = read_fasta_kmer(file_name_line, fp_file_name, prev_contig, first_anchor_pos, ((last_anchor_pos - first_anchor_pos) + 1), contig_seq, contig_seq_pos);
 	  anchor_number += write_anchors((int)(prev_prevalence + 0.999999999999), fp_single, fp_cluster, fp_match, fp_pgg, fp_anchors, anchor_number, contig_seq, contig_seq_pos, anchor_break, core_anchor);
 	}
 	anchor_break = true;
