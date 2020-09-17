@@ -104,7 +104,7 @@ int read_fasta_kmer(char * genome_file_name, FILE * fp_fasta, int cur_contig, in
     strncpy(prev_genome_file_name, genome_file_name, (size_t) 1024);
   }
 
-  fprintf(stderr, "%s %d:%d:%d:%d:%d\n", genome_file_name, cur_contig, cur_pos, ((cur_pos + num_basepairs) - 1), cur_file_contig, cur_file_pos);
+  /* fprintf(stderr, "%s %d:%d:%d:%d:%d\n", genome_file_name, cur_contig, cur_pos, ((cur_pos + num_basepairs) - 1), cur_file_contig, cur_file_pos); */
 
   if (cur_contig < cur_file_contig) {
     fprintf (stderr, "For genome %s, cur_contig %d < cur_file_contig %d!\n", genome_file_name, cur_contig, cur_file_contig);
@@ -1051,10 +1051,15 @@ main (int argc, char **argv)
     prev_pos = -1;
     prev_contig = -1;
     contig_seq_pos = 0;
+    num_so_far = 0;
     prev_prevalence = 0;
     first_anchor_pos = 0;
     last_anchor_pos = -1;
     for (i = 0; i <  red_bucket_sizes[index]; i++) {
+      cur_pos = (int) red_kmer_array[i].pos;
+      cur_contig = (int) red_kmer_array[i].contig;
+      cur_genome = (int) red_kmer_array[i].genome;
+      anchor_prevalence = (int) red_kmer_array[i].prevalence;
       if (((last_anchor_pos - first_anchor_pos) + 1) >= CONTIG_SEQ_BUFFER_LEN) {
 	/* Buffer full - output first half of current anchors buffer */
 	fprintf(stderr, "BB: ");
@@ -1065,11 +1070,9 @@ main (int argc, char **argv)
 	/* Reset first_anchor_pos to reflect the portion of the anchor written */
 	first_anchor_pos += (CONTIG_SEQ_BUFFER_LEN / 2);
 	contig_seq_pos = 0;
+	num_so_far = 0;
+	prev_prevalence = (float) anchor_prevalence;
       }
-      cur_pos = (int) red_kmer_array[i].pos;
-      cur_contig = (int) red_kmer_array[i].contig;
-      cur_genome = (int) red_kmer_array[i].genome;
-      anchor_prevalence = (int) red_kmer_array[i].prevalence;
       /* if (((cur_genome == 0) && (cur_contig == 0) && (cur_pos < 210000)) || ((cur_genome == 0) && (cur_contig == 0) && (cur_pos > 4000000)) || ((cur_genome == 0) && (cur_contig == 1))) {
 	fprintf(stderr, "%d:%d:%d:%d:%f:%d:%d\n", cur_pos, cur_contig, cur_genome, anchor_prevalence, prev_prevalence, first_anchor_pos, last_anchor_pos);
 	} */
@@ -1088,6 +1091,8 @@ main (int argc, char **argv)
 	contig_seq_pos = 0;
 	first_anchor_pos = cur_pos;
 	last_anchor_pos = cur_pos + (KMER_SIZE - 1);
+	num_so_far = 1;
+	prev_prevalence = (float) anchor_prevalence;
       } else {
 	if (((cur_pos - prev_pos) > KMER_SIZE) || ((anchor_prevalence > ((110 * prev_prevalence) / 100)) || ((anchor_prevalence < ((90 * prev_prevalence) / 100))))) {
 	  /* Break in unique k-mers or significant change in anchor prevalence - output current anchors buffer */
@@ -1107,13 +1112,16 @@ main (int argc, char **argv)
 	    first_anchor_pos = cur_pos;
 	  }
 	  last_anchor_pos = cur_pos + (KMER_SIZE - 1);
+	  num_so_far = 1;
+	  prev_prevalence = (float) anchor_prevalence;
 	} else {
 	  last_anchor_pos = cur_pos + (KMER_SIZE - 1);
+	  prev_prevalence = ((float)((num_so_far * prev_prevalence) + anchor_prevalence)) / ((float)(num_so_far + 1));
+	  num_so_far++;
 	}
       }
       prev_pos = cur_pos;
       prev_contig = cur_contig;
-      prev_prevalence = ((float)(((((last_anchor_pos - first_anchor_pos) + 1) - KMER_SIZE) * prev_prevalence) + anchor_prevalence)) / ((float)((((last_anchor_pos - first_anchor_pos) + 1) - KMER_SIZE) + 1));
       if (prev_prevalence >= ((core_threshold * genome_number) / 100)) {
 	core_anchor = true;
       } else {
