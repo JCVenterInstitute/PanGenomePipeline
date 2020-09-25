@@ -68,6 +68,7 @@ my $strip_version = 0;
 my $qsub_queue = "himem";
 my $wall_time_limit = "24:00:00"; #set qsub wall time limit to 24 hours by default
 my $mem_req = "2gb"; #set qsub memory minimum requirement by default to 2 Gbyte
+my $MAX_ALIGN_EDGE = 30000; #maximum length of an edge that we are willing to multiple sequence align to
 
 if ($opt_W) { # should really check time format
     $wall_time_limit = $opt_W;
@@ -2032,7 +2033,9 @@ sub process_pgg {
 		}
 		$index++;
 	    }
-	    push (@mf_files, "$multifastadir/$edge_id.fasta\t$nr_allele_num\t$empty");
+	    if ($median_75 <= $MAX_ALIGN_EDGE) {
+		push (@mf_files, "$multifastadir/$edge_id.fasta\t$nr_allele_num\t$empty");
+	    }
 	    close (OUTFILE);
 	} else {
 	    my $index = 0;
