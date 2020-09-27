@@ -1020,7 +1020,7 @@ while (my $line = <$infile>)  {
 		#this could change but for now these seem to be assembly/sequencing errors
 	    } elsif ($repeat || ($revcomp5p != $revcomp3p) || ($revcomp5p && ($pgg_blast_results[$fivep_index][SSTART] < $pgg_blast_results[$threep_index][SSTART])) || (!$revcomp5p && ($pgg_blast_results[$fivep_index][SSTART] > $pgg_blast_results[$threep_index][SSTART]))) {
 		#doesn't work for repeats - need to add check for circular contig causing third or fourth condition
-	    } elsif ((($pgg_blast_results[$threep_index][QSTART] - $pgg_blast_results[$fivep_index][QEND]) >= -10) && (($pgg_blast_results[$threep_index][QSTART] - $pgg_blast_results[$fivep_index][QEND]) <= 10)) {
+	    } elsif ((($pgg_blast_results[$threep_index][QSTART] - $pgg_blast_results[$fivep_index][QEND]) >= -50) && (($pgg_blast_results[$threep_index][QSTART] - $pgg_blast_results[$fivep_index][QEND]) <= 10)) {
 		my $fivep_start = $pgg_blast_results[$fivep_index][QSTART];
 		my $fivep_end = $pgg_blast_results[$fivep_index][QEND];
 		my $threep_start = $pgg_blast_results[$threep_index][QSTART];
