@@ -34,6 +34,12 @@ my %max_bitscore = (); # key1 = query id, key2 = subject id, array = [MB5P,MB3P,
 my @categories = ("identical","gapped","divergent","conserved"); # literals used for output in ranges file
 
 # CONSTANTS #
+use constant MINALLOWPID => 98.0;
+use constant CONTEXTLEN => 1000;
+use constant MINCONTIGLEN => 1000;
+use constant MAXEDGELEN => 100000;
+use constant MAXINDELLEN => 200000;
+use constant MINENDLEN => 500;
 use constant QCCTG => 0;
 use constant QCBEG => 1;
 use constant QCEND => 2;
@@ -312,7 +318,7 @@ while (my $line = <$infile>)  {
 	$sequence =~ s/[^a-zA-Z]//g; # remove any non-alphabet characters
 	my $contig_length = length($sequence);
 	#print STDERR "$id\t$contig_length";
-	if (($contig_length >= 1000) || ($id !~ /_cov_[01]$/)) { #only store contigs whose depth of coverage is > 1 or whose length is >= 1000
+	if (($contig_length >= MINCONTIGLEN) || ($id !~ /_cov_[01]$/)) { #only store contigs whose depth of coverage is > 1 or whose length is >= MINCONTIGLEN
 	    $contigs{$id} = $sequence;
 	    $contig_len{$id} = $contig_length;
 	    #print STDERR "\t$id";
@@ -371,7 +377,7 @@ while (my $line = <$infile>)  {
 	if ($split_line[5] <= 0) {
 	    next; # ignore negative or zero length edge anomalies
 	}
-	if ($split_line[5] > 100000) {
+	if ($split_line[5] > MAXEDGELEN) {
 	    die ("ERROR: not expecting length of any anomaly to be greater than 100,000bp\n$line\n"); # die on long length edge anomalies
 	}
 	my $category = $split_line[2];
@@ -677,6 +683,7 @@ while (my $line = <$infile>)  {
 	    }
 	    $range_beg = 0;
 	    $range_end = 0;
+	    $prev_category = -1;
 	}
 	
 	if ($range_beg == 0) {
@@ -707,12 +714,12 @@ while (my $line = <$infile>)  {
 	    }
 	} elsif ($cur_category == DIVERGED) {
 	    if ($beg_diverged == 0) {
-		$beg_diverged = ($cur_beg > 100) ? ($cur_beg - 100) : 1; # instead of $cur_beg to include context around the diverged region
+		$beg_diverged = ($cur_beg > CONTEXTLEN) ? ($cur_beg - CONTEXTLEN) : 1; # instead of $cur_beg to include context around the diverged region
 		$diverged_type = $cur_type . "_" . $cur_locus . "_" . $cur_beg . "_" . $cur_end;
 	    } else {
 		$diverged_type .= "_" . $cur_type . "_" . $cur_locus . "_" . $cur_beg . "_" . $cur_end;
 	    }
-	    $end_diverged = (($contig_len{$cur_contig} - $cur_end) > 100) ? ($cur_end + 100) : $contig_len{$cur_contig}; #instead of #cur_end to include context around the diverged region
+	    $end_diverged = (($contig_len{$cur_contig} - $cur_end) > CONTEXTLEN) ? ($cur_end + CONTEXTLEN) : $contig_len{$cur_contig}; #instead of #cur_end to include context around the diverged region
 	} else {
 	    die ("ERROR: Unexpected type found: $cur_category\n");
 	}
@@ -977,7 +984,7 @@ while (my $line = <$infile>)  {
 	    print PGG_BLAST_FILE "$btab\n";
 	    print STDERR "$btab\n";
 	    my $pid = $pgg_blast_results[$full_index][PIDENT];
-	    if (($pid < 99.5) && ($qid !~ /_WHOLE_/) && ($qid !~ /_BEG_/) && ($qid !~ /_END_/)) {
+	    if (($pid < MINALLOWPID) && ($qid !~ /_WHOLE_/) && ($qid !~ /_BEG_/) && ($qid !~ /_END_/)) {
 		my $cur_sid = $pgg_blast_results[$full_index][SSEQID];
 		my $qstart = $pgg_blast_results[$full_index][QSTART];
 		my $qend = $pgg_blast_results[$full_index][QEND];
@@ -1016,7 +1023,7 @@ while (my $line = <$infile>)  {
 	    my $pid = ($pgg_blast_results[$fivep_index][PIDENT] + $pgg_blast_results[$threep_index][PIDENT]) / 2;
 	    my $revcomp5p = ($pgg_blast_results[$fivep_index][SSTART] > $pgg_blast_results[$fivep_index][SEND]);
 	    my $revcomp3p = ($pgg_blast_results[$threep_index][SSTART] > $pgg_blast_results[$threep_index][SEND]);
-	    if (($pgg_blast_results[$fivep_index][QLEN] <= 500) && (($qid =~ /_BEG_/) || ($qid =~ /_END_/))) { # do not believe short sequences on the ends of contigs
+	    if (($pgg_blast_results[$fivep_index][QLEN] <= MINENDLEN) && (($qid =~ /_BEG_/) || ($qid =~ /_END_/))) { # do not believe short sequences on the ends of contigs
 		#this could change but for now these seem to be assembly/sequencing errors
 	    } elsif ($repeat || ($revcomp5p != $revcomp3p) || ($revcomp5p && ($pgg_blast_results[$fivep_index][SSTART] < $pgg_blast_results[$threep_index][SSTART])) || (!$revcomp5p && ($pgg_blast_results[$fivep_index][SSTART] > $pgg_blast_results[$threep_index][SSTART]))) {
 		#doesn't work for repeats - need to add check for circular contig causing third or fourth condition
@@ -1087,7 +1094,7 @@ while (my $line = <$infile>)  {
 			$deletion = &circ_substr($pggdbfile, $pggdb_contigs{$cur_sid}, $del_end, $del_start, $pggdb_contig_len{$cur_sid});
 		    }
 		}
-		if (($deletion !~ /NNNNN/) && (length($insertion) <= 200000) && (length($deletion) <= 200000)) { # do not believe sequences with gaps in them or are really long
+		if (($deletion !~ /NNNNN/) && (length($insertion) <= MAXINDELLEN) && (length($deletion) <= MAXINDELLEN)) { # do not believe sequences with gaps in them or are really long
 		    my $del_len = length($deletion);
 		    my $ins_len = length($insertion);
 		    if ($tandem_duplication) {
@@ -1129,7 +1136,7 @@ while (my $line = <$infile>)  {
 			$deletion = &circ_substr($pggdbfile, $pggdb_contigs{$cur_sid}, $del_start, $del_end, $pggdb_contig_len{$cur_sid});
 		    }
 		}
-		if (($deletion !~ /NNNNN/) && (length($insertion) <= 200000) && (length($deletion) <= 200000)) { # do not believe sequences with gaps in them or are really long
+		if (($deletion !~ /NNNNN/) && (length($insertion) <= MAXINDELLEN) && (length($deletion) <= MAXINDELLEN)) { # do not believe sequences with gaps in them or are really long
 		    my $del_len = length($deletion);
 		    my $ins_len = length($insertion);
 		    $insertions++;
