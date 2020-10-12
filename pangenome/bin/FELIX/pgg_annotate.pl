@@ -1740,8 +1740,6 @@ sub score_from_neighbors
 ###################################################################################################
 sub score_neighbors
 {
-    # TODO - THIS WILL NOT WORK AS WRITTEN, SINCE NEIGHBORS DIFFERENTIATES BETWEEN 3' and 5'. Need to concatenate _3 or _5 on end to make it work
-    # FOR NOW, DO BOTH. EVENTUALLY, DO BOTH, BUT APPLY A MODIFIER IF THE WRONG ONE
     # In addition to checking both orientations of the neighbor, we need to check for neighbors on both sides - so, need to ultimately check [1] and [3] in addition to [0] and [2]
     my $is_rev = shift;                                  #is the cluster on the forward or reverse strand
     my $is_left = shift;                                 #scoring the left side or the right
@@ -1955,25 +1953,33 @@ sub homology_score
     my $coreness = $cluster_size[$clus] / $num_genomes;
     my $uniqueness = 1 / $cluster_hits[$clus];
     my $single_copy = $core_clusters[$clus];
-    if ($per_len >= .95) {
+    if ($per_len >= .98) {
+	$per_len = 2;
+    } elsif ($per_len >= .95) {
 	$per_len = 1;
     } elsif ($per_len >= .90) {
-	$per_len = .75;
-    } elsif ($per_len >= .70) {
 	$per_len = .5;
-    } elsif ($per_len >= .50) {
+    } elsif ($per_len >= .80) {
 	$per_len = .25;
+    } elsif ($per_len >= .70) {
+	$per_len = .1;
+    } elsif ($per_len >= .50) {
+	$per_len = .05;
     } else {
 	$per_len = 0;
     }
-    if ($per_id >= .95) {
+    if ($per_id >= .98) {
 	$per_id = 1;
-    } elsif ($per_id >= .90) {
+    } elsif ($per_id >= .95) {
 	$per_id = .75;
-    } elsif ($per_id >= .70) {
+    } elsif ($per_id >= .90) {
 	$per_id = .5;
-    } elsif ($per_id >= .50) {
+    } elsif ($per_id >= .80) {
 	$per_id = .25;
+    } elsif ($per_id >= .70) {
+	$per_id = .1;
+    } elsif ($per_id >= .50) {
+	$per_id = .05;
     } else {
 	$per_id = 0;
     }

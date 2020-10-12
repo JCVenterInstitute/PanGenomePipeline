@@ -246,10 +246,10 @@ sub wait_for_grid_jobs {
     my $size = scalar( keys %{$job_ids} );
 
     if ($queue eq "NONE") {
-	sleep 300; # need to wait to make sure qstat knows about all submitted jobs
+	sleep 180; # need to wait to make sure qstat knows about all submitted jobs
     }
     while ( $size > $number ) {
-	sleep 60;
+	sleep 10;
 	if ($queue eq "NONE") {
 	    my $response = `qstat 2>&1`;
 	    &parse_response_qstat( $response, $name, $job_ids );
