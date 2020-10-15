@@ -492,6 +492,7 @@ sub compute
 	if ($debug) {print STDERR "removed TMP directories\n";}
 	    
 	$num_jobs = 0;
+	my $failed_jobs = 0;
 	for (my $j=0; $j <= $#genomes; $j++)
 	{
 	    my $identifier = $genomes[$j][0];                                                 # get genome name
@@ -499,15 +500,19 @@ sub compute
 	    my $match_name = ("$identifier" . "_match.col");
 	    my $pgg_name = ("$identifier" . "_pgg.col");
 	    my $att_name = ("$identifier" . "_attributes.txt");
+	    my $stderr_name = $identifier . "_stderr";
 	    if (!(-e $match_name) || !(-e $pgg_name) || !(-e $att_name)){
 		$num_jobs++;
+		if (-e $stderr_name) {
+		    $failed_jobs++; #these are jobs which really failed versus just disappearing after qsub
+		}
 	    }
 	}
-	if ($debug) {print STDERR "$num_jobs FAILED resubmitting\n";}
-	if ($num_jobs > ($total_jobs / 10)) {
-	    die "Too many grid jobs failed $num_jobs\n";
+	if ($debug) {print STDERR "$failed_jobs:$num_jobs FAILED resubmitting\n";}
+	if (($num_jobs > ((4 * $total_jobs) / 5)) || ($failed_jobs > ($total_jobs / 10))) {
+	    die "Too many grid jobs failed $failed_jobs:$num_jobs out of $total_jobs\n";
 	} elsif ($num_jobs > 0) {
-	    for (my $k=0; $k <= 2; $k++){ #try a maximum of 3 times on failed jobs
+	    for (my $k=0; $k <= 9; $k++){ #try a maximum of 10 times on failed jobs
 		if ($debug) {print STDERR "Resubmit $num_jobs jobs Iteration $k\n";}
 		%job_ids = ();
 		$num_jobs = 0;
