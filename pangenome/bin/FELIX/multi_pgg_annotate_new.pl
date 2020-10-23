@@ -713,7 +713,7 @@ sub compute
 	`wc -l < $rearrange_name >> rearrange`;
 	`wc -l < $split_gene_name >> SplitGene`;
 	`cat $wgs_ani_name >> wgs_ANI`;                                                    # we don't need to do a line-count here, we just copy over the entire one-line file
-	`rm $match_name $pgg_name $wgs_ani_name $att_name $new_match_name $new_pgg_name $new_att_name $new_clus_name`;
+	`rm $match_name $pgg_name $wgs_ani_name $new_match_name $new_pgg_name $new_att_name $new_clus_name`;
 	#`rm $match_name $pgg_name $wgs_ani_name $att_name $new_match_name $new_pgg_name $new_att_name $new_clus_name`;
 	#`rm $pgg_name $wgs_ani_name $new_match_name $new_pgg_name $new_att_name $new_clus_name`;
 	`rm $gene_ani_name $rearrange_name $split_gene_name $uniq_clus_name $uniq_edge_name`;
@@ -781,8 +781,9 @@ sub compute
     `mv tmp.PGG_stats.txt PGG_stats.txt`;
     #`rm core_neighbors $single_copy gene_ANI rearrange SplitGene wgs_ANI ALL_FILTER_FEATURES *_ce_sizes.txt`;
     `rm core_neighbors $single_copy gene_ANI rearrange SplitGene wgs_ANI *_ce_sizes.txt`;
-    `mkdir Anomalies CPU CALLS CoreRegions Stderr Stdout`;
+    `mkdir Attributes Anomalies CPU CALLS CoreRegions Stderr Stdout`;
     `mv *_anomalies.txt Anomalies`;
+    `mv *_attributes.txt Attributes`;
     `mv *_cpu* CPU`;
     `mv *_core_clus.txt CoreRegions`;
     `mv *_SELFBLAST.btab *_QUERY_SEQS.fasta *_ranges.txt *_CALLS *_COMBINED.btab *_PGG.btab CALLS`;
