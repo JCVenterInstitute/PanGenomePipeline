@@ -843,6 +843,8 @@ sub nw_align
 # use dynamic programming to find best alignment of query to subject DNA sequences where full alignment of query is desired so all terminal query gaps are penalized
 {
     my ($query, $subject) = @_;
+    $query = uc($query);
+    $subject = uc($subject);
     #print STDERR "LNW:", length($query), ":", length($subject), "\n";
     #print STDERR substr($query, 0, 80), "...", substr($query, -80), "\n";
     #print STDERR substr($subject, 0, 80), "...", substr($subject, -80), "\n";
