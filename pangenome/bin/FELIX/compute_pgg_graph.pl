@@ -359,6 +359,7 @@ sub compute
     `rm $blast_name`;
     my $all_files = $genome_name . "_*";
     #`rm $topology_name $single_copy $core_neighbors`; # remove the links for these
+    `mv $single_copy $core_neighbors ..`; # temporary debugging
     `mv $all_files ..`;
     return;
 }
