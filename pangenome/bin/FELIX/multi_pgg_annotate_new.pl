@@ -780,8 +780,8 @@ sub compute
     }
     `mv tmp.PGG_stats.txt PGG_stats.txt`;
     #`rm core_neighbors $single_copy gene_ANI rearrange SplitGene wgs_ANI ALL_FILTER_FEATURES *_ce_sizes.txt`;
-    #`rm core_neighbors $single_copy gene_ANI rearrange SplitGene wgs_ANI *_ce_sizes.txt`;
-    `rm gene_ANI rearrange SplitGene wgs_ANI *_ce_sizes.txt`;
+    `rm core_neighbors $single_copy gene_ANI rearrange SplitGene wgs_ANI *_ce_sizes.txt`;
+    #`rm gene_ANI rearrange SplitGene wgs_ANI *_ce_sizes.txt`;
     `mkdir Attributes Anomalies CPU CALLS CoreRegions Stderr Stdout`;
     `mv *_anomalies.txt Anomalies`;
     `mv *_attributes.txt Attributes`;
