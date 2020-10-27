@@ -2156,6 +2156,8 @@ sub refine_alignments
 		    $end_align = $reduced_by_region[$index]->{'send'};
 		}
 		if (($beg_align == 0) || ($end_align == 0)) {
+		    print STDERR "medoid sequence: $sequence\n";
+		    print STDERR "contig sequence: $contig_sequence\n";
 		    print STDERR "NWFINAL:$beg_align:$end_align:$num_matches:$s_offset:$s_extra\n";
 		    print STDERR "CTG:$contig COL:$col_index:$column:$columns_status{$contig}->[$col_index] MATCH:inv$reduced_by_region[$index]->{'sinv'}:qb$reduced_by_region[$index]->{'qbeg'}:qe$reduced_by_region[$index]->{'qend'}:ql$reduced_by_region[$index]->{'qlen'}:sb$reduced_by_region[$index]->{'sbeg'}:se$reduced_by_region[$index]->{'send'}:sl$reduced_by_region[$index]->{'ctglen'}\n";
 		    print STDERR "BLAST($column_scores{$contig}[$col_index]->{'best_score'}) $column:$reduced_by_region[$index]->{'clus'}($cluster_size[$reduced_by_region[$index]->{'clus'}]):$reduced_by_region[$index]->{'ctg'}:$reduced_by_region[$index]->{'pid'}:$reduced_by_region[$index]->{'qbeg'}:$reduced_by_region[$index]->{'qend'}:$reduced_by_region[$index]->{'qlen'}:$reduced_by_region[$index]->{'sbeg'}:$reduced_by_region[$index]->{'send'}:$reduced_by_region[$index]->{'sinv'}:$reduced_by_region[$index]->{'ctglen'}:$reduced_by_region[$index]->{'bits'}:$reduced_by_region[$index]->{'keepclus'}:$reduced_by_region[$index]->{'keepctg'}:$reduced_by_region[$index]->{'weak'}\n";
