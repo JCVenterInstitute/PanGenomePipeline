@@ -18,8 +18,8 @@ Input Flags:
 -segment_field - index of field from fasta header that is the segment identifier
 -help - Outputs this help text";
 
-GetOptions('name_fields' => \my $name_fields,
-	   'segment_field' => \my $segment_field,
+GetOptions('name_fields=s' => \my $name_fields,
+	   'segment_field=s' => \my $segment_field,
 	   'help' => \my $help);
 	
 if(!$name_fields || !$segment_field){
@@ -34,7 +34,7 @@ if($help){
 	
 #Globals
 my %segments_seen = ();         # key = segment name based on fasta header, value doesn't matter - existence shows that it has been seen already and should be ignored.
-my @header_indices = split(/,/, $name_fields);
+(my @header_indices) = split(/,/, $name_fields);
 my $first_index = shift (@header_indices);
 
 #####################################################################################################
@@ -45,13 +45,14 @@ sub read_genomes    # Read in the multifasta file, determine if a segment is a d
     $/="\n>";
     while ($line = <STDIN>) {
 	(my $title, my $sequence) = split(/\n/, $line, 2); # split the header line and sequence (very cool)
-	$title =~ s/>\s*//; # remove leading > and spaces
-	my @fields = split(/|/, $title);  # split the fasta header on | which separates the expected fields
+	$title =~ s/^>//; # remove leading > from first sequence
+	$title =~ s/^\s+//; # remove leading spaces
+	my @fields = split(/\|/, $title);  # split the fasta header on | which separates the expected fields
 	my $name = $fields[$first_index];
 	foreach my $index (@header_indices) {
 	    $name .= "_" . $fields[$index];
 	}
-	$name =~ s/\//-/g;
+	$name =~ tr{/}{:};
 	my $segment_key = $name . "_" . $fields[$segment_field];
 	if (!defined $segments_seen{$segment_key}) {
 	    $segments_seen{$segment_key} = 1;
