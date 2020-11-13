@@ -38,11 +38,9 @@ sub read_input    # Read in the 3 column input (name1, name2, distance)
     my $line;
     while ($line = <STDIN>) {
 	(my $name1, my $name2, my $distance) = split(/\t/, $line, 3);
-	if (!defined($removed{$name1}) && !defined($removed{$name2})) {
-	    if ($distance <= $threshold) {
-		print STDOUT "$name2\n";
-		$removed{$name2} = 1;
-	    }
+	if (($name1 ne $name2) && (!defined($removed{$name1}) && !defined($removed{$name2})) && ($distance <= $threshold)) {
+	    print STDOUT "$name2\n";
+	    $removed{$name2} = 1;
 	}
     }
     return;
