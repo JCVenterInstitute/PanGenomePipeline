@@ -60,6 +60,7 @@ my $qsub_queue = "himem";
 my $strip_version = 0;
 my $wall_time_limit = "24:00:00"; #set qsub wall time limit to 24 hours by default
 my $mem_req = "8gb"; #set qsub memory minimum requirement by default to 8 Gbyte
+my $combine_topology_ids = 0;
 
 GetOptions('genomes=s' => \ $genome_list_path,
 	   'new_genomes=s' => \ $new_genomes,
@@ -93,6 +94,7 @@ GetOptions('genomes=s' => \ $genome_list_path,
 	   'no_MSA' => \ $no_MSA,
 	   'no_filter_anomalies' => \ $no_filter_anomalies,
 	   'less_memory' => \ $less_memory,
+	   'combine_topology_ids' => \ $combine_topology_ids,
 	   'help' => \ $help,
 	   'debug' => \ $debug);
 
@@ -163,6 +165,7 @@ GetOptions('genomes=s' => \ genome_list_path,
 	   'no_MSA' => \ no_MSA,
 	   'no_filter_anomalies' => \ no_filter_anomalies,
 	   'less_memory' => \ less_memory,
+	   'combine_topology_ids' => \ combine_topology_ids,
 	   'help' => \ help,
 	   'debug' => \ debug);
 _EOB_
@@ -495,8 +498,11 @@ sub compute
     if ($blast_directory) {
 	$compute_path .= " -blast_directory $blast_directory ";
     }	
-    if ($blast_task) {
-	$compute_path .= " -blast_task $blast_task ";
+    if ($blast_directory) {
+	$compute_path .= " -blast_directory $blast_directory ";
+    }	
+    if ($combine_topology_ids) {
+	$compute_path .= " -combine_topology_ids ";
     }	
     if ($ld_load_directory) {
 	$compute_path .= " -ld_load_directory $ld_load_directory ";

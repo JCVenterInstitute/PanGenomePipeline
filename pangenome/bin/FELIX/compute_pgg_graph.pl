@@ -45,6 +45,7 @@ my $no_MSA = 0;
 my $no_filter_anomalies = 0;
 my $less_memory = 0;
 my $project = "8520";
+my $combine_topology_ids = 0;
 
 GetOptions('genome=s' => \ $genome_path,
 	   'weights=s' => \ $weights,
@@ -69,6 +70,7 @@ GetOptions('genome=s' => \ $genome_path,
 	   'no_filter_anomalies' => \ $no_filter_anomalies,
 	   'less_memory' => \ $less_memory,
 	   'reannotate' => \ $reannotate,
+	   'combine_topology_ids' => \ $combine_topology_ids,
 	   'debug' => \ $debug,
 	   'help' => \ $help);
 
@@ -156,6 +158,7 @@ GetOptions('genome=s' => \ genome_path,
 	   'no_filter_anomalies' => \ no_filter_anomalies,
 	   'less_memory' => \ less_memory,
 	   'reannotate' => \ reannotate,
+	   'combine_topology_ids' => \ combine_topology_ids,
 	   'debug' => \ debug,
 	   'help' => \ help);
 _EOB_
@@ -243,6 +246,9 @@ sub compute
     if ($keep_divergent_alignments) {
 	$pgg_multifasta_path .= " -k $keep_divergent_alignments ";
     }
+    if ($combine_topology_ids) {
+	$filter_anomalies_path .= " -combine_topology_ids ";
+    }	
     if ($blast_directory) {
 	$medoid_blast_path .= " -blast_directory $blast_directory ";
 	$filter_anomalies_path .= " -blast_directory $blast_directory ";

@@ -92,9 +92,11 @@ my $PGGdb;
 my $engdb;
 my $pggdb_topology_file;
 my $strip_version;
+my $combine_topology_ids = 0;
 
 GetOptions('genomes=s' => \ $genomes,
 	'strip_version' => \ $strip_version,
+	'combine_topology_ids' => \ $combine_topology_ids,
 	'help' => \ $help,
 	'debug' => \ $debug,
 	'bin_directory=s' => \ $bin_directory,
@@ -153,6 +155,7 @@ if ($help) {
 GetOptions('genomes=s' => genomes,
 	'help' => help,
 	'debug' => debug,
+	'combine_topology_ids' => \ combine_topology_ids,
 	'strip_version' => \ strip_version,
 	'bin_directory=s' => \ bin_directory,
 	'blast_directory=s' => \ blast_directory,
@@ -264,6 +267,9 @@ while (<CIRCFILE>) {
     }
     if ($strip_version) {
 	$asmbl_id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
+    }
+    if ($combine_topology_ids) {
+	$asmbl_id = $tag . "_" . $asmbl_id;
     }
     if (!defined $pggdb_contigs{$asmbl_id}) {
 	die ("ERROR: $asmbl_id is a contig in the pggdb contig topology file $pggdb_topology_file but not in the pggdb fasta file $PGGdb!\nLine:\n$_\n");
