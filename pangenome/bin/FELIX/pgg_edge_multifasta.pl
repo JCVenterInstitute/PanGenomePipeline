@@ -69,6 +69,8 @@ my $qsub_queue = "himem";
 my $wall_time_limit = "24:00:00"; #set qsub wall time limit to 24 hours by default
 my $mem_req = "2gb"; #set qsub memory minimum requirement by default to 2 Gbyte
 my $MAX_ALIGN_EDGE = 30000; #maximum length of an edge that we are willing to multiple sequence align to
+my $MIN_ALIGN_EDGE = 5; #minimum length of an edge that we are willing to multiple sequence align to
+my $MIN_PGG_PID = 98; #minimum threshold to perform multiple sequence alignment of genomes - must be below this threshold to align
 
 if ($opt_W) { # should really check time format
     $wall_time_limit = $opt_W;
@@ -182,7 +184,7 @@ my $num_size_one_edge = 0;
 my $num_shared_edge = 0;
 my $num_core_edge = 0;
 my $num_reduced_edge = 0;
-my $cpu_name = "$target_id" . "_pem_cpu_separate_stats";
+#my $cpu_name = "$target_id" . "_pem_cpu_separate_stats";
 my %single_copy_core = ();     # key = cluster number, value is defined if single copy core otherwise undefiend
 my %is_circular = ();          # key1 = genome ID, key2 = contig_name, value = 1 if circular 0 otherwise
 my %feat_hash = ();            # Key1 = feat_name Key2 = struct members with their values (5p,3p,anno,gtag, contig)
@@ -768,6 +770,7 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 
 sub get_attributes {
 
+    my $med_pid = "";
     my $tag = "";
     my $end5 = "";
     my $end3 = "";
@@ -789,6 +792,9 @@ sub get_attributes {
 	$end3 = $att_line[3];
 	$anno = $att_line[4];
 	$tag = $att_line[5];
+	if ($tag eq $target_id) {
+	    $med_pid = $att_line[6];
+	}
 	if ($ignore_id eq $tag) {
 	    #print STDERR "$ignore_id:$ignore_index:$tag:$feat_name\n" if ($DEBUG);
 	    next; #skip over the genome to be ignored
@@ -816,6 +822,9 @@ sub get_attributes {
 	$feat_hash{$feat_name}->{'anno'} = $anno;
 	$feat_hash{$feat_name}->{'gtag'} = $tag;
 	$feat_hash{$feat_name}->{'contig'} = $asmbl_id;
+	if ($tag eq $target_id) {
+	    $feat_hash{$feat_name}->{'mpid'} = $med_pid; #this is the percentage identity of the medoid blast hit from the PGG annotation of the target genome
+	}
 	#print STDERR "$feat_name $feat_hash{$feat_name}->{'anno'} $feat_hash{$feat_name}->{'5p'} $feat_hash{$feat_name}->{'3p'} $feat_hash{$feat_name}->{'gtag'} $feat_hash{$feat_name}->{'contig'}\n" if ($DEBUG);
     }
     close (ATTFILE);
@@ -1310,7 +1319,7 @@ sub process_matchtable {
 			    } else {
 				$uniq_clus_alle_25_75{$target_id}++;
 			    }
-			    if ($align_new) {
+			    if (($align_new) && ($feat_hash{$feat_name}->{'mpid'} < $MIN_PGG_PID)) {
 				print STDERR "$target_id\t$cluster_id\t$seq_len\t$median_25\t$median\t$median_75\n" if ($DEBUG);
 				if (($seq_len >= ($median_25 - (0.1 * $median))) && ($seq_len <= ($median_75 + (0.1 * $median)))) {
 				    my $mf_file = "$multifastadir/cluster_$cluster_id.fasta";
@@ -1354,28 +1363,31 @@ sub process_matchtable {
 					if (-s $msa_file) {
 					    my $muscle_args = " -profile -in1 $msa_file -in2 $seq_file -out $combined_file -diags -quiet -verbose";
 					    my $muscle_exec = $muscle_path . $muscle_args;
-					    `/usr/bin/time -o tmp_cpu_stats -v $muscle_exec`;
-					    `echo "***$muscle_exec***length($seq_len)" >> $cpu_name`;
-					    `cat tmp_cpu_stats >> $cpu_name`;
-					    `rm tmp_cpu_stats`;
+					    `$muscle_exec`;
+					    #`/usr/bin/time -o tmp_cpu_stats -v $muscle_exec`;
+					    #`echo "***$muscle_exec***length($seq_len)" >> $cpu_name`;
+					    #`cat tmp_cpu_stats >> $cpu_name`;
+					    #`rm tmp_cpu_stats`;
 					    &bash_error_check($muscle_exec, $?, $!);
 					} elsif (-s $mf_file) {
 					    `cat $mf_file >> $seq_file`;
 					    my $muscle_args = " -in $seq_file -out $combined_file -diags -quiet -verbose";
 					    my $muscle_exec = $muscle_path . $muscle_args;
-					    `/usr/bin/time -o tmp_cpu_stats -v $muscle_exec`;
-					    `echo "***$muscle_exec***length($seq_len)" >> $cpu_name`;
-					    `cat tmp_cpu_stats >> $cpu_name`;
-					    `rm tmp_cpu_stats`;
+					    `$muscle_exec`;
+					    #`/usr/bin/time -o tmp_cpu_stats -v $muscle_exec`;
+					    #`echo "***$muscle_exec***length($seq_len)" >> $cpu_name`;
+					    #`cat tmp_cpu_stats >> $cpu_name`;
+					    #`rm tmp_cpu_stats`;
 					    &bash_error_check($muscle_exec, $?, $!);
 					}
 					my $stats_path = "$bin_directory/summarize_alignment.R";
 					my $stats_args = " $combined_file $target_id";
 					my $stats_exec = $rscript_path . " " . $stats_path . $stats_args;
-					`/usr/bin/time -o tmp_cpu_stats -v $stats_exec > $com_stats_file`;
-					`echo "***$stats_exec***" >> $cpu_name`;
-					`cat tmp_cpu_stats >> $cpu_name`;
-					`rm tmp_cpu_stats`;
+					`$stats_exec > $com_stats_file`;
+					#`/usr/bin/time -o tmp_cpu_stats -v $stats_exec > $com_stats_file`;
+					#`echo "***$stats_exec***" >> $cpu_name`;
+					#`cat tmp_cpu_stats >> $cpu_name`;
+					#`rm tmp_cpu_stats`;
 					&bash_error_check("$stats_exec > $com_stats_file", $?, $!);
 					unless (open (STATSFILE, "<", $com_stats_file) )  {
 					    die ("ERROR: cannot open file $com_stats_file\n");
@@ -2157,7 +2169,7 @@ sub process_pgg {
 				} else {
 				    $uniq_edge_alle_25_75{$target_id}++;
 				}
-				if ($align_new) {
+				if (($align_new) && ($seq_len >= $MIN_ALIGN_EDGE)) {
 				    print STDERR "$target_id\t$edge_id\t$seq_len\t$median_25\t$median\t$median_75\n" if ($DEBUG);
 				    if (($seq_len >= ($median_25 - (0.1 * $median))) && ($seq_len <= ($median_75 + (0.1 * $median)))) {
 					my $mf_file = "$multifastadir/$edge_id.fasta";
@@ -2201,28 +2213,31 @@ sub process_pgg {
 					    if (-s $msa_file) {
 						my $muscle_args = " -profile -in1 $msa_file -in2 $seq_file -out $combined_file -diags -quiet -verbose";
 						my $muscle_exec = $muscle_path . $muscle_args;
-						`/usr/bin/time -o tmp_cpu_stats -v $muscle_exec`;
-						`echo "***$muscle_exec***length($seq_len)" >> $cpu_name`;
-						`cat tmp_cpu_stats >> $cpu_name`;
-						`rm tmp_cpu_stats`;
+						`$muscle_exec`;
+						#`/usr/bin/time -o tmp_cpu_stats -v $muscle_exec`;
+						#`echo "***$muscle_exec***length($seq_len)" >> $cpu_name`;
+						#`cat tmp_cpu_stats >> $cpu_name`;
+						#`rm tmp_cpu_stats`;
 						&bash_error_check($muscle_exec, $?, $!);
 					    } elsif (-s $mf_file) {
 						`cat $mf_file >> $seq_file`;
 						my $muscle_args = " -in $seq_file -out $combined_file -diags -quiet -verbose";
 						my $muscle_exec = $muscle_path . $muscle_args;
-						`/usr/bin/time -o tmp_cpu_stats -v $muscle_exec`;
-						`echo "***$muscle_exec***length($seq_len)" >> $cpu_name`;
-						`cat tmp_cpu_stats >> $cpu_name`;
-						`rm tmp_cpu_stats`;
+						`$muscle_exec`;
+						#`/usr/bin/time -o tmp_cpu_stats -v $muscle_exec`;
+						#`echo "***$muscle_exec***length($seq_len)" >> $cpu_name`;
+						#`cat tmp_cpu_stats >> $cpu_name`;
+						#`rm tmp_cpu_stats`;
 						&bash_error_check($muscle_exec, $?, $!);
 					    }
 					    my $stats_path = "$bin_directory/summarize_alignment.R";
 					    my $stats_args = " $combined_file $target_id";
 					    my $stats_exec = $rscript_path . " " . $stats_path . $stats_args;
-					    `/usr/bin/time -o tmp_cpu_stats -v $stats_exec > $com_stats_file`;
-					    `echo "***$stats_exec***" >> $cpu_name`;
-					    `cat tmp_cpu_stats >> $cpu_name`;
-					    `rm tmp_cpu_stats`;
+					    `$stats_exec > $com_stats_file`;
+					    #`/usr/bin/time -o tmp_cpu_stats -v $stats_exec > $com_stats_file`;
+					    #`echo "***$stats_exec***" >> $cpu_name`;
+					    #`cat tmp_cpu_stats >> $cpu_name`;
+					    #`rm tmp_cpu_stats`;
 					    &bash_error_check("$stats_exec > $com_stats_file", $?, $!);
 					    unless (open (STATSFILE, "<", $com_stats_file) )  {
 						die ("ERROR: cannot open file $com_stats_file\n");
@@ -2395,7 +2410,7 @@ sub bash_error_check {
 sub launch_grid_job {
 # Given a shell script, launch it via qsub.
 
-    my ( $name, $project_code, $working_dir, $shell_script, $stdoutdir, $stderrdir, $queue, $job_array_max ) = @_;
+    my ( $qsub_exec, $name, $project_code, $working_dir, $shell_script, $stdoutdir, $stderrdir, $queue, $job_array_max ) = @_;
 
     my $qsub_command = "qsub -V -o $stdoutdir -e $stderrdir -r n -N $name -l walltime=$wall_time_limit,mem=$mem_req";
     if ($queue eq "NONE") {
@@ -2410,7 +2425,7 @@ sub launch_grid_job {
 
     #$qsub_command .= " $shell_script";
     $qsub_job_num++;
-    my $qsub_exec = $cwd . "/TMP_" . $qsub_job_num . "_" . $name;
+    #my $qsub_exec = $cwd . "/TMP_" . $qsub_job_num . "_" . $name;
     unless (open(OUT_QSUB, ">", $qsub_exec)) {
 	die ("cannot open qsub executable file $qsub_exec!\n");
     }
@@ -2555,8 +2570,9 @@ sub compute_alignments
 	my $stdoutfile = $cwd . "/" . $identifier . "_stdout";
 	my $stderrfile = $cwd . "/" . $identifier . "_stderr";
 	my $working_dir = $cwd;
+	my $qsub_exec = "TMP_qsub_" . $identifier;
 	print STDERR "Launched $muscle_exec\n" if ($DEBUG);
-	$job_ids{&launch_grid_job($job_name, $project, $working_dir, $muscle_exec, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
+	$job_ids{&launch_grid_job($qsub_exec, $job_name, $project, $working_dir, $muscle_exec, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
 	$num_jobs++;
 	$total_jobs++;
 	if ($num_jobs >= $max_grid_jobs) {
@@ -2568,6 +2584,10 @@ sub compute_alignments
     foreach my $line (@mf_files) {
 	(my $mf_file, my $num_alleles, my $empty) = split(/\t/, $line);  # split the scalar $line on tab
 	my $msa_file = $mf_file;
+	my $identifier = basename($mf_file);
+	$identifier =~ s/\.fasta$//;
+	my $stdoutfile = $cwd . "/" . $identifier . "_stdout";
+	my $stderrfile = $cwd . "/" . $identifier . "_stderr";
 	$msa_file =~ s/\.fasta$//;
 	$msa_file .= ".afa";
 	if ($num_alleles <= 1) {
@@ -2575,6 +2595,10 @@ sub compute_alignments
 	}
 	if ((-e $msa_file) && (-s $msa_file)) {
 	    push (@msa_files, $msa_file);
+	    if (-e $stderrfile) {
+		my $qsub_exec = "TMP_qsub_" . $identifier;
+		`rm $stderrfile $stdoutfile $qsub_exec`;
+	    }
 	    next; # skip if file already exists and is not zero size
 	}
 	$num_jobs++;
@@ -2590,6 +2614,11 @@ sub compute_alignments
 	    foreach my $line (@mf_files) {
 		(my $mf_file, my $num_alleles, my $empty) = split(/\t/, $line);  # split the scalar $line on tab
 		my $msa_file = $mf_file;
+		my $identifier = basename($mf_file);
+		$identifier =~ s/\.fasta$//;
+		my $qsub_exec = "TMP_qsub_" . $identifier;
+		my $stdoutfile = $cwd . "/" . $identifier . "_stdout";
+		my $stderrfile = $cwd . "/" . $identifier . "_stderr";
 		$msa_file =~ s/\.fasta$//;
 		$msa_file .= ".afa";
 		if ($num_alleles <= 1) {
@@ -2597,17 +2626,16 @@ sub compute_alignments
 		}
 		if ((-e $msa_file) && (-s $msa_file)) {
 		    push (@msa_files, $msa_file);
+		    if (-e $stderrfile) {
+			`rm $stderrfile $stdoutfile $qsub_exec`;
+		    }
 		    next; # skip if file already exists and is not zero size
 		}
-		my $identifier = basename($mf_file);
-		$identifier =~ s/\.fasta$//;
 		my $muscle_args = " -in $mf_file -out $msa_file -diags -quiet -verbose";
 		my $muscle_exec = $muscle_path . $muscle_args;
-		my $stdoutfile = $cwd . "/" . $identifier . "_stdout";
-		my $stderrfile = $cwd . "/" . $identifier . "_stderr";
 		my $working_dir = $cwd;
 		print STDERR "Relaunched $muscle_exec\n" if ($DEBUG);
-		$job_ids{&launch_grid_job($job_name, $project, $working_dir, $muscle_exec, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
+		$job_ids{&launch_grid_job($qsub_exec, $job_name, $project, $working_dir, $muscle_exec, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
 		$num_jobs++;
 	    }
 	    if ($num_jobs == 0) {
@@ -2620,7 +2648,6 @@ sub compute_alignments
     if ($num_jobs > 0) {
 	die "Too many Muscle grid jobs failed $num_jobs\n";
     }
-    `rm TMP_* *_stderr *_stdout`;
     print STDERR "$num_jobs failed Muscle jobs\n";
     my $stats_path = "$bin_directory/summarize_alignment.R";
     $job_name = "pggstat_" . $$; #use a common job name so that qacct can access all of them together
@@ -2642,8 +2669,9 @@ sub compute_alignments
 	my $stdoutfile = $stats_file;
 	my $stderrfile = $cwd . "/" . $identifier . "_stderr";
 	my $working_dir = $cwd;
+	my $qsub_exec = "TMP_qsub_" . $identifier;
 	print STDERR "Launched $stats_exec\n" if ($DEBUG);
-	$job_ids{&launch_grid_job($job_name, $project, $working_dir, $stats_exec, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
+	$job_ids{&launch_grid_job($qsub_exec, $job_name, $project, $working_dir, $stats_exec, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
 	$num_jobs++;
 	$total_jobs++;
 	if ($num_jobs >= $max_grid_jobs) {
@@ -2654,9 +2682,16 @@ sub compute_alignments
     $num_jobs = 0;
     foreach my $msa_file (@msa_files) {
 	my $stats_file = $msa_file;
+	my $identifier = basename($msa_file);
+	$identifier =~ s/\.fasta$//;
+	my $stderrfile = $cwd . "/" . $identifier . "_stderr";
 	$stats_file =~ s/\.afa$//;
 	$stats_file .= ".stats";
 	if ((-e $stats_file) && (-s $stats_file)) {
+	    if (-e $stderrfile) {
+		my $qsub_exec = "TMP_qsub_" . $identifier;
+		`rm $stderrfile $qsub_exec`;
+	    }
 	    next; # skip if file already exists and is not zero size
 	}
 	$num_jobs++;
@@ -2670,20 +2705,24 @@ sub compute_alignments
 	    $num_jobs = 0;
 	    foreach my $msa_file (@msa_files) {
 		my $stats_file = $msa_file;
+		my $identifier = basename($msa_file);
+		$identifier =~ s/\.afa$//;
+		my $stderrfile = $cwd . "/" . $identifier . "_stderr";
+		my $qsub_exec = "TMP_qsub_" . $identifier;
 		$stats_file =~ s/\.afa$//;
 		$stats_file .= ".stats";
 		if ((-e $stats_file) && (-s $stats_file)) {
+		    if (-e $stderrfile) {
+			`rm $stderrfile $qsub_exec`;
+		    }
 		    next; # skip if file already exists and is not zero size
 		}
-		my $identifier = basename($msa_file);
-		$identifier =~ s/\.afa$//;
 		my $stats_args = " $msa_file";
 		my $stats_exec = $rscript_path . " " . $stats_path . $stats_args;
 		my $stdoutfile = $stats_file;
-		my $stderrfile = $cwd . "/" . $identifier . "_stderr";
 		my $working_dir = $cwd;
 		print STDERR "Relaunched $stats_exec\n";
-		$job_ids{&launch_grid_job($job_name, $project, $working_dir, $stats_exec, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
+		$job_ids{&launch_grid_job($qsub_exec, $job_name, $project, $working_dir, $stats_exec, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
 		$num_jobs++;
 	    }
 	    if ($num_jobs == 0) {
@@ -2697,7 +2736,6 @@ sub compute_alignments
 	die "Too many Alignment Stats grid jobs failed $num_jobs\n";
     }
     print STDERR "$num_jobs failed Summarize alignment jobs\n";
-    `rm TMP_* *_stderr *_stdout`;
     return;
 }
 
