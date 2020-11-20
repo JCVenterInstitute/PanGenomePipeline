@@ -2250,6 +2250,7 @@ sub output_files
 		(my $clus, my $index) = split('_', $column);
 		my $beg_align = $reduced_by_region[$index]->{'sbeg'};
 		my $end_align = $reduced_by_region[$index]->{'send'};
+		my $mpid = $reduced_by_region[$index]->{'pid'};
 		if ($medoids_len[$clus] != $reduced_by_region[$index]->{'qlen'}) {
 		    print STDERR "COL$col_index:$column:$columns_status{$contig}->[$col_index]:$reduced_by_region[$index]->{'sinv'}:$beg_align:$end_align\n";
 		    print STDERR "or: $clus_orient por: $prev_clus_orient for: $first_clus_orient nor: $next_clus_orient cor: $core_orient cpor: $prev_core_orient cnor: $next_core_orient es: $edge_start ee: $edge_end ces: $core_edge_start cee: $core_edge_end fee: $first_edge_end cs: $core_start ce: $core_end\n";
@@ -2336,7 +2337,7 @@ sub output_files
 			    print $geneANIfile "$target\t$contig\tgeneANI\t$beg_align\t$end_align\t$tmp_len\t$ortholog\n";
 			}
 		    }
-		    print $attributefile "$medoids_anno[$clus]\t$target\n";
+		    print $attributefile "$medoids_anno[$clus]\t$target\t$mpid\n";
 		    my $matchlen = ($reduced_by_region[$index]->{'qend'} - $reduced_by_region[$index]->{'qbeg'}) + 1;
 		    $sumANI += $reduced_by_region[$index]->{'pid'} * $matchlen;
 		    $sumANIlen += $matchlen;
@@ -2392,7 +2393,7 @@ sub output_files
 			print $new_attributefile "$beg_align\t$end_align\t";
 			print $uniqclusfile "$target\t$contig\tuniq_clus\t$beg_align\t$end_align\t$tmp_len\t$paralog\n";
 		    }
-		    print $new_attributefile "$medoids_anno[$clus]\t$target\n";
+		    print $new_attributefile "$medoids_anno[$clus]\t$target\t$mpid\n";
 		    print $newclusfile "$target\t$paralog\t$nearest{$contig}[$col_index][$NEAR_5]\t$nearest{$contig}[$col_index][$NEAR_3]\t$nearest{$contig}[$col_index][$CORE_5]\t$nearest{$contig}[$col_index][$CORE_3]\n";
 		    if ($reannotate) {
 			&write_seq($seqsfile, $paralog, $contig, $index);

@@ -246,6 +246,9 @@ sub compute
     if ($keep_divergent_alignments) {
 	$pgg_multifasta_path .= " -k $keep_divergent_alignments ";
     }
+    if ($strip_version) {
+	$filter_anomalies_path .= " -strip_version ";
+    }
     if ($combine_topology_ids) {
 	$filter_anomalies_path .= " -combine_topology_ids ";
     }	

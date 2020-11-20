@@ -328,6 +328,9 @@ while (my $line = <$infile>)  {
 	    $contigs{$id} = $sequence;
 	    $contig_len{$id} = $contig_length;
 	    #print STDERR "\t$id";
+	} else {
+	    $contigs{$id} = "IGNORE";
+	    $contig_len{$id} = 0;
 	}
 	#print STDERR "\n";
 	$title = ""; # clear the title for the next contig
@@ -402,6 +405,9 @@ while (my $line = <$infile>)  {
 	$contig =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
 	if (!defined $contigs{$contig}) {
 	    die ("ERROR: $contig is a contig in the anomalies file $anomalies but not in the genome fasta file $genome!\n$line\n");
+	}
+	if ($contigs{$contig} eq "IGNORE") {
+	    next;
 	}
 	if ($split_line[3] < $split_line[4]) {
 	    if ((($contig_len{$contig} - $split_line[4]) + 1 + $split_line[3]) == $split_line[5]) {
@@ -628,7 +634,7 @@ while (my $line = <$infile>)  {
 	    last;
 	}
 	$cur_contig = $ordered[$i][CONTIG];
-	if (!defined $contigs{$cur_contig}) {
+	if ((!defined $contigs{$cur_contig}) || ($contigs{$cur_contig} eq "IGNORE")) {
 	    #print STDERR "triaged: $cur_contig\n";
 	    next; # skip triaged contigs
 	}
