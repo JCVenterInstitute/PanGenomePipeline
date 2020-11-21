@@ -229,7 +229,9 @@ while ($pggdb_line = <$pggdbfile>) {
     my @fields = split(/\s+/, $title);  # split the scalar $line on space or tab (to separate the identifier from the header and store in array @line
     my $id = $fields[0]; # unique orf identifier is in column 0, com_name is in rest
     $id =~ s/>\s*//; # remove leading > and spaces
-    #$id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
+    if ($strip_version) {
+	$id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
+    }
     $sequence =~ s/[^a-zA-Z]//g; # remove any non-alphabet characters
     $pggdb_contig_len{$id} = length($sequence);
     $title = ""; # clear the title for the next contig
@@ -246,7 +248,9 @@ while ($pggdb_line = <$pggdbfile>) {
 	my @fields = split(/\s+/, $pggdb_line);  # split the scalar $line on space or tab (to separate the identifier from the header and store in array @line
 	my $id = $fields[0]; # unique orf identifier is in column 0, com_name is in rest
 	$id =~ s/>\s*//; # remove leading > and spaces
-	#$id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
+	if ($strip_version) {
+	    $id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
+	}
 	$pggdb_contigs{$id} = tell($pggdbfile); # save location of start of sequence
     }
 }
@@ -869,6 +873,9 @@ while (my $line = <$infile>)  {
 	my @split_line = split(/\t/,$line);
 	my $qid = $pgg_blast_results[$count][QSEQID] = $split_line[0];         # query id
 	my $sid = $pgg_blast_results[$count][SSEQID] = $split_line[1];         # subject id
+	if ($strip_version) {
+	    $sid =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
+	}
 	my $pid = $pgg_blast_results[$count][PIDENT] = $split_line[2];         # percent identity
 	my $qstart = $pgg_blast_results[$count][QSTART] = $split_line[3];      # query start
 	my $qend = $pgg_blast_results[$count][QEND] = $split_line[4];          # query end
