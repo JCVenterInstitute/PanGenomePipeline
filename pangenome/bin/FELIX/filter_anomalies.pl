@@ -391,7 +391,7 @@ while (my $line = <$infile>)  {
 	    next; # ignore negative or zero length edge anomalies
 	}
 	if ($split_line[5] > MAXEDGELEN) {
-	    die ("ERROR: not expecting length of any anomaly to be greater than 100,000bp\n$line\n"); # die on long length edge anomalies
+	    print STDERR "WARNING: not expecting length of any anomaly to be greater than 100,000bp\n$line\n"; # warn on long length edge anomalies
 	}
 	my $category = $split_line[2];
 	if (($category =~ /^divergent/) || ($category =~ /^very/) || ($category eq "uniq_edge")) {
@@ -413,20 +413,22 @@ while (my $line = <$infile>)  {
 	if ($contigs{$contig} eq "IGNORE") {
 	    next;
 	}
-	if ($split_line[3] < $split_line[4]) {
-	    if ((($contig_len{$contig} - $split_line[4]) + 1 + $split_line[3]) == $split_line[5]) {
-		if ($split_line[4] > $contig_len{$contig}) {
-		    $split_line[4] -= $contig_len{$contig}; # correct for going around the end
-		} else {
-		    $split_line[3] += $contig_len{$contig}; # correct for going around the end
+	if ($is_circular{$contig}) {
+	    if ($split_line[3] < $split_line[4]) {
+		if (((($contig_len{$contig} - $split_line[4]) + 1 + $split_line[3]) == $split_line[5]) && ((($split_line[4] - $split_line[3]) + 1) != $split_line[5])) {
+		    if ($split_line[4] > $contig_len{$contig}) {
+			$split_line[4] -= $contig_len{$contig}; # correct for going around the end
+		    } else {
+			$split_line[3] += $contig_len{$contig}; # correct for going around the end
+		    }
 		}
-	    }
-	} else {
-	    if ((($contig_len{$contig} - $split_line[3]) + 1 + $split_line[4]) == $split_line[5]) {
-		if ($split_line[3] > $contig_len{$contig}) {
-		    $split_line[3] -= $contig_len{$contig}; # correct for going around the end
-		} else {
-		    $split_line[4] += $contig_len{$contig}; # correct for going around the end
+	    } else {
+		if (((($contig_len{$contig} - $split_line[3]) + 1 + $split_line[4]) == $split_line[5]) && ((($split_line[3] - $split_line[4]) + 1) != $split_line[5])) {
+		    if ($split_line[3] > $contig_len{$contig}) {
+			$split_line[3] -= $contig_len{$contig}; # correct for going around the end
+		    } else {
+			$split_line[4] += $contig_len{$contig}; # correct for going around the end
+		    }
 		}
 	    }
 	}
@@ -779,7 +781,7 @@ while (my $line = <$infile>)  {
 
     # output entire contigs with no annotation
     foreach my $id (keys %contigs)  { # go through all contigs
-	if (!defined $seen_contig{$id}) {
+	if ((!defined $seen_contig{$id}) && ($contigs{$id} ne "IGNORE")) {
 	    #print STDERR "not seen: $id\t$contig_len{$id}\n";
 	    my $tmp_seq = substr($contigs{$id}, 0, $contig_len{$id});
 	    if ($tmp_seq !~ /NNNNN/) { # do not use sequences with gaps in them - perhaps should split on gaps instead
