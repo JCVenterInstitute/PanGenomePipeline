@@ -29,6 +29,7 @@ Input Flags:
 -blast_task - blast task to use, typically blastn or megablast - default is blastn
 -strip_version - strip versions from contig names
 -filter_anomalies - called for filter anomalies rather than medoid search
+-combine_topology_ids - flag to use when the ids in the topology file need to be combined to create the id in contig file
 -help - Outputs this help text";
 
 GetOptions('medoids=s' => \my $medoids,
@@ -39,6 +40,7 @@ GetOptions('medoids=s' => \my $medoids,
 	   'topology=s' => \my $topology_file,
 	   'blastout=s' => \my $blastout,
 	   'filter_anomalies' => \my $filter_anomalies,
+	   'combine_topology_ids' => \ my $combine_topology_ids,
 	   'strip_version' => \my $strip_version,
 	   'help' => \my $help);
 	
@@ -114,8 +116,11 @@ sub read_topology {
 	if ($strip_version) {
 	    $asmbl_id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
 	}
+	if ($combine_topology_ids) {
+	    $asmbl_id = $tag . "_" . $asmbl_id;
+	}
 	if (!defined $contigs{$asmbl_id}) {
-	    die ("ERROR: $asmbl_id is a contig in the contig topology file but not in the genome fasta file $genome!\nLine:\n$_\n");
+	    die ("ERROR: $asmbl_id is a contig in the contig topology file $topology_file but not in the genome fasta file $genome!\nLine:\n$_\n");
 	}
 	if (defined $is_circular{$asmbl_id}) {
 	    die ("ERROR: $asmbl_id occurs multiple times in the topology file $topology_file\n");
