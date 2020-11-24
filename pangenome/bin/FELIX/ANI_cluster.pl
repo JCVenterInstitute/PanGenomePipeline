@@ -48,7 +48,11 @@ sub read_input    # Read in the 3 column input (name1, name2, distance)
     my $line;
     while ($line = <$distance_handle>) {
 	(my $name1, my $name2, my $distance) = split(/\t/, $line, 3);
-	if (($name1 ne $name2) && ($distance <= $threshold)) {
+	if ($name1 eq $name2) {
+	    $cluster_name{$name1} = $name1;
+	    next;
+	}
+	if ($distance <= $threshold) {
 	    if (!defined($cluster_name{$name1})) {
 		if (!defined($cluster_name{$name2})) {
 		    $cluster_name{$name1} = $cluster_name{$name2} = $name1;
