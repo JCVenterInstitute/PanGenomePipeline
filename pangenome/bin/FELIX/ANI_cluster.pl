@@ -11,13 +11,15 @@ use Carp;
 use strict;
 use warnings;
 
-my $help_text = "This program reads in a 3 column tab delimitted file from standard in. The 3 columns are the first three from mash dist runs: name1, name2, distance. This program outputs to files in the current directory single-linkage clusters using the threshold. The files are named after the founding genome and have suffix .cluster.
+my $help_text = "This program reads in a 3 column tab delimitted file from the distances option file. The 3 columns are the first three from mash dist runs: name1, name2, distance. This program outputs to files in the current directory single-linkage clusters using the threshold. The files are named after the founding genome and have suffix .cluster.
 
 Input Flags:
 -threshold - used for column 3 to see if two genomes should be clustered <= (default 0.02)
+-distance - file name of distances data
 -help - outputs this help text";
 
 GetOptions('threshold=s' => \my $threshold,
+	   'distances=s' => \my $distance_file,
 	   'help' => \my $help);
 	
 if(!$threshold) {
@@ -30,13 +32,21 @@ if($help){
 }
 	
 #Globals
-my %cluster_name = ();         # key = name, value is the name of the founding cluster - with adjustments when clusters are merged.
+my %cluster_name = ();         # key = genome name, value is the name of the founding cluster - with adjustments when clusters are merged.
+my %dist_sum = ();             # key = genome name, value is the sum of distances within the cluster this genome is in
+my %medoid_dist_sum = ();      # key = cluster head name, value is the minimum sum of distances
+my %medoid = ();               # key = cluster head name, value is the medoid genome name
+my %cluster_size = ();         # key = cluster head name, value is the size of the cluster
 
 #####################################################################################################
 sub read_input    # Read in the 3 column input (name1, name2, distance)
 {
+    my $distance_handle;
+    unless (open ($distance_handle, "<", $distance_file) )  {
+	die ("cannot open file $distance_file!\n");
+    }
     my $line;
-    while ($line = <STDIN>) {
+    while ($line = <$distance_handle>) {
 	(my $name1, my $name2, my $distance) = split(/\t/, $line, 3);
 	if (($name1 ne $name2) && ($distance <= $threshold)) {
 	    if (!defined($cluster_name{$name1})) {
@@ -64,6 +74,7 @@ sub read_input    # Read in the 3 column input (name1, name2, distance)
 	    }
 	}
     }
+    close($distance_handle);
 	
     return;
 }
@@ -76,6 +87,7 @@ sub write_cluster_files    # Write out the single-linkage cluster files with nam
 	while ($head ne $cluster_name{$head}) {
 	    $head = $cluster_name{$head};
 	}
+	$cluster_name{$name} = $head;
 	my $cluster_file = $head . ".cluster";
 	my $cluster_handle;
 	unless (open ($cluster_handle, ">>", $cluster_file) )  {
@@ -84,6 +96,47 @@ sub write_cluster_files    # Write out the single-linkage cluster files with nam
 	print $cluster_handle "$name\n";
 	close($cluster_handle);
     }
+    my $medoid_file = $distance_file . ".medoids";
+    my $medoid_handle;
+    unless (open ($medoid_handle, ">", $medoid_file) )  {
+	die ("cannot open file $medoid_file!\n");
+    }
+    my $distance_handle;
+    unless (open ($distance_handle, "<", $distance_file) )  {
+	die ("cannot reopen file $distance_file!\n");
+    }
+    my $line;
+    while ($line = <$distance_handle>) {
+	(my $name1, my $name2, my $distance) = split(/\t/, $line, 3);
+	if (($name1 ne $name2) && ($cluster_name{$name1} eq $cluster_name{$name2})) {
+	    if (!defined($dist_sum{$name1})) {
+		$dist_sum{$name1} = 0;
+	    }
+	    if (!defined($dist_sum{$name2})) {
+		$dist_sum{$name2} = 0;
+	    }
+	    $dist_sum{$name1} += $distance;
+	    $dist_sum{$name2} += $distance;
+	}
+    }
+    close($distance_handle);
+    foreach my $name (keys %cluster_name)  { # go through all the nodes of the cluster trees
+	if ((!defined($medoid_dist_sum{$cluster_name{$name}})) || ($dist_sum{$name} < $medoid_dist_sum{$cluster_name{$name}})) {
+	    $medoid_dist_sum{$cluster_name{$name}} = $dist_sum{$name};
+	    $medoid{$cluster_name{$name}} = $name;
+	}
+	if (!defined($cluster_size{$cluster_name{$name}})) {
+	    $cluster_size{$cluster_name{$name}} = 1;
+	} else {
+	    $cluster_size{$cluster_name{$name}}++;
+	}
+    }
+    my $cluster_num = 0;
+    foreach my $medoid_name (keys %medoid)  { # go through all the medoids
+	$cluster_num++;
+	print $medoid_handle "$cluster_num\t$cluster_size{$medoid_name}\t$medoid_name\t$cluster_name{$medoid_name}\n";
+    }
+    close($medoid_handle);
 	
     return;
 }
