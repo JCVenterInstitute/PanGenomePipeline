@@ -112,19 +112,22 @@ sub write_cluster_files    # Write out the single-linkage cluster files with nam
     my $line;
     while ($line = <$distance_handle>) {
 	(my $name1, my $name2, my $distance) = split(/\t/, $line, 3);
-	if (($name1 ne $name2) && ($cluster_name{$name1} eq $cluster_name{$name2})) {
+	if ($cluster_name{$name1} eq $cluster_name{$name2}) { # distance for same genome to same genome is 0 so ok to include
 	    if (!defined($dist_sum{$name1})) {
-		$dist_sum{$name1} = 0;
+		$dist_sum{$name1} = $distance;
+	    } else {
+		$dist_sum{$name1} += $distance;
 	    }
 	    if (!defined($dist_sum{$name2})) {
-		$dist_sum{$name2} = 0;
+		$dist_sum{$name2} = $distance;
+	    } else {
+		$dist_sum{$name2} += $distance;
 	    }
-	    $dist_sum{$name1} += $distance;
-	    $dist_sum{$name2} += $distance;
 	}
     }
     close($distance_handle);
     foreach my $name (keys %cluster_name)  { # go through all the nodes of the cluster trees
+	print STDERR "$name\t$cluster_name{$name}\t$dist_sum{$name}\n";
 	if ((!defined($medoid_dist_sum{$cluster_name{$name}})) || ($dist_sum{$name} < $medoid_dist_sum{$cluster_name{$name}})) {
 	    $medoid_dist_sum{$cluster_name{$name}} = $dist_sum{$name};
 	    $medoid{$cluster_name{$name}} = $name;
@@ -134,6 +137,7 @@ sub write_cluster_files    # Write out the single-linkage cluster files with nam
 	} else {
 	    $cluster_size{$cluster_name{$name}}++;
 	}
+	print STDERR "$name\t$cluster_name{$name}\t$dist_sum{$name}\t$medoid{$cluster_name{$name}}\t$medoid_dist_sum{$cluster_name{$name}}\t$cluster_size{$cluster_name{$name}}\n";
     }
     my $cluster_num = 0;
     foreach my $medoid_name (keys %medoid)  { # go through all the medoids
