@@ -127,7 +127,7 @@ sub write_cluster_files    # Write out the single-linkage cluster files with nam
     }
     close($distance_handle);
     foreach my $name (keys %cluster_name)  { # go through all the nodes of the cluster trees
-	print STDERR "$name\t$cluster_name{$name}\t$dist_sum{$name}\n";
+	#print STDERR "$name\t$cluster_name{$name}\t$dist_sum{$name}\n";
 	if ((!defined($medoid_dist_sum{$cluster_name{$name}})) || ($dist_sum{$name} < $medoid_dist_sum{$cluster_name{$name}})) {
 	    $medoid_dist_sum{$cluster_name{$name}} = $dist_sum{$name};
 	    $medoid{$cluster_name{$name}} = $name;
@@ -137,12 +137,12 @@ sub write_cluster_files    # Write out the single-linkage cluster files with nam
 	} else {
 	    $cluster_size{$cluster_name{$name}}++;
 	}
-	print STDERR "$name\t$cluster_name{$name}\t$dist_sum{$name}\t$medoid{$cluster_name{$name}}\t$medoid_dist_sum{$cluster_name{$name}}\t$cluster_size{$cluster_name{$name}}\n";
+	#print STDERR "$name\t$cluster_name{$name}\t$dist_sum{$name}\t$medoid{$cluster_name{$name}}\t$medoid_dist_sum{$cluster_name{$name}}\t$cluster_size{$cluster_name{$name}}\n";
     }
     my $cluster_num = 0;
     foreach my $medoid_name (keys %medoid)  { # go through all the medoids
 	$cluster_num++;
-	print $medoid_handle "$cluster_num\t$cluster_size{$medoid_name}\t$medoid_name\t$cluster_name{$medoid_name}\n";
+	print $medoid_handle "$cluster_num\t$cluster_size{$medoid_name}\t$medoid{$medoid_name}\t$cluster_name{$medoid_name}\n";
     }
     close($medoid_handle);
 	
