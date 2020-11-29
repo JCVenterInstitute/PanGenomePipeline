@@ -616,10 +616,11 @@ sub compute
 	close(GENEANI);
 	close(REARRANGE);
 	close(SPLITGENE);
+	if ($debug) {print STDERR "paste matchtable.col $match_col_files > tmp.matchtable.col\n";}
 	`paste matchtable.col $match_col_files > tmp.matchtable.col`;                           # paste line frome matchtable
-	`rm $match_col_files`;
 	$match_col_files = "";
 	die ("tmp.matchtable.col is zero size \n") unless (-s "tmp.matchtable.col");
+	`rm $match_col_files`;
 	`mv tmp.matchtable.col matchtable.col`;                                            # rename file
 	my $start_new_cluster_num = `wc -l < matchtable.col` + 1;
 	if ((-s "new_clusters.txt") && (-s "new_gene_seqs.fasta")){
