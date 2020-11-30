@@ -556,7 +556,7 @@ sub compute
 	    die "Too many grid jobs failed $num_jobs\n";
 	}
 
-	for (my $j=0; $j <= $#genomes; $j++)
+	for (my $j=0, my $k=1; $j <= $#genomes; $j++, $k++)
 	{
 	    my $identifier = $genomes[$j][0];                                                 # get genome name
 	    my $genome_path = $genomes[$j][1];                                                # get genome path
@@ -602,6 +602,14 @@ sub compute
 	    # don't need this with pgg.combined generated instead `paste pgg.col $pgg_name > tmp.pgg.col`;                                           # paste line from edges file
 	    # don't need this with pgg.combined generated instead die ("tmp.pgg.col is zero size \n") unless (-s "tmp.pgg.col");
 	    # don't need this with pgg.combined generated instead `mv tmp.pgg.col pgg.col`;                                                         # rename file
+	    if (($k >= 2000) && ($j < $#genomes)) { #paste seems to misbehave if argument line gets too long
+		$k = 0;
+		`paste matchtable.col $match_col_files > tmp.matchtable.col`;                           # paste line frome matchtable
+		die ("tmp.matchtable.col is zero size \n") unless (-s "tmp.matchtable.col");
+		`rm $match_col_files`;
+		$match_col_files = "";
+		`mv tmp.matchtable.col matchtable.col`;                                            # rename file
+	    }
 	    if ($j==0)
 	    {
 		`cat $att_name > combined.att`;                                       # overwrite combined file from past iteration
@@ -616,11 +624,11 @@ sub compute
 	close(GENEANI);
 	close(REARRANGE);
 	close(SPLITGENE);
-	if ($debug) {print STDERR "paste matchtable.col $match_col_files > tmp.matchtable.col\n";}
+	#if ($debug) {print STDERR "paste matchtable.col $match_col_files > tmp.matchtable.col\n";}
 	`paste matchtable.col $match_col_files > tmp.matchtable.col`;                           # paste line frome matchtable
-	$match_col_files = "";
 	die ("tmp.matchtable.col is zero size \n") unless (-s "tmp.matchtable.col");
 	`rm $match_col_files`;
+	$match_col_files = "";
 	`mv tmp.matchtable.col matchtable.col`;                                            # rename file
 	my $start_new_cluster_num = `wc -l < matchtable.col` + 1;
 	if ((-s "new_clusters.txt") && (-s "new_gene_seqs.fasta")){
