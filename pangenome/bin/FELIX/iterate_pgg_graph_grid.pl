@@ -602,7 +602,7 @@ sub compute
 	    # don't need this with pgg.combined generated instead `paste pgg.col $pgg_name > tmp.pgg.col`;                                           # paste line from edges file
 	    # don't need this with pgg.combined generated instead die ("tmp.pgg.col is zero size \n") unless (-s "tmp.pgg.col");
 	    # don't need this with pgg.combined generated instead `mv tmp.pgg.col pgg.col`;                                                         # rename file
-	    if (($k >= 2000) && ($j < $#genomes)) { #paste seems to misbehave if argument line gets too long
+	    if (($k >= 500) && ($j < $#genomes)) { #paste and/or perl seems to misbehave if argument line gets too long
 		$k = 0;
 		`paste matchtable.col $match_col_files > tmp.matchtable.col`;                           # paste line frome matchtable
 		die ("tmp.matchtable.col is zero size \n") unless (-s "tmp.matchtable.col");
