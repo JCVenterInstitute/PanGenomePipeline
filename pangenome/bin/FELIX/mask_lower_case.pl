@@ -25,9 +25,11 @@ my $help;
 my $debug;
 my $strip_version;
 my $out_file;
+my $combine_ids = 0;
 
 GetOptions('genomes=s' => \ $genomes,
 	   'out_file=s' => \ $out_file,
+	   'combine_ids' => \ $combine_ids,
 	   'strip_version' => \ $strip_version,
 	   'help' => \ $help,
 	   'debug' => \ $debug);
@@ -38,6 +40,7 @@ if ($help) {
    print STDERR <<_EOB_;
 GetOptions('genomes=s' => \ genomes,
 	   'out_file=s' => \ out_file,
+	   'combine_ids' => \ combine_ids,
 	   'strip_version' => \ strip_version,
 	   'help' => \ help,
 	   'debug' => \ debug);
@@ -59,6 +62,8 @@ sub print_fasta { # have to adjust coordinates because they are in 1 base based 
     return;
 }
 
+my $output_handle;
+open($output_handle, ">", $out_file) || die ("Couldn't open $out_file\n");
 
 # read file which specifies the output file prefix, assembly fasta file, and anchors coordinates file
 open (my $infile, "<", $genomes) || die ("ERROR: cannot open file $genomes\n");
@@ -68,8 +73,6 @@ while (my $genome_info = <$infile>)  {
     
     chomp $genome_info;
     (my $output, my $genome, my $anchor_file) = split(/\t/, $genome_info);  # split the scalar $line on tab
-    my $output_handle;
-    open($output_handle, ">", $out_file) || die ("Couldn't open $out_file\n");
 
     # read in anchors file
     my $anchor_handle;
@@ -121,14 +124,16 @@ while (my $genome_info = <$infile>)  {
 	    $anchor =~ tr/a-z/A-Z/; # upper case the anchor
 	    substr($sequence, $start, $len) = $anchor;
 	}
-	&print_fasta($output_handle, ($output . "_" . $title), $sequence, $contig_length);
+	if ($combine_ids) {
+	    $title = $output . "_" . $title;
+	}
+	&print_fasta($output_handle, $title, $sequence, $contig_length);
 	$title = ""; # clear the title for the next contig
 	$sequence = ""; #clear out the sequence for the next contig
     }
     $/ = $save_input_separator; # restore the input separator
     close ($contigfile);
-    close ($output_handle);
-
 }
+close ($output_handle);
 
 exit(0);
