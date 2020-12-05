@@ -35,7 +35,7 @@ my @categories = ("identical","gapped","divergent","conserved"); # literals used
 
 # CONSTANTS #
 use constant MINALLOWPID => 98.0;
-use constant CONTEXTLEN => 500;
+use constant CONTEXTLEN => 1000;
 use constant MINCONTIGLEN => 1000;
 use constant MAXEDGELEN => 100000;
 use constant MAXINDELLEN => 200000;
