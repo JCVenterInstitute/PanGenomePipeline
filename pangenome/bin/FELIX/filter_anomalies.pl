@@ -35,7 +35,7 @@ my @categories = ("identical","gapped","divergent","conserved"); # literals used
 
 # CONSTANTS #
 use constant MINALLOWPID => 98.0;
-use constant CONTEXTLEN => 1000;
+use constant CONTEXTLEN => 300;
 use constant MINCONTIGLEN => 1000;
 use constant MAXEDGELEN => 100000;
 use constant MAXINDELLEN => 200000;
@@ -93,10 +93,12 @@ my $engdb;
 my $pggdb_topology_file;
 my $strip_version;
 my $combine_topology_ids = 0;
+my $use_existing_db = 0;
 
 GetOptions('genomes=s' => \ $genomes,
 	'strip_version' => \ $strip_version,
 	'combine_topology_ids' => \ $combine_topology_ids,
+	'use_existing_db' => \ $use_existing_db,
 	'help' => \ $help,
 	'debug' => \ $debug,
 	'bin_directory=s' => \ $bin_directory,
@@ -156,6 +158,7 @@ GetOptions('genomes=s' => genomes,
 	'help' => help,
 	'debug' => debug,
 	'combine_topology_ids' => \ combine_topology_ids,
+	'use_existing_db' => \ use_existing_db,
 	'strip_version' => \ strip_version,
 	'bin_directory=s' => \ bin_directory,
 	'blast_directory=s' => \ blast_directory,
@@ -668,28 +671,28 @@ while (my $line = <$infile>)  {
 		$end_diverged = 0;
 		$diverged_type = "";
 	    }
-	    if (($prev_contig ne "") && (($contig_len{$prev_contig} - $prev_end) > 20)) { # include unannotated contig ends > 20 bp
-		my $tmp_seq = substr($contigs{$prev_contig}, $prev_end, ($contig_len{$prev_contig} - $prev_end));
-		if ($tmp_seq !~ /NNNNN/) { # do not use sequences with gaps in them - perhaps should split on gaps instead
-		    $query_coords[$qc_index][QCNAME] = $prev_contig . "_END_" . ($prev_end + 1) . "_" . $contig_len{$prev_contig};
-		    $query_coords[$qc_index][QCCTG] = $prev_contig;
-		    $query_coords[$qc_index][QCBEG] = $prev_end;
-		    $query_coords[$qc_index][QCEND] = $contig_len{$prev_contig};
-		    $query_coords[$qc_index][QCDEL] = 0;
-		    $qc_index++;
-		}
-	    }
-	    if ($cur_beg > 20) { # include unannotated contig ends > 20 bp
-		my $tmp_seq = substr($contigs{$cur_contig}, 0, ($cur_beg - 1));
-		if ($tmp_seq !~ /NNNNN/) { # do not use sequences with gaps in them - perhaps should split on gaps instead
-		    $query_coords[$qc_index][QCNAME] = $cur_contig . "_BEG_1_" . ($cur_beg - 1);
-		    $query_coords[$qc_index][QCCTG] = $cur_contig;
-		    $query_coords[$qc_index][QCBEG] = 1;
-		    $query_coords[$qc_index][QCEND] = $cur_beg - 1;
-		    $query_coords[$qc_index][QCDEL] = 0;
-		    $qc_index++;
-		}
-	    }
+	    #if (($prev_contig ne "") && (($contig_len{$prev_contig} - $prev_end) > 20)) { # include unannotated contig ends > 20 bp
+		#my $tmp_seq = substr($contigs{$prev_contig}, $prev_end, ($contig_len{$prev_contig} - $prev_end));
+		#if ($tmp_seq !~ /NNNNN/) { # do not use sequences with gaps in them - perhaps should split on gaps instead
+		    #$query_coords[$qc_index][QCNAME] = $prev_contig . "_END_" . ($prev_end + 1) . "_" . $contig_len{$prev_contig};
+		    #$query_coords[$qc_index][QCCTG] = $prev_contig;
+		    #$query_coords[$qc_index][QCBEG] = $prev_end;
+		    #$query_coords[$qc_index][QCEND] = $contig_len{$prev_contig};
+		    #$query_coords[$qc_index][QCDEL] = 0;
+		    #$qc_index++;
+		#}
+	    #}
+	    #if ($cur_beg > 20) { # include unannotated contig ends > 20 bp
+		#my $tmp_seq = substr($contigs{$cur_contig}, 0, ($cur_beg - 1));
+		#if ($tmp_seq !~ /NNNNN/) { # do not use sequences with gaps in them - perhaps should split on gaps instead
+		    #$query_coords[$qc_index][QCNAME] = $cur_contig . "_BEG_1_" . ($cur_beg - 1);
+		    #$query_coords[$qc_index][QCCTG] = $cur_contig;
+		    #$query_coords[$qc_index][QCBEG] = 1;
+		    #$query_coords[$qc_index][QCEND] = $cur_beg - 1;
+		    #$query_coords[$qc_index][QCDEL] = 0;
+		    #$qc_index++;
+		#}
+	    #}
 	    if (($prev_contig ne "") && ($range_beg != 0)) {
 		print $file_ranges "$prev_contig\t$range_beg\t$range_end\t$categories[$prev_category]\n";
 	    }
@@ -767,17 +770,17 @@ while (my $line = <$infile>)  {
 	}
 	$qc_index++;
     }
-    if (($prev_contig ne "") && (($contig_len{$prev_contig} - $prev_end) > 20)) { # include unannotated contig ends > 20 bp
-	my $tmp_seq = substr($contigs{$prev_contig}, $prev_end, ($contig_len{$prev_contig} - $prev_end));
-	if ($tmp_seq !~ /NNNNN/) { # do not use sequences with gaps in them - perhaps should split on gaps instead
-	    $query_coords[$qc_index][QCNAME] = $prev_contig . "_END_" . ($prev_end + 1) . "_" . $contig_len{$prev_contig};
-	    $query_coords[$qc_index][QCCTG] = $prev_contig;
-	    $query_coords[$qc_index][QCBEG] = $prev_end;
-	    $query_coords[$qc_index][QCEND] = $contig_len{$prev_contig};
-	    $query_coords[$qc_index][QCDEL] = 0;
-	    $qc_index++;
-	}
-    }
+    #if (($prev_contig ne "") && (($contig_len{$prev_contig} - $prev_end) > 20)) { # include unannotated contig ends > 20 bp
+	#my $tmp_seq = substr($contigs{$prev_contig}, $prev_end, ($contig_len{$prev_contig} - $prev_end));
+	#if ($tmp_seq !~ /NNNNN/) { # do not use sequences with gaps in them - perhaps should split on gaps instead
+	    #$query_coords[$qc_index][QCNAME] = $prev_contig . "_END_" . ($prev_end + 1) . "_" . $contig_len{$prev_contig};
+	    #$query_coords[$qc_index][QCCTG] = $prev_contig;
+	    #$query_coords[$qc_index][QCBEG] = $prev_end;
+	    #$query_coords[$qc_index][QCEND] = $contig_len{$prev_contig};
+	    #$query_coords[$qc_index][QCDEL] = 0;
+	    #$qc_index++;
+	#}
+    #}
 
     # output entire contigs with no annotation
     foreach my $id (keys %contigs)  { # go through all contigs
@@ -853,20 +856,25 @@ while (my $line = <$infile>)  {
     my $makeblastdb = $blast_directory . "makeblastdb";
     my $blastn = $local_blast_directory . "blastn";
     my $cmd;
-    `cp $genome $out_genome`;
-    $cmd = "$makeblastdb -in $out_genome -dbtype nucl";
-    `$cmd`;
-    $cmd = "$blastn -query $out_fasta_seqs -db $out_genome -out $out_genome_blast -task $blast_task -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\" -culling_limit 3";
-    `$cmd`;
-    `rm $out_genome*`;
+    #`cp $genome $out_genome`;
+    #$cmd = "$makeblastdb -in $out_genome -dbtype nucl";
+    #`$cmd`;
+    #$cmd = "$blastn -query $out_fasta_seqs -db $out_genome -out $out_genome_blast -task $blast_task -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\" -culling_limit 3";
+    #`$cmd`;
+    #`rm $out_genome*`;
     #$cmd = "$blastn -query $out_fasta_seqs -db $engdb -out $out_engdb_blast -task $blast_task -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\" -culling_limit 2";
     #`$cmd`;
     #$cmd = "$blastn -query $out_fasta_seqs -db $PGGdb -out $out_PGG_blast -task $blast_task -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\"";
-    $cmd = "$medoid_blast_path -blastout $out_PGG_blast -genome $PGGdb -topology $pggdb_topology_file -blast_directory $blast_directory -ld_load_directory $ld_load_directory -medoids $out_fasta_seqs -blast_task $blast_task -filter_anomalies";
-    if ($combine_topology_ids) {
-	$cmd .= " -combine_topology_ids";
+    if ($use_existing_db) {
+	$cmd = "$blastn -query $out_fasta_seqs -db $PGGdb -out $out_PGG_blast -task $blast_task -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\" -culling_limit 3";
+	`$cmd`;
+    } else {
+	$cmd = "$medoid_blast_path -blastout $out_PGG_blast -genome $PGGdb -topology $pggdb_topology_file -blast_directory $blast_directory -ld_load_directory $ld_load_directory -medoids $out_fasta_seqs -blast_task $blast_task -filter_anomalies";
+	if ($combine_topology_ids) {
+	    $cmd .= " -combine_topology_ids";
+	}
+	`$cmd`;
     }
-    `$cmd`;
     # read in anomalies file
     open(PGG_BLAST_FILE, "<", $out_PGG_blast) || die ("Couldn't open $out_PGG_blast for reading\n");
     $count = 0;

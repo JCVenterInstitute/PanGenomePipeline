@@ -61,6 +61,7 @@ my $strip_version = 0;
 my $wall_time_limit = "24:00:00"; #set qsub wall time limit to 24 hours by default
 my $mem_req = "8gb"; #set qsub memory minimum requirement by default to 8 Gbyte
 my $combine_topology_ids = 0;
+my $use_existing_db = 0;
 
 GetOptions('genomes=s' => \ $genome_list_path,
 	   'new_genomes=s' => \ $new_genomes,
@@ -95,6 +96,7 @@ GetOptions('genomes=s' => \ $genome_list_path,
 	   'no_filter_anomalies' => \ $no_filter_anomalies,
 	   'less_memory' => \ $less_memory,
 	   'combine_topology_ids' => \ $combine_topology_ids,
+	   'use_existing_db' => \ $use_existing_db,
 	   'help' => \ $help,
 	   'debug' => \ $debug);
 
@@ -166,6 +168,7 @@ GetOptions('genomes=s' => \ genome_list_path,
 	   'no_filter_anomalies' => \ no_filter_anomalies,
 	   'less_memory' => \ less_memory,
 	   'combine_topology_ids' => \ combine_topology_ids,
+	   'use_existing_db' => \ use_existing_db,
 	   'help' => \ help,
 	   'debug' => \ debug);
 _EOB_
@@ -503,6 +506,9 @@ sub compute
     }	
     if ($combine_topology_ids) {
 	$compute_path .= " -combine_topology_ids ";
+    }	
+    if ($use_existing_db) {
+	$compute_path .= " -use_existing_db ";
     }	
     if ($ld_load_directory) {
 	$compute_path .= " -ld_load_directory $ld_load_directory ";
