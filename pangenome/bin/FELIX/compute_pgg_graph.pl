@@ -47,6 +47,7 @@ my $less_memory = 0;
 my $project = "8520";
 my $combine_topology_ids = 0;
 my $use_existing_db = 0;
+my $soft_mask_id = "";
 
 GetOptions('genome=s' => \ $genome_path,
 	   'weights=s' => \ $weights,
@@ -61,6 +62,7 @@ GetOptions('genome=s' => \ $genome_path,
 	   'blast_directory=s' => \ $blast_directory,
 	   'ld_load_directory=s' => \ $ld_load_directory,
 	   'blast_task=s' => \ $blast_task,
+	   'soft_mask_id=s' => \ $soft_mask_id,
 	   'muscle_path=s' => \ $muscle_path,
 	   'rscript_path=s' => \ $rscript_path,
 	   'multifastadir=s' => \ $multifastadir,
@@ -150,6 +152,7 @@ GetOptions('genome=s' => \ genome_path,
 	   'blast_directory=s' => \ blast_directory,
 	   'ld_load_directory=s' => \ ld_load_directory,
 	   'blast_task=s' => \ blast_task,
+	   'soft_mask_id=s' => \ soft_mask_id,
 	   'muscle_path=s' => \ muscle_path,
 	   'rscript_path=s' => \ rscript_path,
 	   'multifastadir=s' => \ multifastadir,
@@ -254,6 +257,9 @@ sub compute
     }
     if ($combine_topology_ids) {
 	$filter_anomalies_path .= " -combine_topology_ids ";
+    }	
+    if ($soft_mask_id) {
+	$filter_anomalies_path .= " -soft_mask_id $soft_mask_id ";
     }	
     if ($use_existing_db) {
 	$filter_anomalies_path .= " -use_existing_db ";

@@ -62,9 +62,11 @@ my $wall_time_limit = "24:00:00"; #set qsub wall time limit to 24 hours by defau
 my $mem_req = "8gb"; #set qsub memory minimum requirement by default to 8 Gbyte
 my $combine_topology_ids = 0;
 my $use_existing_db = 0;
+my $soft_mask_id = "";
 
 GetOptions('genomes=s' => \ $genome_list_path,
 	   'new_genomes=s' => \ $new_genomes,
+	   'soft_mask_id=s' => \ $soft_mask_id,
 	   'topology=s' => \ $topology_file,
 	   'new_topology=s' => \ $new_topology_file,
 	   'single_copy=s' => \ $input_single_copy,
@@ -137,6 +139,7 @@ if ($help) {
    print STDERR <<_EOB_;
 GetOptions('genomes=s' => \ genome_list_path,
 	   'new_genomes=s' => \ new_genomes,
+	   'soft_mask_id=s' => \ soft_mask_id,
 	   'topology=s' => \ topology_file,
 	   'new_topology=s' => \ new_topology_file,
 	   'single_copy=s' => \ input_single_copy,
@@ -506,6 +509,9 @@ sub compute
     }	
     if ($combine_topology_ids) {
 	$compute_path .= " -combine_topology_ids ";
+    }	
+    if ($soft_mask_id) {
+	$compute_path .= " -soft_mask_id $soft_mask_id ";
     }	
     if ($use_existing_db) {
 	$compute_path .= " -use_existing_db ";
