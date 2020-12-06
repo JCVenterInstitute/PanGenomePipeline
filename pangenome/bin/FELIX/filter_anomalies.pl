@@ -94,21 +94,23 @@ my $pggdb_topology_file;
 my $strip_version;
 my $combine_topology_ids = 0;
 my $use_existing_db = 0;
+my $soft_mask_id = "";
 
 GetOptions('genomes=s' => \ $genomes,
-	'strip_version' => \ $strip_version,
-	'combine_topology_ids' => \ $combine_topology_ids,
-	'use_existing_db' => \ $use_existing_db,
-	'help' => \ $help,
-	'debug' => \ $debug,
-	'bin_directory=s' => \ $bin_directory,
-	'blast_directory=s' => \ $blast_directory,
-	'ld_load_directory=s' => \ $ld_load_directory,
-	'PGG_topology=s' => \ $pggdb_topology_file,
-	'blast_task=s' => \ $blast_task,
-	'nrdb=s' => \ $nrdb,
-	'pggdb=s' => \ $PGGdb,
-	'engdb=s' => \ $engdb);
+	   'strip_version' => \ $strip_version,
+	   'combine_topology_ids' => \ $combine_topology_ids,
+	   'use_existing_db' => \ $use_existing_db,
+	   'help' => \ $help,
+	   'debug' => \ $debug,
+	   'bin_directory=s' => \ $bin_directory,
+	   'blast_directory=s' => \ $blast_directory,
+	   'ld_load_directory=s' => \ $ld_load_directory,
+	   'PGG_topology=s' => \ $pggdb_topology_file,
+	   'blast_task=s' => \ $blast_task,
+	   'soft_mask_id=s' => \ $soft_mask_id,
+	   'nrdb=s' => \ $nrdb,
+	   'pggdb=s' => \ $PGGdb,
+	   'engdb=s' => \ $engdb);
 
 if (-d $bin_directory) {
     if (substr($bin_directory, 0, 1) ne "/") {
@@ -155,19 +157,20 @@ if ($help) {
    system("clear");
    print STDERR <<_EOB_;
 GetOptions('genomes=s' => genomes,
-	'help' => help,
-	'debug' => debug,
-	'combine_topology_ids' => \ combine_topology_ids,
-	'use_existing_db' => \ use_existing_db,
-	'strip_version' => \ strip_version,
-	'bin_directory=s' => \ bin_directory,
-	'blast_directory=s' => \ blast_directory,
-	'ld_load_directory=s' => \ ld_load_directory,
-	'PGG_topology=s' => \ pggdb_topology_file,
-	'blast_task=s' => \ blast_task,
-	'nrdb=s' => nrdb,
-	'pggdb=s' => PGGdb,
-	'engdb=s' => engdb);
+	   'help' => help,
+	   'debug' => debug,
+	   'combine_topology_ids' => \ combine_topology_ids,
+	   'use_existing_db' => \ use_existing_db,
+	   'strip_version' => \ strip_version,
+	   'bin_directory=s' => \ bin_directory,
+	   'blast_directory=s' => \ blast_directory,
+	   'ld_load_directory=s' => \ ld_load_directory,
+	   'PGG_topology=s' => \ pggdb_topology_file,
+	   'blast_task=s' => \ blast_task,
+	   'soft_mask_id=s' => \ soft_mask_id,
+	   'nrdb=s' => nrdb,
+	   'pggdb=s' => PGGdb,
+	   'engdb=s' => engdb);
 _EOB_
     exit(0);
 }
@@ -867,6 +870,9 @@ while (my $line = <$infile>)  {
     #$cmd = "$blastn -query $out_fasta_seqs -db $PGGdb -out $out_PGG_blast -task $blast_task -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\"";
     if ($use_existing_db) {
 	$cmd = "$blastn -query $out_fasta_seqs -db $PGGdb -out $out_PGG_blast -task $blast_task -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\" -culling_limit 3";
+	if ($soft_mask_id) {
+	    $cmd .= " -db_soft_mask $soft_mask_id ";
+	}	
 	`$cmd`;
     } else {
 	$cmd = "$medoid_blast_path -blastout $out_PGG_blast -genome $PGGdb -topology $pggdb_topology_file -blast_directory $blast_directory -ld_load_directory $ld_load_directory -medoids $out_fasta_seqs -blast_task $blast_task -filter_anomalies";
