@@ -1303,6 +1303,7 @@ sub process_matchtable {
 		    my $feat_name = $cluster_to_feat_hash{$target_id}->{$cluster_id};
 		    my $seq_len = $feat_hash{$feat_name}->{'len'};
 		    my $ambig_count = $target_sequence =~ tr/ACGTacgt//c;
+		    print STDERR "$feat_name\t$seq_len\t$ambig_count\n";
 		    if (($ambig_count >= 10) || ((($ambig_count * 100) / $seq_len) > 20)) {
 			# do not include sequences with a lot of ambiguous base calls
 			$gapped_clus{$target_id}++;
@@ -1319,8 +1320,9 @@ sub process_matchtable {
 			    } else {
 				$uniq_clus_alle_25_75{$target_id}++;
 			    }
+			    print STDERR "$target_id\t$cluster_id\t$seq_len\t$feat_hash{$feat_name}->{'mpid'}\n";
 			    if (($align_new) && ($feat_hash{$feat_name}->{'mpid'} < $MIN_PGG_PID)) {
-				print STDERR "$target_id\t$cluster_id\t$seq_len\t$median_25\t$median\t$median_75\n" if ($DEBUG);
+				print STDERR "$target_id\t$cluster_id\t$seq_len\t$median_25\t$median\t$median_75\n";# if ($DEBUG);
 				if (($seq_len >= ($median_25 - (0.1 * $median))) && ($seq_len <= ($median_75 + (0.1 * $median)))) {
 				    my $mf_file = "$multifastadir/cluster_$cluster_id.fasta";
 				    my $msa_file = "$multifastadir/cluster_$cluster_id.afa";
@@ -1330,7 +1332,7 @@ sub process_matchtable {
 				    my $median_target;
 				    my $max_cols_all;
 				    my $cols_target;
-				    print STDERR "Good length\t$stats_file\t$msa_file\t$mf_file\n" if ($DEBUG);
+				    print STDERR "Good length\t$stats_file\t$msa_file\t$mf_file\n";# if ($DEBUG);
 				    if ((-s $stats_file) && ((-s $msa_file) || (-s $mf_file))){
 					unless (open (STATSFILE, "<", $stats_file) )  {
 					    die ("ERROR: cannot open file $stats_file\n");
@@ -1404,11 +1406,12 @@ sub process_matchtable {
 					close(STATSFILE);
 					if ($keep_divergent_alignments) {
 					    `mv $combined_file $keep_divergent_alignments/cluster_$target_id.$cluster_id.afa`;
-					    `rm $seq_file $com_stats_file`;
+					    `mv $com_stats_file $keep_divergent_alignments/cluster_$target_id.$cluster_id.stats`;
+					    `rm $seq_file`;
 					} else {
 					    `rm $seq_file $combined_file $com_stats_file`;
 					}
-					print STDERR "$target_id\t$cluster_id\t$median_target\t$max_all\t$cols_target\t$max_cols_all\n" if ($DEBUG);
+					print STDERR "$target_id\t$cluster_id\t$median_target\t$max_all\t$cols_target\t$max_cols_all\n";# if ($DEBUG);
 					if ($median_target > $max_all) {
 					    print DIFFFILE "$target_id\t$feat_hash{$feat_name}->{'contig'}\tdivergent_clus_allele\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\n";
 					    $distant_clus_alle{$target_id}++;
@@ -2922,3 +2925,4 @@ if ((!$suppress) && ($align_all)) {
 }
 print STDERR "Finished processing - exiting\n";
 exit(0);
+
