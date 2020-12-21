@@ -63,12 +63,14 @@ my $mem_req = "8gb"; #set qsub memory minimum requirement by default to 8 Gbyte
 my $combine_topology_ids = 0;
 my $use_existing_db = 0;
 my $soft_mask_id = "";
+my $pggdb_topology_file = "";
 
 GetOptions('genomes=s' => \ $genome_list_path,
 	   'new_genomes=s' => \ $new_genomes,
 	   'soft_mask_id=s' => \ $soft_mask_id,
 	   'topology=s' => \ $topology_file,
 	   'new_topology=s' => \ $new_topology_file,
+	   'PGGdb_topology=s' => \ $pggdb_topology_file,
 	   'single_copy=s' => \ $input_single_copy,
 	   'bin_directory=s' => \ $input_bin_directory,
 	   'blast_directory=s' => \ $blast_directory,
@@ -142,6 +144,7 @@ GetOptions('genomes=s' => \ genome_list_path,
 	   'soft_mask_id=s' => \ soft_mask_id,
 	   'topology=s' => \ topology_file,
 	   'new_topology=s' => \ new_topology_file,
+	   'PGGdb_topology=s' => \ pggdb_topology_file,
 	   'single_copy=s' => \ input_single_copy,
 	   'bin_directory=s' => \ input_bin_directory,
 	   'blast_directory=s' => \ blast_directory,
@@ -495,15 +498,15 @@ sub compute
     my $total_jobs = 0;
     my $duplicate;
     if ($debug) {print STDERR "Starting grid genome processing\n\n";}
+    if ($pggdb_topology_file ne "") {
+	$compute_path .= " -PGGdb_topology $pggdb_topology_file ";
+    }
     if ($muscle_path ne "") {
 	$compute_path .= " -muscle_path $muscle_path ";
     }
     if ($rscript_path ne "") {
 	$compute_path .= " -rscript_path $rscript_path ";
     }
-    if ($blast_directory) {
-	$compute_path .= " -blast_directory $blast_directory ";
-    }	
     if ($blast_directory) {
 	$compute_path .= " -blast_directory $blast_directory ";
     }	
@@ -771,12 +774,17 @@ sub compute
 	#if ($strip_version) {
 	    #$filter_anomalies_path .= " -strip_version ";
 	#}
-	#if ($debug) {print STDERR "\n/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -PGG_topology $topology_file -genomes $filter_genomes_file -engdb $engdb -nrdb $nrdb -pggdb $pggdb\n";}
-	#`/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -PGG_topology $topology_file -genomes $filter_genomes_file -engdb $engdb -nrdb $nrdb -pggdb $pggdb`;
+        #if ($pggdb_topology_file ne "") {
+	    #$filter_anomalies_path .= " -PGGdb_topology $pggdb_topology_file ";
+        #} else {
+            #$filter_anomalies_path .= " -PGGdb_topology $topology_file ";
+        #}
+	#if ($debug) {print STDERR "\n/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -genomes $filter_genomes_file -engdb $engdb -nrdb $nrdb -pggdb $pggdb\n";}
+	#`/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -genomes $filter_genomes_file -engdb $engdb -nrdb $nrdb -pggdb $pggdb`;
 	#`echo "***$filter_anomalies_path***" >> overhead_cpustats`;
 	#`cat tmp_cpu_stats >> overhead_cpustats`;
 	#`rm tmp_cpu_stats`;
-	#&bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -PGG_topology $topology_file -genomes $filter_genomes_file -engdb $engdb -nrdb $nrdb -pggdb $pggdb", $?, $!);
+	#&bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -genomes $filter_genomes_file -engdb $engdb -nrdb $nrdb -pggdb $pggdb", $?, $!);
 	#`rm $filter_genomes_file`;
 	#for (my $j=0; $j <= $#genomes; $j++)
 	#{
