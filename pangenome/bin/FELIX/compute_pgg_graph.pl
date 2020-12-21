@@ -48,12 +48,14 @@ my $project = "8520";
 my $combine_topology_ids = 0;
 my $use_existing_db = 0;
 my $soft_mask_id = "";
+my $pggdb_topology_file = "";
 
 GetOptions('genome=s' => \ $genome_path,
 	   'weights=s' => \ $weights,
 	   'name=s' => \ $genome_name,
 	   'pgg=s' => \ $pgg,
 	   'medoids=s' => \ $medoids,
+	   'PGGdb_topology=s' => \ $pggdb_topology_file,
 	   'pggdb=s' => \ $pggdb,
 	   'engdb=s' => \ $engdb,
 	   'nrdb=s' => \ $nrdb,
@@ -144,6 +146,7 @@ GetOptions('genome=s' => \ genome_path,
 	   'name=s' => \ genome_name,
 	   'pgg=s' => \ pgg,
 	   'medoids=s' => \ medoids,
+	   'PGGdb_topology=s' => \ pggdb_topology_file,
 	   'pggdb=s' => \ pggdb,
 	   'engdb=s' => \ engdb,
 	   'nrdb=s' => \ nrdb,
@@ -335,7 +338,10 @@ sub compute
 	    $pgg_multifasta_path .= " -V ";
 	}
 	if (!$no_filter_anomalies) {
-	    `cp full_topology.txt PGG_topology.txt`; # need this if doing filter_anomalies here
+	    if ($pggdb_topology_file eq "") {
+		`cp full_topology.txt PGGdb_topology.txt`; # need this if doing filter_anomalies here
+		$pggdb_topology_file = "PGGdb_topology.txt";
+	    }
 	}
 	if ($duplicate) {
 	    `cat $topology_name | sed -e 's/\t/_ReDoDuP\t/' >> full_topology.txt`; 
@@ -364,12 +370,12 @@ sub compute
 	    open(FGLIST, ">", $filter_genomes_name);
 	    print FGLIST "$genome_name\t$genome_path\t$topology_name\t$anomalies_name_genome\n";
 	    close(FGLIST);
-	    if ($debug) {print STDERR "\n/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -PGG_topology PGG_topology.txt -genomes $filter_genomes_name -engdb $engdb -nrdb $nrdb -pggdb $pggdb\n";}
-	    `/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -PGG_topology PGG_topology.txt -genomes $filter_genomes_name -engdb $engdb -nrdb $nrdb -pggdb $pggdb`;
+	    if ($debug) {print STDERR "\n/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -PGGdb_topology $pggdb_topology_file -genomes $filter_genomes_name -engdb $engdb -nrdb $nrdb -pggdb $pggdb\n";}
+	    `/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -PGGdb_topology $pggdb_topology_file -genomes $filter_genomes_name -engdb $engdb -nrdb $nrdb -pggdb $pggdb`;
 	    `echo "***$filter_anomalies_path***" >> $cpu_name`;
 	    `cat tmp_cpu_stats >> $cpu_name`;
 	    `rm tmp_cpu_stats`;
-	    &bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -PGG_topology PGG_topology.txt -genomes $filter_genomes_name -engdb $engdb -nrdb $nrdb -pggdb $pggdb", $?, $!);
+	    &bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $filter_anomalies_path -bin_directory $bin_directory -PGGdb_topology $pggdb_topology_file -genomes $filter_genomes_name -engdb $engdb -nrdb $nrdb -pggdb $pggdb", $?, $!);
 	    `paste $stats_name $filter_features_name > $stats_name_genome`;
 	    `rm $filter_features_name $filter_genomes_name`;
 	} else {
