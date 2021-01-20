@@ -117,7 +117,8 @@ if (-d $bin_directory) {
 	$bin_directory = $cwd . "/$bin_directory";
     }
 } else {
-    die "The specified bin directory: $bin_directory does not exist or is not a directory!\n";
+    print STDERR "The specified bin directory: $bin_directory does not exist or is not a directory!\n";
+    $help = 1;
 }
 if ($blast_directory) {
     if (-d $blast_directory) {
@@ -195,9 +196,14 @@ sub circ_substr { # have to adjust coordinates because they are in 1 base based 
 	die ("ERROR: Length of contig from seek position different than from initial reading.\n");
     }
     if ($end > $ctg_len) {
-	my $tmp_seq = substr($seq, ($beg - 1));
-	$tmp_seq .= substr($seq, 0, ($end - $ctg_len));
-	return($tmp_seq);
+	if ($beg > $ctg_len) {
+	    $beg -= $ctg_len;
+	    return(substr($seq, ($beg - 1), $len));
+	} else {
+	    my $tmp_seq = substr($seq, ($beg - 1));
+	    $tmp_seq .= substr($seq, 0, ($end - $ctg_len));
+	    return($tmp_seq);
+	}
     } else {
 	return(substr($seq, ($beg - 1), $len));
     }
@@ -593,7 +599,12 @@ while (my $line = <$infile>)  {
 		if ($ordered[$i][CATEGORY] <= $ordered[$j][CATEGORY]) {
 		    $ordered[$j][DELETE] = 1;
 		} else {
-		    $ordered[$i][STOP] = $ordered[$j][START] - 1;
+		    #want to save the larger side when this happens - possibly need to split the record and insert second piece back into sorted array
+		    if (($ordered[$j][START] - $ordered[$i][START]) > ($ordered[$i][STOP] - $ordered[$j][STOP])) {
+			$ordered[$i][STOP] = $ordered[$j][START] - 1;
+		    } else {
+			$ordered[$i][START] = $ordered[$j][STOP] + 1;
+		    }
 		    if ($ordered[$i][STOP] < $ordered[$i][START]) {
 			$ordered[$i][DELETE] = 1;
 			last;
@@ -1061,6 +1072,15 @@ while (my $line = <$infile>)  {
 	    my $pid = ($pgg_blast_results[$fivep_index][PIDENT] + $pgg_blast_results[$threep_index][PIDENT]) / 2;
 	    my $revcomp5p = ($pgg_blast_results[$fivep_index][SSTART] > $pgg_blast_results[$fivep_index][SEND]);
 	    my $revcomp3p = ($pgg_blast_results[$threep_index][SSTART] > $pgg_blast_results[$threep_index][SEND]);
+	    if (($pggdb_is_circular{$cur_sid}) && ($revcomp5p == $revcomp3p)) {
+		if (!$revcomp5p && ($pgg_blast_results[$fivep_index][SSTART] > $pgg_blast_results[$threep_index][SSTART]) && ($pgg_blast_results[$threep_index][SSTART] < ($pggdb_contig_len{$cur_sid} - $pgg_blast_results[$threep_index][SSTART]))) {
+		    $pgg_blast_results[$threep_index][SSTART] += $pggdb_contig_len{$cur_sid};
+		    $pgg_blast_results[$threep_index][SEND] += $pggdb_contig_len{$cur_sid};
+		} elsif ($revcomp5p && ($pgg_blast_results[$fivep_index][SSTART] < $pgg_blast_results[$threep_index][SSTART]) && ($pgg_blast_results[$fivep_index][SSTART] < ($pggdb_contig_len{$cur_sid} - $pgg_blast_results[$fivep_index][SSTART]))) {
+		    $pgg_blast_results[$fivep_index][SSTART] += $pggdb_contig_len{$cur_sid};
+		    $pgg_blast_results[$fivep_index][SEND] += $pggdb_contig_len{$cur_sid};
+		}
+	    }
 	    if (($pgg_blast_results[$fivep_index][QLEN] <= MINENDLEN) && (($qid =~ /_BEG_/) || ($qid =~ /_END_/))) { # do not believe short sequences on the ends of contigs
 		#this could change but for now these seem to be assembly/sequencing errors
 	    } elsif ($repeat || ($revcomp5p != $revcomp3p) || ($revcomp5p && ($pgg_blast_results[$fivep_index][SSTART] < $pgg_blast_results[$threep_index][SSTART])) || (!$revcomp5p && ($pgg_blast_results[$fivep_index][SSTART] > $pgg_blast_results[$threep_index][SSTART]))) {
