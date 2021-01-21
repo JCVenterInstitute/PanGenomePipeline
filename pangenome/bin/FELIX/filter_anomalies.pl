@@ -1014,7 +1014,7 @@ while (my $line = <$infile>)  {
 		}
 	    }
 	}
-	#print STDERR "$full_max:$full_index:$sum_max:$fivep_index:$threep_index:$#pgg_blast_results:$max_sid\n";
+	print STDERR "Findmax:$qid:$max_sid:$full_max:$full_index:$sum_max:$fivep_index:$threep_index:$#pgg_blast_results\n";
 	if ($max_sid eq "") {
 	    next; #no good matches for this query sequence
 	}
@@ -1031,7 +1031,7 @@ while (my $line = <$infile>)  {
 	    }
 	    my $btab = join("\t", @{ $pgg_blast_results[$full_index] });
 	    print PGG_BLAST_FILE "$btab\n";
-	    #print STDERR "$btab\n";
+	    print STDERR "$btab\n";
 	    my $pid = $pgg_blast_results[$full_index][PIDENT];
 	    if (($pid < MINALLOWPID) && ($qid !~ /_WHOLE_/) && ($qid !~ /_BEG_/) && ($qid !~ /_END_/)) {
 		my $cur_sid = $pgg_blast_results[$full_index][SSEQID];
@@ -1064,10 +1064,10 @@ while (my $line = <$infile>)  {
 	    }
 	    my $btab = join("\t", @{ $pgg_blast_results[$fivep_index] });
 	    print PGG_BLAST_FILE "$btab\n";
-	    #print STDERR "$btab\n";
+	    print STDERR "$btab\n";
 	    $btab = join("\t", @{ $pgg_blast_results[$threep_index] });
 	    print PGG_BLAST_FILE "$btab\n";
-	    #print STDERR "$btab\n";
+	    print STDERR "$btab\n";
 	    my $cur_sid = $pgg_blast_results[$fivep_index][SSEQID];
 	    my $pid = ($pgg_blast_results[$fivep_index][PIDENT] + $pgg_blast_results[$threep_index][PIDENT]) / 2;
 	    my $revcomp5p = ($pgg_blast_results[$fivep_index][SSTART] > $pgg_blast_results[$fivep_index][SEND]);
@@ -1207,14 +1207,14 @@ while (my $line = <$infile>)  {
 	    }
 	    my $btab = join("\t", @{ $pgg_blast_results[$fivep_index] });
 	    print PGG_BLAST_FILE "$btab\n";
-	    #print STDERR "$btab\n";
+	    print STDERR "$btab\n";
 	} elsif ($threep_index >= 0) {# possible deletion
 	    if (($threep_index > $#pgg_blast_results) || ($threep_index < 0)) {
 		die ("ERROR: threep_index out of range $threep_index not in [0 - $#pgg_blast_results]\n");
 	    }
 	    my $btab = join("\t", @{ $pgg_blast_results[$threep_index] });
 	    print PGG_BLAST_FILE "$btab\n";
-	    #print STDERR "$btab\n";
+	    print STDERR "$btab\n";
 	} else {
 	    die ("ERROR: query sequence $qid no blast matches found against $PGGdb\n");
 	}
