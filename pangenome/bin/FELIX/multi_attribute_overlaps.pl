@@ -112,7 +112,7 @@ if ($debug) {
 
 # Second, sort attribute files by contig then by start, store in ordered data-structure. 
 
-@sorted_annotations = sort { $a->[CONTIG] cmp $b->[CONTIG] || $a->[START] <=> $b->[START] || $species_order{$a->[START]} <=> $species_order{$b->[START]} } @annotations; # sort on contig, then on start, then on species order
+@sorted_annotations = sort { $a->[CONTIG] cmp $b->[CONTIG] || $a->[START] <=> $b->[START] || $a->[ORDER] <=> $b->[ORDER] } @annotations; # sort on contig, then on start, then on species order
 
 for (my $i=0; $i < @sorted_annotations; $i++) {
     if ($sorted_annotations[$i][USED]) {
