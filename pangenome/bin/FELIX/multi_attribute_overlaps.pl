@@ -17,7 +17,7 @@ use List::Util qw[min max];
 my @annotations = ();  # These are the lines of the attribute files but with 3 changes: 1) there are STRAND, USED, and SPECIES fields 2) coordinates are now smallest then largest, not start then stop 3) there is an STRAND field to indicate strand rather than STOP being smaller than START
 my @sorted_annotations = (); # Same as above but sorted by CONTIG then START
 my %species_order = (); # Key is species name, value is order for output
-my $blank = "\t\t\t\t\t\t\t";
+my $blank = "\t\t\t\t\t\t";
 my $highest;
 
 # CONSTANTS #
@@ -106,7 +106,7 @@ close($infile);
 if ($debug) {
     print "DEBUG***annotations\n";
     for (my $j=0; $j < @annotations; $j++) {
-	print ("$j: $annotations[$j][CONTIG]\t$annotations[$j][LOCUS]\t$annotations[$j][START]\t$annotations[$j][STOP]\t$annotations[$j][ANNOTATION]\t$annotations[$j][GENOME]\t$annotations[$j][STRAND]\t$annotations[$j][PID]\t$annotations[$j][USED]\t$annotations[$j][SPECIES]\t$annotations[$j][ORDER]\t$annotations[$j][BEST]\t$annotations[$j][VALUE]\n");
+	print ("$j: $annotations[$j][CONTIG]\t$annotations[$j][LOCUS]\t$annotations[$j][START]\t$annotations[$j][STOP]\t$annotations[$j][STRAND]\t$annotations[$j][ANNOTATION]\t$annotations[$j][GENOME]\t$annotations[$j][PID]\t$annotations[$j][USED]\t$annotations[$j][SPECIES]\t$annotations[$j][ORDER]\t$annotations[$j][BEST]\t$annotations[$j][VALUE]\n");
     }
 }
 
@@ -118,10 +118,11 @@ for (my $i=0; $i < @sorted_annotations; $i++) {
     if ($sorted_annotations[$i][USED]) {
 	next;
     }
+    print "$sorted_annotations[$i][CONTIG]\t";
     for (my $order = 0; $order < $sorted_annotations[$i][ORDER]; $order++) {
 	print $blank;
     }
-    print "$sorted_annotations[$i][CONTIG]\t$sorted_annotations[$i][LOCUS]\t$sorted_annotations[$i][START]\t$sorted_annotations[$i][STOP]\t$sorted_annotations[$i][STRAND]\t$sorted_annotations[$i][ANNOTATION]\t$sorted_annotations[$i][PID]";
+    print "$sorted_annotations[$i][LOCUS]\t$sorted_annotations[$i][START]\t$sorted_annotations[$i][STOP]\t$sorted_annotations[$i][STRAND]\t$sorted_annotations[$i][ANNOTATION]\t$sorted_annotations[$i][PID]";
     $sorted_annotations[$i][USED] = 1;
     my $best_pid = $sorted_annotations[$i][PID];
     my $best_species = $sorted_annotations[$i][SPECIES];
@@ -136,7 +137,7 @@ for (my $i=0; $i < @sorted_annotations; $i++) {
 	    if ($sorted_annotations[$j][USED]) {
 		next;
 	    }
-	    if ($sorted_annotations[$i][ORDER] != $order) {
+	    if ($sorted_annotations[$j][ORDER] != $order) {
 		next;
 	    }
 	    my $overlap;
@@ -159,7 +160,10 @@ for (my $i=0; $i < @sorted_annotations; $i++) {
 	}
 	if ($sorted_annotations[$i][BEST] >= 0) {
 	    my $j = $sorted_annotations[$i][BEST];
-	    print "$sorted_annotations[$j][CONTIG]\t$sorted_annotations[$j][LOCUS]\t$sorted_annotations[$j][START]\t$sorted_annotations[$j][STOP]\t$sorted_annotations[$j][STRAND]\t$sorted_annotations[$j][ANNOTATION]\t$sorted_annotations[$j][PID]";
+	    if ($j <= $i) {
+		die ("ERROR: unexpected best overlap to previous attribute: $j:$i\n$sorted_annotations[$j][CONTIG]\t$sorted_annotations[$j][LOCUS]\t$sorted_annotations[$j][START]\t$sorted_annotations[$j][STOP]\t$sorted_annotations[$j][STRAND]\t$sorted_annotations[$j][ANNOTATION]\t$sorted_annotations[$j][PID]\n$sorted_annotations[$i][CONTIG]\t$sorted_annotations[$i][LOCUS]\t$sorted_annotations[$i][START]\t$sorted_annotations[$i][STOP]\t$sorted_annotations[$i][STRAND]\t$sorted_annotations[$i][ANNOTATION]\t$sorted_annotations[$i][PID]\n");
+	    }
+	    print "$sorted_annotations[$j][LOCUS]\t$sorted_annotations[$j][START]\t$sorted_annotations[$j][STOP]\t$sorted_annotations[$j][STRAND]\t$sorted_annotations[$j][ANNOTATION]\t$sorted_annotations[$j][PID]";
 	    $sorted_annotations[$j][USED] = 1;
 	    if ($sorted_annotations[$j][PID] > $best_pid) {
 		$best_pid = $sorted_annotations[$j][PID];
@@ -175,7 +179,7 @@ for (my $i=0; $i < @sorted_annotations; $i++) {
 if ($debug) {
     print "DEBUG***sorted_annotations\n";
     for (my $j=0; $j < @sorted_annotations; $j++) {
-	print ("$j: $sorted_annotations[$j][CONTIG]\t$sorted_annotations[$j][LOCUS]\t$sorted_annotations[$j][START]\t$sorted_annotations[$j][STOP]\t$sorted_annotations[$j][ANNOTATION]\t$sorted_annotations[$j][GENOME]\t$sorted_annotations[$j][STRAND]\t$sorted_annotations[$j][PID]\t$sorted_annotations[$j][USED]\t$sorted_annotations[$j][SPECIES]\t$sorted_annotations[$j][ORDER]\t$sorted_annotations[$j][BEST]\t$sorted_annotations[$j][VALUE]\n");
+	print ("$j: $sorted_annotations[$j][CONTIG]\t$sorted_annotations[$j][LOCUS]\t$sorted_annotations[$j][START]\t$sorted_annotations[$j][STOP]\t$sorted_annotations[$j][STRAND]\t$sorted_annotations[$j][ANNOTATION]\t$sorted_annotations[$j][GENOME]\t$sorted_annotations[$j][PID]\t$sorted_annotations[$j][USED]\t$sorted_annotations[$j][SPECIES]\t$sorted_annotations[$j][ORDER]\t$sorted_annotations[$j][BEST]\t$sorted_annotations[$j][VALUE]\n");
     }
 }
 
