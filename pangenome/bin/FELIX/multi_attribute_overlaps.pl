@@ -161,7 +161,7 @@ for (my $i=0; $i < @sorted_annotations; $i++) {
 	if ($sorted_annotations[$i][BEST] >= 0) {
 	    my $j = $sorted_annotations[$i][BEST];
 	    if ($j <= $i) {
-		die ("ERROR: unexpected best overlap to previous attribute: $j:$i\n$sorted_annotations[$j][CONTIG]\t$sorted_annotations[$j][LOCUS]\t$sorted_annotations[$j][START]\t$sorted_annotations[$j][STOP]\t$sorted_annotations[$j][STRAND]\t$sorted_annotations[$j][ANNOTATION]\t$sorted_annotations[$j][PID]\n$sorted_annotations[$i][CONTIG]\t$sorted_annotations[$i][LOCUS]\t$sorted_annotations[$i][START]\t$sorted_annotations[$i][STOP]\t$sorted_annotations[$i][STRAND]\t$sorted_annotations[$i][ANNOTATION]\t$sorted_annotations[$i][PID]\n");
+		print STDERR "WARNING: unexpected best overlap to previous attribute - probably a split gene: $j:$i\n$sorted_annotations[$j][CONTIG]\t$sorted_annotations[$j][LOCUS]\t$sorted_annotations[$j][START]\t$sorted_annotations[$j][STOP]\t$sorted_annotations[$j][STRAND]\t$sorted_annotations[$j][ANNOTATION]\t$sorted_annotations[$j][PID]\n$sorted_annotations[$i][CONTIG]\t$sorted_annotations[$i][LOCUS]\t$sorted_annotations[$i][START]\t$sorted_annotations[$i][STOP]\t$sorted_annotations[$i][STRAND]\t$sorted_annotations[$i][ANNOTATION]\t$sorted_annotations[$i][PID]\n";
 	    }
 	    print "$sorted_annotations[$j][LOCUS]\t$sorted_annotations[$j][START]\t$sorted_annotations[$j][STOP]\t$sorted_annotations[$j][STRAND]\t$sorted_annotations[$j][ANNOTATION]\t$sorted_annotations[$j][PID]";
 	    $sorted_annotations[$j][USED] = 1;
