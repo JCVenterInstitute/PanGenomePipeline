@@ -17,8 +17,10 @@ use List::Util qw[min max];
 my @annotations = ();  # These are the lines of the attribute files but with 3 changes: 1) there are STRAND, USED, and SPECIES fields 2) coordinates are now smallest then largest, not start then stop 3) there is an STRAND field to indicate strand rather than STOP being smaller than START
 my @sorted_annotations = (); # Same as above but sorted by CONTIG then START
 my %species_order = (); # Key is species name, value is order for output
+my @best_overlap = (); # index into sorted_annotations for best overlap of each order to current attribute
+my @best_value = (); # value of best overlap
 my $blank = "\t\t\t\t\t\t";
-my $highest;
+my $highest; # highest order number seen for different species - total number of species with attributes
 
 # CONSTANTS #
 use constant CONTIG => 0;
@@ -115,64 +117,57 @@ if ($debug) {
 @sorted_annotations = sort { $a->[CONTIG] cmp $b->[CONTIG] || $a->[START] <=> $b->[START] || $a->[ORDER] <=> $b->[ORDER] } @annotations; # sort on contig, then on start, then on species order
 
 for (my $i=0; $i < @sorted_annotations; $i++) {
+    my $cur_order = $sorted_annotations[$i][ORDER];
     if ($sorted_annotations[$i][USED]) {
 	next;
     }
     print "$sorted_annotations[$i][CONTIG]";
-    for (my $order = 0; $order < $sorted_annotations[$i][ORDER]; $order++) {
-	print $blank;
+    for (my $order = 0; $order <=  $highest; $order++) {
+	$best_overlap[$order] = -1;  # indicates no overlap found for this order
+	$best_value[$order] = 0;  # indicates no overlap found for this order
     }
-    print "\t$sorted_annotations[$i][LOCUS]\t$sorted_annotations[$i][START]\t$sorted_annotations[$i][STOP]\t$sorted_annotations[$i][STRAND]\t$sorted_annotations[$i][ANNOTATION]\t$sorted_annotations[$i][PID]";
-    $sorted_annotations[$i][USED] = 1;
+    $best_overlap[$cur_order] = $i;
+    $best_value[$cur_order] = 1;
     my $best_pid = $sorted_annotations[$i][PID];
     my $best_species = $sorted_annotations[$i][SPECIES];
-    for (my $order = $sorted_annotations[$i][ORDER] + 1; $order <= $highest; $order++) {
-	for (my $j=$i+1; $j < @sorted_annotations; $j++) {
-	    if ($sorted_annotations[$i][STOP] < $sorted_annotations[$j][START]) {
-		last;
-	    }
-	    if ($sorted_annotations[$i][CONTIG] lt $sorted_annotations[$j][CONTIG]) {
-		last;
-	    }
-	    if ($sorted_annotations[$j][USED]) {
-		next;
-	    }
-	    if ($sorted_annotations[$j][ORDER] != $order) {
-		next;
-	    }
-	    my $overlap;
-	    if ($sorted_annotations[$i][STOP] <= $sorted_annotations[$j][STOP]) {
-		$overlap = ($sorted_annotations[$i][STOP] - $sorted_annotations[$j][START]) + 1;
-	    } else {
-		$overlap = ($sorted_annotations[$j][STOP] - $sorted_annotations[$j][START]) + 1;
-	    }
-	    my $value = (($overlap / (($sorted_annotations[$j][STOP] - $sorted_annotations[$j][START]) + 1)) + ($overlap / (($sorted_annotations[$i][STOP] - $sorted_annotations[$i][START]) + 1))) / 2;
-	    if ($value >= $fraction) {
-		if ($value > $sorted_annotations[$i][VALUE]) {
-		    $sorted_annotations[$i][VALUE] = $value;
-		    $sorted_annotations[$i][BEST] = $j;
-		}
-		if ($value > $sorted_annotations[$j][VALUE]) {
-		    $sorted_annotations[$j][VALUE] = $value;
-		    $sorted_annotations[$j][BEST] = $i;
-		}
+    for (my $j=$i+1; $j < @sorted_annotations; $j++) {
+	if ($sorted_annotations[$i][STOP] < $sorted_annotations[$j][START]) {
+	    last;
+	}
+	if ($sorted_annotations[$i][CONTIG] lt $sorted_annotations[$j][CONTIG]) {
+	    last;
+	}
+	if ($sorted_annotations[$j][USED]) {
+	    next;
+	}
+	if ($sorted_annotations[$j][ORDER] == $cur_order) {
+	    next;
+	}
+	my $overlap;
+	if ($sorted_annotations[$i][STOP] <= $sorted_annotations[$j][STOP]) {
+	    $overlap = ($sorted_annotations[$i][STOP] - $sorted_annotations[$j][START]) + 1;
+	} else {
+	    $overlap = ($sorted_annotations[$j][STOP] - $sorted_annotations[$j][START]) + 1;
+	}
+	my $value = (($overlap / (($sorted_annotations[$j][STOP] - $sorted_annotations[$j][START]) + 1)) + ($overlap / (($sorted_annotations[$i][STOP] - $sorted_annotations[$i][START]) + 1))) / 2;
+	if ($value >= $fraction) {
+	    if ($value > $best_value[$sorted_annotations[$j][ORDER]]) {
+		$best_value[$sorted_annotations[$j][ORDER]] = $value;
+		$best_overlap[$sorted_annotations[$j][ORDER]] = $j;
 	    }
 	}
-	if ($sorted_annotations[$i][BEST] >= 0) {
-	    my $j = $sorted_annotations[$i][BEST];
-	    if ($j <= $i) {
-		print STDERR "WARNING: unexpected best overlap to previous attribute - probably a split gene: $j:$i\n$sorted_annotations[$j][CONTIG]\t$sorted_annotations[$j][LOCUS]\t$sorted_annotations[$j][START]\t$sorted_annotations[$j][STOP]\t$sorted_annotations[$j][STRAND]\t$sorted_annotations[$j][ANNOTATION]\t$sorted_annotations[$j][PID]\n$sorted_annotations[$i][CONTIG]\t$sorted_annotations[$i][LOCUS]\t$sorted_annotations[$i][START]\t$sorted_annotations[$i][STOP]\t$sorted_annotations[$i][STRAND]\t$sorted_annotations[$i][ANNOTATION]\t$sorted_annotations[$i][PID]\n";
-		print $blank;
-	    } else {
-		print "\t$sorted_annotations[$j][LOCUS]\t$sorted_annotations[$j][START]\t$sorted_annotations[$j][STOP]\t$sorted_annotations[$j][STRAND]\t$sorted_annotations[$j][ANNOTATION]\t$sorted_annotations[$j][PID]";
-		$sorted_annotations[$j][USED] = 1;
-		if ($sorted_annotations[$j][PID] > $best_pid) {
-		    $best_pid = $sorted_annotations[$j][PID];
-		    $best_species = $sorted_annotations[$j][SPECIES];
-		}
-	    }
-	} else {
+    }
+    for (my $order = 0; $order <= $highest; $order++) {
+	if ($best_overlap[$order] < 0) {
 	    print $blank;
+	} else {
+	    my $j = $best_overlap[$order];
+	    print "\t$sorted_annotations[$j][LOCUS]\t$sorted_annotations[$j][START]\t$sorted_annotations[$j][STOP]\t$sorted_annotations[$j][STRAND]\t$sorted_annotations[$j][ANNOTATION]\t$sorted_annotations[$j][PID]";
+	    $sorted_annotations[$j][USED] = 1;
+	    if ($sorted_annotations[$j][PID] > $best_pid) {
+		$best_pid = $sorted_annotations[$j][PID];
+		$best_species = $sorted_annotations[$j][SPECIES];
+	    }
 	}
     }
     print "\t$best_species\n";
