@@ -131,7 +131,7 @@ while ($line = <$contigfile>) {
 	} else {
 	    $perc = $contig_perc{$id};
 	}
-	if ((defined $contig_size{$id}) && ($contig_perc{$id} > $threshold)) {
+	if ((defined $contig_perc{$id}) && ($contig_perc{$id} > $threshold)) {
 	    $is_main = 1;
 	    print $mainfile "$line size_$contig_size{$id} rdepth_$contig_rdepth{$id} PGGperc_$perc\n";
 	} else {
