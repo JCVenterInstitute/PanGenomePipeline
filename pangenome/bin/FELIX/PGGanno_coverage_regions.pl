@@ -125,12 +125,18 @@ while ($line = <$contigfile>) {
 	if (!defined $contig_size{$id}) {
 	    die ("ERROR $id in contig fasta file $contigs but not in read coverage file $read_coverage!\n");
 	}
+	my $perc;
+	if (!defined $contig_perc{$id}) {
+	    $perc = 0;
+	} else {
+	    $perc = $contig_perc{$id};
+	}
 	if ((defined $contig_size{$id}) && ($contig_perc{$id} > $threshold)) {
 	    $is_main = 1;
-	    print $mainfile "$line size_$contig_size{$id} rdepth_$contig_rdepth{$id} PGGperc_$contig_perc{$id}\n";
+	    print $mainfile "$line size_$contig_size{$id} rdepth_$contig_rdepth{$id} PGGperc_$perc\n";
 	} else {
 	    $is_main = 0;
-	    print $leftfile "$line size_$contig_size{$id} rdepth_$contig_rdepth{$id} PGGperc_$contig_perc{$id}\n";
+	    print $leftfile "$line size_$contig_size{$id} rdepth_$contig_rdepth{$id} PGGperc_$perc\n";
 	}
     } else {
 	if ($is_main) {
