@@ -61,7 +61,11 @@ unless (open ($rcfile, "<", $read_coverage) )  {
     die ("cannot open read coverage file: $read_coverage!\n");
 }
 while ($line = <$rcfile>) {
-    (my $contig_name, my $size, my $read_depth) = split(/\t/, $line, 3);
+    chomp $line;
+    if ($line =~ /^#/) {
+	next;
+    }
+    (my $contig_name, my $size, my $read_depth, my $extra) = split(/\t/, $line, 4);
     $contig_size{$contig_name} = $size;
     $contig_rdepth{$contig_name} = $read_depth;
 }
@@ -71,8 +75,13 @@ unless (open ($PGGfile, "<", $PGG_coverage) )  {
     die ("cannot open PGG coverage file: $PGG_coverage!\n");
 }
 while ($line = <$PGGfile>) {
+    chomp $line;
+    if ($line =~ /^#/) {
+	next;
+    }
     my $cluster;
-    ($cur_contig, $cluster, $start, $stop) = split(/\t/, $line, 4);
+    my $extra;
+    ($cur_contig, $cluster, $start, $stop, $extra) = split(/\t/, $line, 5);
 	if (!defined $contig_size{$cur_contig}) {
 	    die ("ERROR $cur_contig in PGG coverage file $PGG_coverage but not in read coverage file $read_coverage!\n");
 	}
