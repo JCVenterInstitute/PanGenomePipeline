@@ -62,6 +62,7 @@ my $wall_time_limit = "24:00:00"; #set qsub wall time limit to 24 hours by defau
 my $mem_req = "8gb"; #set qsub memory minimum requirement by default to 8 Gbyte
 my $combine_topology_ids = 0;
 my $use_existing_db = 0;
+my $codon_opt = 0;
 my $soft_mask_id = "";
 my $pggdb_topology_file = "";
 
@@ -101,6 +102,7 @@ GetOptions('genomes=s' => \ $genome_list_path,
 	   'less_memory' => \ $less_memory,
 	   'combine_topology_ids' => \ $combine_topology_ids,
 	   'use_existing_db' => \ $use_existing_db,
+	   'codon_opt' => \ $codon_opt,
 	   'help' => \ $help,
 	   'debug' => \ $debug);
 
@@ -175,6 +177,7 @@ GetOptions('genomes=s' => \ genome_list_path,
 	   'less_memory' => \ less_memory,
 	   'combine_topology_ids' => \ combine_topology_ids,
 	   'use_existing_db' => \ use_existing_db,
+	   'codon_opt' => \ codon_opt,
 	   'help' => \ help,
 	   'debug' => \ debug);
 _EOB_
@@ -525,6 +528,9 @@ sub compute
     if ($less_memory) {
 	$compute_path .= " -less_memory ";
     }	
+    if ($codon_opt) {
+	$compute_path .= " -codon_opt ";
+    }	
     if ($no_MSA) {
 	$compute_path .= " -no_MSA ";
     }	
@@ -606,6 +612,7 @@ sub compute
 	}
     }
     if ($debug) {print STDERR "$failed_jobs:$num_jobs FAILED resubmitting\n";}
+    my $resub_jobs = 0;
     if (($num_jobs > ((4 * $total_jobs) / 5)) || ($failed_jobs > ($total_jobs / 10))) {
 	die "Too many grid jobs failed $failed_jobs:$num_jobs out of $total_jobs\n";
     } elsif ($num_jobs > 0) {
@@ -613,6 +620,7 @@ sub compute
 	    if ($debug) {print STDERR "Resubmit $num_jobs jobs Iteration $k\n";}
 	    %job_ids = ();
 	    $num_jobs = 0;
+	    $resub_jobs = 0;
 	    for (my $j=0; $j <= $#genomes; $j++)
 	    {
 		my $identifier = $genomes[$j][0];                                                 # get genome name
@@ -654,34 +662,43 @@ sub compute
 		    if ($debug) {print STDERR "resubmit qsub $shell_script\n";}
 		    $job_ids{&launch_grid_job($job_name, $project, $working_dir, $shell_script, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
 		    $num_jobs++;
+		    $resub_jobs++;
+		    if ($num_jobs >= $max_grid_jobs) {
+			$num_jobs = &wait_for_grid_jobs($qsub_queue, $job_name, ((($max_grid_jobs - 10) > 0) ? ($max_grid_jobs - 10) : 0), \%job_ids);
+		    }
 		}
 	    }
-	    if ($num_jobs == 0) {
+	    if ($resub_jobs == 0) {
+		`rm -r TMP_*`;
+		if ($debug) {print STDERR "no failed resubmit jobs, removed resubmitted TMP directories\n";}
 		last; # no failed jobs
 	    }
-	    if ($debug) {print STDERR "$num_jobs relaunched\n";}
+	    if ($debug) {print STDERR "$resub_jobs relaunched\n";}
 	    &wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
-	    `rm -r TMP_*`;
-	    if ($debug) {print STDERR "removed resubmitted TMP directories\n";}
 	}
     }
-    $num_jobs = 0;
-    for (my $j=0; $j <= $#genomes; $j++)
-    {
-	my $identifier = $genomes[$j][0];                                                 # get genome name
-	my $genome_path = $genomes[$j][1];                                                # get genome path
-	my $match_name = "$identifier" . "_match.col";
-	my $pgg_name = "$identifier" . "_pgg.col";
-	my $att_name = "$identifier" . "_attributes.txt";
-	my $stats_name = "$identifier" . "_cluster_stats.txt";
-	my $anomalies_name = "$identifier" . "_anomalies.txt";
-	if (!(-e $match_name) || !(-e $pgg_name) || !(-e $att_name) || !(-e $anomalies_name) || !(-e $stats_name)){
-	    $num_jobs++;
-	    print STDERR "$identifier\t$genome_path\tFAILED\n";
+    if ($resub_jobs > 0) {
+	$num_jobs = 0;
+	for (my $j=0; $j <= $#genomes; $j++)
+	{
+	    my $identifier = $genomes[$j][0];                                                 # get genome name
+	    my $genome_path = $genomes[$j][1];                                                # get genome path
+	    my $match_name = "$identifier" . "_match.col";
+	    my $pgg_name = "$identifier" . "_pgg.col";
+	    my $att_name = "$identifier" . "_attributes.txt";
+	    my $stats_name = "$identifier" . "_cluster_stats.txt";
+	    my $anomalies_name = "$identifier" . "_anomalies.txt";
+	    my $working_dir = $cwd . "/TMP_" . $identifier;
+	    if (!(-e $match_name) || !(-e $pgg_name) || !(-e $att_name) || !(-e $anomalies_name) || !(-e $stats_name)){
+		$num_jobs++;
+		print STDERR "$identifier\t$genome_path\tFAILED\n";
+	    } else {
+		`rm -r $working_dir`;
+	    }
 	}
-    }
-    if ($num_jobs > 0) {
-	die "Too many grid jobs failed $num_jobs\n";
+	if ($num_jobs > 0) {
+	    die "Too many grid jobs failed $num_jobs\n";
+	}
     }
 
     if ($debug) {print STDERR "Starting genome processing\n\n";}
@@ -814,6 +831,10 @@ sub compute
     `rm core_neighbors $single_copy gene_ANI rearrange SplitGene wgs_ANI *_ce_sizes.txt`;
     #`rm gene_ANI rearrange SplitGene wgs_ANI *_ce_sizes.txt`;
     `mkdir Attributes Anomalies CPU CALLS CoreRegions Stderr Stdout`;
+    if ($codon_opt) {
+	`mkdir Codon_Opt`;
+	`mv *_codon_opt.txt Codon_Opt`;
+    }
     `mv *_anomalies.txt Anomalies`;
     `mv *_attributes.txt Attributes`;
     `mv *_cpu* CPU`;

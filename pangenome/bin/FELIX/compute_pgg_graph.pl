@@ -47,6 +47,7 @@ my $less_memory = 0;
 my $project = "8520";
 my $combine_topology_ids = 0;
 my $use_existing_db = 0;
+my $codon_opt = 0;
 my $soft_mask_id = "";
 my $pggdb_topology_file = "";
 
@@ -77,6 +78,7 @@ GetOptions('genome=s' => \ $genome_path,
 	   'reannotate' => \ $reannotate,
 	   'combine_topology_ids' => \ $combine_topology_ids,
 	   'use_existing_db' => \ $use_existing_db,
+	   'codon_opt' => \ $codon_opt,
 	   'debug' => \ $debug,
 	   'help' => \ $help);
 
@@ -168,6 +170,7 @@ GetOptions('genome=s' => \ genome_path,
 	   'reannotate' => \ reannotate,
 	   'combine_topology_ids' => \ combine_topology_ids,
 	   'use_existing_db' => \ use_existing_db,
+	   'codon_opt' => \ codon_opt,
 	   'debug' => \ debug,
 	   'help' => \ help);
 _EOB_
@@ -255,6 +258,9 @@ sub compute
     if ($keep_divergent_alignments) {
 	$pgg_multifasta_path .= " -k $keep_divergent_alignments ";
     }
+    if ($codon_opt) {
+	$pgg_multifasta_path .= " -O ";
+    }	
     if ($strip_version) {
 	$filter_anomalies_path .= " -strip_version ";
     }
@@ -380,6 +386,11 @@ sub compute
 	    `rm $filter_features_name $filter_genomes_name`;
 	} else {
 	    `mv $stats_name $stats_name_genome`;
+	}
+	if ($codon_opt) {
+	    my $codon_opt_name = "output/$genome_name" . "_codon_opt.txt";
+	    my $codon_opt_name_genome = "$genome_name" . "_codon_opt.txt";
+	    `mv $codon_opt_name $codon_opt_name_genome`;
 	}
 	`rm -r output multifasta`;
     }

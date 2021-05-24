@@ -64,9 +64,9 @@ use constant EVALUE => 9;
 use constant BITSCORE => 10;
 use constant STITLE => 11;
 use constant IDENTICAL => 0;
-use constant GAPPED => 1;
-use constant DIVERGED => 2;
-use constant MAYBE => 3;
+use constant CONSERVED => 1;
+use constant GAPPED => 2;
+use constant DIVERGED => 3;
 use constant CONTIG => 0;
 use constant LOCUS => 1;
 use constant START => 2;
@@ -412,8 +412,8 @@ while (my $line = <$infile>)  {
 	    $category = IDENTICAL;
 	} elsif ($category =~ /^gapped/) {
 	    $category = GAPPED;
-	} elsif ($category =~ /^uniq_.*_allele$/) {
-	    $category = MAYBE;
+	} elsif ($category =~ /^conserved_.*_allele$/) {
+	    $category = CONSERVED;
 	} else {
 	    next; # ignore other types
 	}
@@ -567,7 +567,7 @@ while (my $line = <$infile>)  {
 	}
     }
 
-    # eliminate overlaps between annotated segments by truncation - delete those that are contained by others - order of precedence: IDENTICAL, DIVERGED, MAYBE, GAPPED
+    # eliminate overlaps between annotated segments by truncation - delete those that are contained by others - order of precedence: IDENTICAL, DIVERGED, CONSERVED, GAPPED
     for (my $i=0; $i < @ordered; $i++) {
 	if ($ordered[$i][DELETE]) {
 	    next;
@@ -638,6 +638,7 @@ while (my $line = <$infile>)  {
     my $range_end = 0;
     my $cur_beg;
     my $cur_end;
+    my $cur_len;
     my $cur_category;
     my $cur_contig;
     my $prev_beg = 1;
@@ -645,6 +646,8 @@ while (my $line = <$infile>)  {
     my $prev_category = -1;
     my $prev_contig = "";
     my $last_output = 0;
+    my $beg_conserved = 0;
+    my $end_conserved = 0;
     my $beg_diverged = 0;
     my $end_diverged = 0;
     my $cur_type;
@@ -663,12 +666,16 @@ while (my $line = <$infile>)  {
 	}
 	$cur_beg = $ordered[$i][START];
 	$cur_end = $ordered[$i][STOP];
+	$cur_len = ($cur_end - $cur_beg) + 1;
 	$cur_type = $ordered[$i][TYPE];
 	$cur_locus = $ordered[$i][LOCUS];
 	$cur_category = $ordered[$i][CATEGORY];
 	$seen_contig{$cur_contig} = 1;
 	if ($prev_contig ne $cur_contig) { # first segment for this contig
 	    if (($prev_contig ne "") && ($beg_diverged != 0)) {
+		if (($end_conserved > 0) && ($end_diverged > $end_conserved)) {
+		    $end_diverged = $end_conserved;
+		}
 		$query_coords[$qc_index][QCNAME] = $prev_contig . "_DIV_" . $beg_diverged . "_" . $end_diverged . "_" . $diverged_type;
 		$query_coords[$qc_index][QCCTG] = $prev_contig;
 		$query_coords[$qc_index][QCBEG] = $beg_diverged;
@@ -683,6 +690,8 @@ while (my $line = <$infile>)  {
 		$qc_index++;
 		$beg_diverged = 0;
 		$end_diverged = 0;
+		$beg_conserved = 0;
+		$end_conserved = 0;
 		$diverged_type = "";
 	    }
 	    #if (($prev_contig ne "") && (($contig_len{$prev_contig} - $prev_end) > 20)) { # include unannotated contig ends > 20 bp
@@ -732,29 +741,55 @@ while (my $line = <$infile>)  {
 	    $range_end =  $cur_end;
 	}
 	
-	if (($cur_category == IDENTICAL) || ($cur_category == MAYBE) || ($cur_category == GAPPED)) {
-	    if ($beg_diverged != 0) {
-		if ($first_qc_index < 0) {
-		    $first_qc_index = $qc_index;
+	if (($cur_category == IDENTICAL) || ($cur_category == CONSERVED)) {
+	    if ($cur_len >= 100) {
+		if ($beg_diverged != 0) {
+		    if ($first_qc_index < 0) {
+			$first_qc_index = $qc_index;
+		    }
+		    if (($end_conserved > 0) && ($end_diverged > $end_conserved)) {
+			$end_diverged = $end_conserved;
+		    }
+		    $query_coords[$qc_index][QCNAME] = $cur_contig . "_DIV_" . $beg_diverged . "_" . $end_diverged . "_" . $diverged_type;
+		    $query_coords[$qc_index][QCCTG] = $cur_contig;
+		    $query_coords[$qc_index][QCBEG] = $beg_diverged;
+		    $query_coords[$qc_index][QCEND] = $end_diverged;
+		    $query_coords[$qc_index][QCDEL] = 0;
+		    $qc_index++;
+		    $beg_diverged = 0;
+		    $end_diverged = 0;
+		    $beg_conserved = 0;
+		    $end_conserved = 0;
+		    $diverged_type = "";
 		}
-		$query_coords[$qc_index][QCNAME] = $cur_contig . "_DIV_" . $beg_diverged . "_" . $end_diverged . "_" . $diverged_type;
-		$query_coords[$qc_index][QCCTG] = $cur_contig;
-		$query_coords[$qc_index][QCBEG] = $beg_diverged;
-		$query_coords[$qc_index][QCEND] = $end_diverged;
-		$query_coords[$qc_index][QCDEL] = 0;
-		$qc_index++;
-		$beg_diverged = 0;
-		$end_diverged = 0;
-		$diverged_type = "";
+		$beg_conserved = $cur_beg;
+		$end_conserved = $cur_end;
+	    } else {
+		if ($beg_diverged == 0) {
+		    # do not include starting short conserved as part of diverged but do use it as context
+		    $beg_conserved = $cur_beg;
+		    $end_conserved = $cur_end;
+		} else {
+		    $diverged_type .= "_" . $cur_type . "_" . $cur_locus . "_" . $cur_beg . "_" . $cur_end;
+		}
+		# do not stop the diverged region for a short conserved region
 	    }
 	} elsif ($cur_category == DIVERGED) {
 	    if ($beg_diverged == 0) {
-		$beg_diverged = ($cur_beg > CONTEXTLEN) ? ($cur_beg - CONTEXTLEN) : 1; # instead of $cur_beg to include context around the diverged region
+		if (($end_conserved - $beg_conserved) > CONTEXTLEN)  {
+		    $beg_diverged = $end_conserved - CONTEXTLEN;
+		} elsif ($beg_conserved > 0) {
+		    $beg_diverged = $beg_conserved;
+		} else {
+		    $beg_diverged = 1; # instead of $cur_beg to include context around the diverged region
+		}
 		$diverged_type = $cur_type . "_" . $cur_locus . "_" . $cur_beg . "_" . $cur_end;
 	    } else {
 		$diverged_type .= "_" . $cur_type . "_" . $cur_locus . "_" . $cur_beg . "_" . $cur_end;
 	    }
 	    $end_diverged = (($contig_len{$cur_contig} - $cur_end) > CONTEXTLEN) ? ($cur_end + CONTEXTLEN) : $contig_len{$cur_contig}; #instead of #cur_end to include context around the diverged region
+	} elsif ($cur_category == GAPPED) {
+	    # do nothing for gapped - continue diverged or conserved as the case may be
 	} else {
 	    die ("ERROR: Unexpected type found: $cur_category\n");
 	}
@@ -771,6 +806,9 @@ while (my $line = <$infile>)  {
     }
     close($file_ranges);
     if (($prev_contig ne "") && ($beg_diverged != 0)) {
+	if (($end_conserved > 0) && ($end_diverged > $end_conserved)) {
+	    $end_diverged = $end_conserved;
+	}
 	$query_coords[$qc_index][QCNAME] = $prev_contig . "_DIV_" . $beg_diverged . "_" . $end_diverged . "_" . $diverged_type;
 	$query_coords[$qc_index][QCCTG] = $prev_contig;
 	$query_coords[$qc_index][QCBEG] = $beg_diverged;
