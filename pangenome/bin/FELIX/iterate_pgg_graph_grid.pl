@@ -476,7 +476,7 @@ sub compute
 	    if ((-e $match_name) && (-e $pgg_name) && (-e $att_name)){
 		next; #we have already annotated this genome in a previous aborted run
 	    }
-	    `mkdir TMP_$identifier`;
+	    `mkdir $working_dir`;
 	    `ln $topology_name $single_copy $core_neighbors TMP_$identifier`;
 	    if ($debug) {print STDERR "\nidentifier: $identifier \t path: $genome_path\n\n";}
 	    if ($debug) {print STDERR "qsub $shell_script\n";}
@@ -488,8 +488,6 @@ sub compute
 	    }
 	}
 	&wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
-	`rm -r TMP_*`;
-	if ($debug) {print STDERR "removed TMP directories\n";}
 	    
 	$num_jobs = 0;
 	my $failed_jobs = 0;
@@ -501,11 +499,14 @@ sub compute
 	    my $pgg_name = ("$identifier" . "_pgg.col");
 	    my $att_name = ("$identifier" . "_attributes.txt");
 	    my $stderr_name = $identifier . "_stderr";
+	    my $working_dir = $cwd . "/TMP_" . $identifier;
 	    if (!(-e $match_name) || !(-e $pgg_name) || !(-e $att_name)){
 		$num_jobs++;
 		if (-e $stderr_name) {
 		    $failed_jobs++; #these are jobs which really failed versus just disappearing after qsub
 		}
+	    } else {
+		`rm -r $working_dir`;
 	    }
 	}
 	if ($debug) {print STDERR "$failed_jobs:$num_jobs FAILED resubmitting\n";}
@@ -514,6 +515,8 @@ sub compute
 	    die "Too many grid jobs failed $failed_jobs:$num_jobs out of $total_jobs\n";
 	} elsif ($num_jobs > 0) {
 	    for (my $k=0; $k <= 9; $k++){ #try a maximum of 10 times on failed jobs
+		`rm -r TMP_*`;
+		if ($debug) {print STDERR "removed TMP directories\n";}
 		if ($debug) {print STDERR "Resubmit $num_jobs jobs Iteration $k\n";}
 		%job_ids = ();
 		$num_jobs = 0;
@@ -537,7 +540,7 @@ sub compute
 			my $stderrfile = $cwd . "/" . $identifier . "_stderr";
 			my $working_dir = $cwd . "/TMP_" . $identifier;
 			my $topology_name = ("$identifier" . "_topology.txt");
-			`mkdir TMP_$identifier`;
+			`mkdir $working_dir`;
 			`ln $topology_name $single_copy $core_neighbors TMP_$identifier`;
 			if ($debug) {print STDERR "\nidentifier: $identifier \t path: $genome_path\n\n";}
 			if ($debug) {print STDERR "resubmit qsub $shell_script\n";}
@@ -557,29 +560,32 @@ sub compute
 		if ($debug) {print STDERR "$num_jobs relaunched\n";}
 		&wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
 	    }
-	}
-	if ($resub_jobs > 0) {
-	    $num_jobs = 0;
-	    for (my $j=0; $j <= $#genomes; $j++)
-	    {
-		my $identifier = $genomes[$j][0];                                                 # get genome name
-		my $genome_path = $genomes[$j][1];                                                # get genome path
-		my $match_name = "$identifier" . "_match.col";
-		my $pgg_name = "$identifier" . "_pgg.col";
-		my $att_name = "$identifier" . "_attributes.txt";
-		my $stats_name = "$identifier" . "_cluster_stats.txt";
-		my $anomalies_name = "$identifier" . "_anomalies.txt";
-		my $working_dir = $cwd . "/TMP_" . $identifier;
-		if (!(-e $match_name) || !(-e $pgg_name) || !(-e $att_name) || !(-e $anomalies_name) || !(-e $stats_name)){
-		    $num_jobs++;
-		    print STDERR "$identifier\t$genome_path\tFAILED\n";
-		} else {
-		    `rm -r $working_dir`;
+	    if ($resub_jobs > 0) {
+		$num_jobs = 0;
+		for (my $j=0; $j <= $#genomes; $j++)
+		{
+		    my $identifier = $genomes[$j][0];                                                 # get genome name
+		    my $genome_path = $genomes[$j][1];                                                # get genome path
+		    my $match_name = "$identifier" . "_match.col";
+		    my $pgg_name = "$identifier" . "_pgg.col";
+		    my $att_name = "$identifier" . "_attributes.txt";
+		    my $stats_name = "$identifier" . "_cluster_stats.txt";
+		    my $anomalies_name = "$identifier" . "_anomalies.txt";
+		    my $working_dir = $cwd . "/TMP_" . $identifier;
+		    if (!(-e $match_name) || !(-e $pgg_name) || !(-e $att_name) || !(-e $anomalies_name) || !(-e $stats_name)){
+			$num_jobs++;
+			print STDERR "$identifier\t$genome_path\tFAILED\n";
+		    } else {
+			`rm -r $working_dir`;
+		    }
+		}
+		if ($num_jobs > 0) {
+		    die "Too many grid jobs failed $num_jobs\n";
 		}
 	    }
-	    if ($num_jobs > 0) {
-		die "Too many grid jobs failed $num_jobs\n";
-	    }
+	} else {
+	    `rm -r TMP_*`;
+	    if ($debug) {print STDERR "removed TMP directories\n";}
 	}
 
 	for (my $j=0, my $k=1; $j <= $#genomes; $j++, $k++)
