@@ -229,6 +229,7 @@ sub launch_grid_job {
 
     my $job_id = `$qsub_command`;
     $job_id =~ s/\s*//g; # remove all whitespace characters
+    $job_id =~ s/\..*//; # remove all characters after the first .
 
     if (&bash_error_check($qsub_command, $?, $!)) {
         die "Problem submitting the job!: $job_id\n$qsub_command\n$shell_script\n$qsub_exec\n";
@@ -273,6 +274,7 @@ sub parse_response_qstat {
     foreach my $line (@qstat_array) {
 	my @fields = split ( /\s+/, $line );
 	if (($fields[1] eq $job_name) && ($fields[4] ne "C")) {
+	    $fields[0] =~ s/\..*//; # remove all characters after the first .
 	    $running{$fields[0]} = $fields[4];
 	}
     }
@@ -309,6 +311,7 @@ sub parse_response_qacct {
             $line =~ s/(.*\S)\s+$/$1/;
             my ( $key, $value ) = split ( /\s+/, $line, 2 );
 	    if ($key eq "jobnumber") {
+		$value =~ s/\..*//; # remove all characters after the first .
 		if ( defined $job_ids->{$value} ) {
 		    delete ( $job_ids->{$value} )
 		}
