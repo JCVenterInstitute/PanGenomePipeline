@@ -313,6 +313,7 @@ sub wait_for_grid_jobs {
     
     my ( $queue, $name, $number, $job_ids ) = @_;
     my $size = scalar( keys %{$job_ids} );
+    print STDERR "Wait for grid jobs: queue $queue, name $name, number $number, size $size\n";
 
     if ($queue eq "NONE") {
 	sleep 180; # need to wait to make sure qstat knows about all submitted jobs
@@ -339,13 +340,17 @@ sub parse_response_qstat {
     my ( $response, $job_name, $job_ids ) = @_;
     my @qstat_array = split ( /\n/, $response );
     my %running = ();
+    print STDERR "qstat response: job name: $job_name\n";
     foreach my $line (@qstat_array) {
 	my @fields = split ( /\s+/, $line );
+	print STDERR "$line\n";
 	if (($fields[1] eq $job_name) && ($fields[4] ne "C")) {
 	    $running{$fields[0]} = $fields[4];
+	    print STDERR "running: $fields[0] $fields[4]\n";
 	}
     }
     foreach my $job_id (keys %{ $job_ids }) {
+	print STDERR "job waiting: $job_id\n";
 	if (! ( defined $running{$job_id} )) {
 	    delete ( $job_ids->{$job_id} )
 	}
