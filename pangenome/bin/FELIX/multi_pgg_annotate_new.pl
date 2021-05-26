@@ -298,6 +298,7 @@ sub launch_grid_job {
 
     my $job_id = `$qsub_command`;
     $job_id =~ s/\s*//g; # remove all whitespace characters
+    $job_id =~ s/\..*//; # remove all characters after the first .
 
     if (&bash_error_check($qsub_command, $?, $!)) {
         die "Problem submitting the job!: $job_id\n$qsub_command\n$shell_script\n$qsub_exec\n";
@@ -313,7 +314,7 @@ sub wait_for_grid_jobs {
     
     my ( $queue, $name, $number, $job_ids ) = @_;
     my $size = scalar( keys %{$job_ids} );
-    print STDERR "Wait for grid jobs: queue $queue, name $name, number $number, size $size\n";
+    #print STDERR "Wait for grid jobs: queue $queue, name $name, number $number, size $size\n";
 
     if ($queue eq "NONE") {
 	sleep 180; # need to wait to make sure qstat knows about all submitted jobs
@@ -340,17 +341,18 @@ sub parse_response_qstat {
     my ( $response, $job_name, $job_ids ) = @_;
     my @qstat_array = split ( /\n/, $response );
     my %running = ();
-    print STDERR "qstat response: job name: $job_name\n";
+    #print STDERR "qstat response: job name: $job_name\n";
     foreach my $line (@qstat_array) {
 	my @fields = split ( /\s+/, $line );
-	print STDERR "$line\n";
+	#print STDERR "$line\n";
 	if (($fields[1] eq $job_name) && ($fields[4] ne "C")) {
+	    $fields[0] =~ s/\..*//; # remove all characters after the first .
 	    $running{$fields[0]} = $fields[4];
-	    print STDERR "running: $fields[0] $fields[4]\n";
+	    #print STDERR "running: $fields[0] $fields[4]\n";
 	}
     }
     foreach my $job_id (keys %{ $job_ids }) {
-	print STDERR "job waiting: $job_id\n";
+	#print STDERR "job waiting: $job_id\n";
 	if (! ( defined $running{$job_id} )) {
 	    delete ( $job_ids->{$job_id} )
 	}
@@ -383,6 +385,7 @@ sub parse_response_qacct {
             $line =~ s/(.*\S)\s+$/$1/;
             my ( $key, $value ) = split ( /\s+/, $line, 2 );
 	    if ($key eq "jobnumber") {
+		$value =~ s/\..*//; # remove all characters after the first .
 		if ( defined $job_ids->{$value} ) {
 		    delete ( $job_ids->{$value} )
 		}
