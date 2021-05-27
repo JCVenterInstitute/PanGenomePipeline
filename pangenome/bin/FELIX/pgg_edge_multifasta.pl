@@ -183,6 +183,9 @@ if ($codon_opt) {
 	die "Cannot specify codon optimization output (-O) without providing a target genome (-t)\n";
     }
     $codon_opt_file = "$basedir/$target_id" . "_codon_opt.txt";
+    unless (open (CODONOPTFILE, ">", $codon_opt_file) )  {
+	die ("ERROR: cannot open codon optimization multifasta file $codon_opt_file\n");
+    }
 }
 
 my $num_size_one_clus = 0;
@@ -1432,7 +1435,13 @@ sub process_matchtable {
 					    print DIFFFILE "$target_id\t$feat_hash{$feat_name}->{'contig'}\tconserved_clus_allele\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\n";
 					}
 					if ($codon_opt && $diverged_alignment_flag) {
-					    `sed -e "s/$target_id/$cluster_id/" $seq_file >> $codon_opt_file`;
+					    print OUTFILE ">$target_id" . "_$cluster_id\n";
+					    $tmp_seq_len = $seq_len;
+					    for ( $pos = 0 ; $tmp_seq_len > 60 ; $pos += 60 ) {
+						print CODONOPTFILE substr($target_sequence, $pos, 60), "\n";
+						$tmp_seq_len -= 60;
+					    }
+					    print CODONOPTFILE substr($target_sequence, $pos, $tmp_seq_len), "\n";
 					}
 					if ($keep_divergent_alignments && $diverged_alignment_flag) {
 					    `mv $combined_file $keep_divergent_alignments/cluster_$target_id.$cluster_id.afa`;
@@ -2954,6 +2963,9 @@ if ($remake_files) {
 if ((!$suppress) && ($align_all)) {
     print  STDERR "Computing multiple sequence alignments and  statistics\n";
     &compute_alignments;
+}
+if ($codon_opt) {
+    close (CODONOPTFILE);
 }
 print STDERR "Finished processing - exiting\n";
 exit(0);
