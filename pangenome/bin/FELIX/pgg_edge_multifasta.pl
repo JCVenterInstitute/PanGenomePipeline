@@ -1435,7 +1435,7 @@ sub process_matchtable {
 					    print DIFFFILE "$target_id\t$feat_hash{$feat_name}->{'contig'}\tconserved_clus_allele\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\n";
 					}
 					if ($codon_opt && $diverged_alignment_flag) {
-					    print OUTFILE ">$target_id" . "_$cluster_id\n";
+					    print CODONOPTFILE ">$target_id" . "_$cluster_id\n";
 					    $tmp_seq_len = $seq_len;
 					    for ( $pos = 0 ; $tmp_seq_len > 60 ; $pos += 60 ) {
 						print CODONOPTFILE substr($target_sequence, $pos, 60), "\n";
