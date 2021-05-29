@@ -2624,6 +2624,7 @@ sub compute_alignments
     }
     &wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
     $num_jobs = 0;
+    my $failed_jobs = 0;
     foreach my $line (@mf_files) {
 	(my $mf_file, my $num_alleles, my $empty) = split(/\t/, $line);  # split the scalar $line on tab
 	my $msa_file = $mf_file;
@@ -2643,13 +2644,17 @@ sub compute_alignments
 		`rm $stderrfile $stdoutfile $qsub_exec`;
 	    }
 	    next; # skip if file already exists and is not zero size
+	} else {
+	    if (-e $stderrfile) {
+		$failed_jobs++; #these are jobs which really failed versus just disappearing after qsub
+	    }
 	}
 	$num_jobs++;
     }
-    if ($num_jobs > ($total_jobs / 10)) {
-	die "Too many Muscle grid jobs failed $num_jobs\n";
+    if (($num_jobs > ((4 * $total_jobs) / 5)) || ($failed_jobs > ($total_jobs / 10))) {
+	die "Too many Muscle grid jobs failed $failed_jobs:$num_jobs out of $total_jobs\n";
     } elsif ($num_jobs > 0) {
-	for (my $k=0; $k <= 2; $k++){ #try a maximum of 3 times on failed jobs
+	for (my $k=0; $k <= 9; $k++){ #try a maximum of 10 times on failed jobs
 	    print STDERR "Resubmit $num_jobs jobs Iteration $k\n" if ($DEBUG);
 	    %job_ids = ();
 	    $num_jobs = 0;
@@ -2723,6 +2728,7 @@ sub compute_alignments
     }
     &wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
     $num_jobs = 0;
+    $failed_jobs = 0;
     foreach my $msa_file (@msa_files) {
 	my $stats_file = $msa_file;
 	my $identifier = basename($msa_file);
@@ -2736,13 +2742,17 @@ sub compute_alignments
 		`rm $stderrfile $qsub_exec`;
 	    }
 	    next; # skip if file already exists and is not zero size
+	} else {
+	    if (-e $stderrfile) {
+		$failed_jobs++; #these are jobs which really failed versus just disappearing after qsub
+	    }
 	}
 	$num_jobs++;
     }
-    if ($num_jobs > ($total_jobs / 10)) {
-	die "Too many Alignment Stats grid jobs failed $num_jobs\n";
+    if (($num_jobs > ((4 * $total_jobs) / 5)) || ($failed_jobs > ($total_jobs / 10))) {
+	die "Too many Alignment Stats grid jobs failed $failed_jobs:$num_jobs out of $total_jobs\n";
     } elsif ($num_jobs > 0) {
-	for (my $k=0; $k <= 2; $k++){ #try a maximum of 3 times on failed jobs
+	for (my $k=0; $k <= 9; $k++){ #try a maximum of 10 times on failed jobs
 	    print STDERR "Resubmit $num_jobs jobs Iteration $k\n" if ($DEBUG);
 	    %job_ids = ();
 	    $num_jobs = 0;
