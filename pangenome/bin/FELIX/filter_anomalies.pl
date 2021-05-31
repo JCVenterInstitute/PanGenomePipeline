@@ -673,9 +673,6 @@ while (my $line = <$infile>)  {
 	$seen_contig{$cur_contig} = 1;
 	if ($prev_contig ne $cur_contig) { # first segment for this contig
 	    if (($prev_contig ne "") && ($beg_diverged != 0)) {
-		if (($end_conserved > 0) && ($end_diverged > $end_conserved)) {
-		    $end_diverged = $end_conserved;
-		}
 		$query_coords[$qc_index][QCNAME] = $prev_contig . "_DIV_" . $beg_diverged . "_" . $end_diverged . "_" . $diverged_type;
 		$query_coords[$qc_index][QCCTG] = $prev_contig;
 		$query_coords[$qc_index][QCBEG] = $beg_diverged;
@@ -688,12 +685,12 @@ while (my $line = <$infile>)  {
 		    $query_coords[$qc_index][QCEND] = $contig_len{$prev_contig} + $query_coords[$qc_index][QCEND];
 		}
 		$qc_index++;
-		$beg_diverged = 0;
-		$end_diverged = 0;
-		$beg_conserved = 0;
-		$end_conserved = 0;
-		$diverged_type = "";
 	    }
+	    $beg_diverged = 0;
+	    $end_diverged = 0;
+	    $beg_conserved = 0;
+	    $end_conserved = 0;
+	    $diverged_type = "";
 	    #if (($prev_contig ne "") && (($contig_len{$prev_contig} - $prev_end) > 20)) { # include unannotated contig ends > 20 bp
 		#my $tmp_seq = substr($contigs{$prev_contig}, $prev_end, ($contig_len{$prev_contig} - $prev_end));
 		#if ($tmp_seq !~ /NNNNN/) { # do not use sequences with gaps in them - perhaps should split on gaps instead
@@ -743,11 +740,13 @@ while (my $line = <$infile>)  {
 	
 	if (($cur_category == IDENTICAL) || ($cur_category == CONSERVED)) {
 	    if ($cur_len >= 100) {
+		$beg_conserved = $cur_beg;
+		$end_conserved = $cur_end;
 		if ($beg_diverged != 0) {
 		    if ($first_qc_index < 0) {
 			$first_qc_index = $qc_index;
 		    }
-		    if (($end_conserved > 0) && ($end_diverged > $end_conserved)) {
+		    if ($end_diverged > $end_conserved) {
 			$end_diverged = $end_conserved;
 		    }
 		    $query_coords[$qc_index][QCNAME] = $cur_contig . "_DIV_" . $beg_diverged . "_" . $end_diverged . "_" . $diverged_type;
@@ -762,13 +761,13 @@ while (my $line = <$infile>)  {
 		    $end_conserved = 0;
 		    $diverged_type = "";
 		}
-		$beg_conserved = $cur_beg;
-		$end_conserved = $cur_end;
 	    } else {
 		if ($beg_diverged == 0) {
 		    # do not include starting short conserved as part of diverged but do use it as context
-		    $beg_conserved = $cur_beg;
-		    $end_conserved = $cur_end;
+		    if ($beg_conserved == 0) { # only do this if there is not a longer previous conserved region
+			$beg_conserved = $cur_beg;
+			$end_conserved = $cur_end;
+		    }  
 		} else {
 		    $diverged_type .= "_" . $cur_type . "_" . $cur_locus . "_" . $cur_beg . "_" . $cur_end;
 		}
@@ -806,9 +805,6 @@ while (my $line = <$infile>)  {
     }
     close($file_ranges);
     if (($prev_contig ne "") && ($beg_diverged != 0)) {
-	if (($end_conserved > 0) && ($end_diverged > $end_conserved)) {
-	    $end_diverged = $end_conserved;
-	}
 	$query_coords[$qc_index][QCNAME] = $prev_contig . "_DIV_" . $beg_diverged . "_" . $end_diverged . "_" . $diverged_type;
 	$query_coords[$qc_index][QCCTG] = $prev_contig;
 	$query_coords[$qc_index][QCBEG] = $beg_diverged;
