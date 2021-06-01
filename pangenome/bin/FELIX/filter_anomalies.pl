@@ -673,6 +673,7 @@ while (my $line = <$infile>)  {
 	$seen_contig{$cur_contig} = 1;
 	if ($prev_contig ne $cur_contig) { # first segment for this contig
 	    if (($prev_contig ne "") && ($beg_diverged != 0)) {
+		print STDERR "New contig $cur_contig ($prev_contig) $beg_diverged:$end_diverged $diverged_type\n";
 		$query_coords[$qc_index][QCNAME] = $prev_contig . "_DIV_" . $beg_diverged . "_" . $end_diverged . "_" . $diverged_type;
 		$query_coords[$qc_index][QCCTG] = $prev_contig;
 		$query_coords[$qc_index][QCBEG] = $beg_diverged;
@@ -743,6 +744,7 @@ while (my $line = <$infile>)  {
 		$beg_conserved = $cur_beg;
 		$end_conserved = $cur_end;
 		if ($beg_diverged != 0) {
+		    print STDERR "End diverged region $cur_contig $beg_diverged:$end_diverged $beg_conserved:$end_conserved $diverged_type\n";
 		    if ($first_qc_index < 0) {
 			$first_qc_index = $qc_index;
 		    }
@@ -768,12 +770,14 @@ while (my $line = <$infile>)  {
 			$beg_conserved = $cur_beg;
 			$end_conserved = $cur_end;
 		    }  
+		    print STDERR "Short conserved region $cur_contig $beg_diverged:$end_diverged $beg_conserved:$end_conserved $diverged_type\n";
 		} else {
 		    $diverged_type .= "_" . $cur_type . "_" . $cur_locus . "_" . $cur_beg . "_" . $cur_end;
 		}
 		# do not stop the diverged region for a short conserved region
 	    }
 	} elsif ($cur_category == DIVERGED) {
+	    print STDERR "Diverged region $cur_contig $beg_diverged:$end_diverged $beg_conserved:$end_conserved $diverged_type\n";
 	    if ($beg_diverged == 0) {
 		if (($end_conserved - $beg_conserved) > CONTEXTLEN)  {
 		    $beg_diverged = $end_conserved - CONTEXTLEN;
@@ -783,10 +787,12 @@ while (my $line = <$infile>)  {
 		    $beg_diverged = 1; # instead of $cur_beg to include context around the diverged region
 		}
 		$diverged_type = $cur_type . "_" . $cur_locus . "_" . $cur_beg . "_" . $cur_end;
+		print STDERR "Begin new diverged region $cur_contig $beg_diverged:$end_diverged $beg_conserved:$end_conserved $diverged_type\n";
 	    } else {
 		$diverged_type .= "_" . $cur_type . "_" . $cur_locus . "_" . $cur_beg . "_" . $cur_end;
 	    }
 	    $end_diverged = (($contig_len{$cur_contig} - $cur_end) > CONTEXTLEN) ? ($cur_end + CONTEXTLEN) : $contig_len{$cur_contig}; #instead of #cur_end to include context around the diverged region
+	    print STDERR "Diverged region $cur_contig $beg_diverged:$end_diverged $beg_conserved:$end_conserved $diverged_type\n";
 	} elsif ($cur_category == GAPPED) {
 	    # do nothing for gapped - continue diverged or conserved as the case may be
 	} else {
@@ -805,6 +811,7 @@ while (my $line = <$infile>)  {
     }
     close($file_ranges);
     if (($prev_contig ne "") && ($beg_diverged != 0)) {
+	print STDERR "Last diverged region $cur_contig $beg_diverged:$end_diverged $beg_conserved:$end_conserved $diverged_type\n";
 	$query_coords[$qc_index][QCNAME] = $prev_contig . "_DIV_" . $beg_diverged . "_" . $end_diverged . "_" . $diverged_type;
 	$query_coords[$qc_index][QCCTG] = $prev_contig;
 	$query_coords[$qc_index][QCBEG] = $beg_diverged;
