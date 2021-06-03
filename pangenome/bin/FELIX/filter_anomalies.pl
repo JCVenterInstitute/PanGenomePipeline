@@ -408,11 +408,11 @@ while (my $line = <$infile>)  {
 	my $category = $split_line[2];
 	if (($category =~ /^divergent/) || ($category =~ /^very/) || ($category eq "uniq_edge")) {
 	    $category = DIVERGED;
-	} elsif ($category =~ /^identical/) {
+	} elsif ($category =~ /^identical_clus/) { #ignore edges as context anchors
 	    $category = IDENTICAL;
 	} elsif ($category =~ /^gapped/) {
 	    $category = GAPPED;
-	} elsif ($category =~ /^conserved_.*_allele$/) {
+	} elsif ($category =~ /^conserved_clus_allele$/) { #ignore edges as context anchors
 	    $category = CONSERVED;
 	} else {
 	    next; # ignore other types
@@ -567,7 +567,7 @@ while (my $line = <$infile>)  {
 	}
     }
 
-    # eliminate overlaps between annotated segments by truncation - delete those that are contained by others - order of precedence: IDENTICAL, DIVERGED, CONSERVED, GAPPED
+    # eliminate overlaps between annotated segments by truncation - delete those that are contained by others - order of precedence: IDENTICAL, CONSERVED, GAPPED, DIVERGED
     for (my $i=0; $i < @ordered; $i++) {
 	if ($ordered[$i][DELETE]) {
 	    next;
@@ -1056,7 +1056,7 @@ while (my $line = <$infile>)  {
 		}
 	    }
 	}
-	#print STDERR "Findmax:$qid:$max_sid:$full_max:$full_index:$sum_max:$fivep_index:$threep_index:$#pgg_blast_results\n";
+	print STDERR "Findmax:$qid:$max_sid:$full_max:$full_index:$sum_max:$fivep_index:$threep_index:$#pgg_blast_results\n";
 	if ($max_sid eq "") {
 	    next; #no good matches for this query sequence
 	}
@@ -1066,6 +1066,14 @@ while (my $line = <$infile>)  {
 	    die ("ERROR: for fivep_index $fivep_index subject id $max_sid not the same as $pgg_blast_results[$fivep_index][SSEQID]\n");
 	} elsif (($threep_index > 0) && ($max_sid ne $pgg_blast_results[$threep_index][SSEQID])) {
 	    die ("ERROR: for threep_index $threep_index subject id $max_sid not the same as $pgg_blast_results[$threep_index][SSEQID]\n");
+	}
+	my $start_offset;
+	my $end_offset;
+	if ($qid =~ /.*_DIV_([0-9]+)_([0-9]+)_/) {
+	    $start_offset = $1 - 1;
+	    $end_offset = $2;
+	} else {
+	    die ("ERROR qid $qid is not in expected format!\n");
 	}
 	if ($full_max > 0) {# possible mutation
 	    if (($full_index > $#pgg_blast_results) || ($full_index < 0)) {
@@ -1095,6 +1103,8 @@ while (my $line = <$infile>)  {
 		$mutations++;
 		my $del_len = length($deletion);
 		my $ins_len = length($insertion);
+		$qstart += $start_offset;
+		$qend += $start_offset;
 		print CALLS_FILE "$output\tMUTATION\t$qid\t\t\t$deletion\t$del_len\t$insertion\t$ins_len\t$cur_sid\t$pid\t$sstart\t$send\t$qstart\t$qend\n";
 	    }
 	} elsif (($fivep_index >= 0) && ($threep_index >= 0)) {# possible deletion or insertion/replacement
@@ -1197,10 +1207,16 @@ while (my $line = <$infile>)  {
 		if (($deletion !~ /NNNNN/) && (length($insertion) <= MAXINDELLEN) && (length($deletion) <= MAXINDELLEN)) { # do not believe sequences with gaps in them or are really long
 		    my $del_len = length($deletion);
 		    my $ins_len = length($insertion);
+		    $fivep_start += $start_offset;
+		    $fivep_end += $start_offset;
+		    $threep_start += $start_offset;
+		    $threep_end += $start_offset;
 		    if ($tandem_duplication) {
 			# swap insertion with deletion sequence for tandem duplication - should possibly be grabbing the sequence from the query rather than the matching bit from the subject
 			$tandem_duplications++;
-			print CALLS_FILE "$output\tTANDEM_DUPLICATION\t$qid\t$fivep_flank\t$threep_flank\t$insertion\t$ins_len\t$deletion\t$del_len\t$cur_sid\t$pid\t$del_start\t$del_end\t$fivep_end\t$threep_start\n";
+			$fivep_end -= $del_len;
+			$threep_start += $del_len;
+			print CALLS_FILE "$output\tTANDEM_DUPLICATION\t$qid\t$fivep_flank\t$threep_flank\t$insertion\t$ins_len\t$deletion\t$del_len\t$cur_sid\t$pid\t$del_end\t$del_start\t$fivep_end\t$threep_start\n";
 		    } else {
 			$deletions++;
 			print CALLS_FILE "$output\tDELETION\t$qid\t$fivep_flank\t$threep_flank\t$deletion\t$del_len\t$insertion\t$ins_len\t$cur_sid\t$pid\t$del_start\t$del_end\t$fivep_end\t$threep_start\n";
@@ -1221,6 +1237,41 @@ while (my $line = <$infile>)  {
 		    $del_start++;
 		    $del_end--;
 		}
+		if ($revcomp) {
+		    if ((($del_start - $del_end) + 1) < 0) {
+			my $overlap = ($del_end - $del_start) - 1;
+			if ($overlap % 2) {
+			    #odd
+			    $fivep_end -= ($overlap + 1) / 2;
+			    $threep_start += ($overlap - 1) / 2;
+			    $del_start += ($overlap + 1) / 2;
+			    $del_end -= ($overlap - 1) / 2;
+			} else {
+			    #even
+			    $fivep_end -= $overlap / 2;
+			    $threep_start += $overlap / 2;
+			    $del_start += $overlap / 2;
+			    $del_end -= $overlap / 2;
+			}
+		    }
+		} else {
+		    if ((($del_end - $del_start) + 1) < 0) {
+			my $overlap = ($del_start - $del_end) - 1;
+			if ($overlap % 2) {
+			    #odd
+			    $fivep_end -= ($overlap + 1) / 2;
+			    $threep_start += ($overlap - 1) / 2;
+			    $del_start -= ($overlap + 1) / 2;
+			    $del_end += ($overlap - 1) / 2;
+			} else {
+			    #even
+			    $fivep_end -= $overlap / 2;
+			    $threep_start += $overlap / 2;
+			    $del_start -= $overlap / 2;
+			    $del_end += $overlap / 2;
+			}
+		    }
+		}
 		my $fivep_flank = substr($query_seqs{$qid}, ($fivep_start - 1), (($fivep_end - $fivep_start) + 1));
 		my $threep_flank = substr($query_seqs{$qid}, ($threep_start - 1), (($threep_end - $threep_start) + 1));
 		my $insertion = substr($query_seqs{$qid}, $fivep_end, (($threep_start - $fivep_end) - 1));
@@ -1240,6 +1291,10 @@ while (my $line = <$infile>)  {
 		    my $del_len = length($deletion);
 		    my $ins_len = length($insertion);
 		    $insertions++;
+		    $fivep_start += $start_offset;
+		    $fivep_end += $start_offset;
+		    $threep_start += $start_offset;
+		    $threep_end += $start_offset;
 		    print CALLS_FILE "$output\tINSERTION\t$qid\t$fivep_flank\t$threep_flank\t$deletion\t$del_len\t$insertion\t$ins_len\t$cur_sid\t$pid\t$del_start\t$del_end\t$fivep_end\t$threep_start\n";
 		}
 	    }
