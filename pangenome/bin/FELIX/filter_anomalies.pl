@@ -959,7 +959,7 @@ while (my $line = <$infile>)  {
 	my $bitscore = $pgg_blast_results[$count][BITSCORE] = $split_line[10]; # bitscore
 	my $stitle = $pgg_blast_results[$count][STITLE] = $split_line[11];     # subject title
 	#print STDERR "$pid $qstart $qend $qlen\n";
-	if (($pid >= 95) && (($qstart <= 6) || ($qend >= ($qlen - 5)))) {
+	if ((($qlen >= 50) && ($slen >= 50)) && ((($qstart <= 6) && ($qend >= ($qlen - 5))) || (($pid >= 90) && (($qstart <= 6) || ($qend >= ($qlen - 5)))))) {
 	    if (($qstart <= 6) && ($qend >= ($qlen - 5))) {
 		if (defined $max_bitscore{$qid}{$sid}) {
 		    $max_bitscore{$qid}{$sid}[MB5P][MBBIT] = 0;
@@ -972,6 +972,8 @@ while (my $line = <$infile>)  {
 			$max_bitscore{$qid}{$sid}[MBFULL][MBSEC] = $max_bitscore{$qid}{$sid}[MBFULL][MBBIT];
 			$max_bitscore{$qid}{$sid}[MBFULL][MBBIT] = $bitscore;
 			$max_bitscore{$qid}{$sid}[MBFULL][MBIND] = $count;
+		    } elsif ($bitscore == $max_bitscore{$qid}{$sid}[MBFULL][MBBIT]) {
+			$max_bitscore{$qid}{$sid}[MBFULL][MBSEC] = $max_bitscore{$qid}{$sid}[MBFULL][MBBIT];
 		    }
 		} else {
 		    $max_bitscore{$qid}{$sid} = [ [ 0, -1, 0 ], [ 0, -1, 0 ], [ $bitscore, $count, 0 ] ];
@@ -982,6 +984,8 @@ while (my $line = <$infile>)  {
 			$max_bitscore{$qid}{$sid}[MB5P][MBSEC] = $max_bitscore{$qid}{$sid}[MB5P][MBBIT];
 			$max_bitscore{$qid}{$sid}[MB5P][MBBIT] = $bitscore;
 			$max_bitscore{$qid}{$sid}[MB5P][MBIND] = $count;
+		    } elsif (($max_bitscore{$qid}{$sid}[MBFULL][MBBIT] == 0) && ($bitscore == $max_bitscore{$qid}{$sid}[MB5P][MBBIT])) {
+			$max_bitscore{$qid}{$sid}[MB5P][MBSEC] = $max_bitscore{$qid}{$sid}[MB5P][MBBIT];
 		    }
 		} else {
 		    $max_bitscore{$qid}{$sid} = [ [ $bitscore, $count, 0 ], [ 0, -1, 0 ], [ 0, -1, 0 ] ];
@@ -992,6 +996,8 @@ while (my $line = <$infile>)  {
 			$max_bitscore{$qid}{$sid}[MB3P][MBSEC] = $max_bitscore{$qid}{$sid}[MB3P][MBBIT];
 			$max_bitscore{$qid}{$sid}[MB3P][MBBIT] = $bitscore;
 			$max_bitscore{$qid}{$sid}[MB3P][MBIND] = $count;
+		    } elsif (($max_bitscore{$qid}{$sid}[MBFULL][MBBIT] == 0) && ($bitscore == $max_bitscore{$qid}{$sid}[MB3P][MBBIT])) {
+			$max_bitscore{$qid}{$sid}[MB3P][MBSEC] = $max_bitscore{$qid}{$sid}[MB3P][MBBIT];
 		    }
 		} else {
 		    $max_bitscore{$qid}{$sid} = [ [ 0, -1, 0 ], [ $bitscore, $count, 0 ], [ 0, -1, 0 ] ];
@@ -1208,8 +1214,8 @@ while (my $line = <$infile>)  {
 		    my $del_len = length($deletion);
 		    my $ins_len = length($insertion);
 		    $fivep_start += $start_offset;
-		    $fivep_end += $start_offset;
-		    $threep_start += $start_offset;
+		    $fivep_end += $start_offset + 1; # add 1 to move into insertion region not last 5p flanking bp
+		    $threep_start += $start_offset - 1;  # subtract 1 to move into insertion region not first 3p flanking bp
 		    $threep_end += $start_offset;
 		    if ($tandem_duplication) {
 			# swap insertion with deletion sequence for tandem duplication - should possibly be grabbing the sequence from the query rather than the matching bit from the subject
@@ -1292,8 +1298,8 @@ while (my $line = <$infile>)  {
 		    my $ins_len = length($insertion);
 		    $insertions++;
 		    $fivep_start += $start_offset;
-		    $fivep_end += $start_offset;
-		    $threep_start += $start_offset;
+		    $fivep_end += $start_offset + 1; # add 1 to move into insertion region not last 5p flanking bp
+		    $threep_start += $start_offset - 1;  # subtract 1 to move into insertion region not first 3p flanking bp
 		    $threep_end += $start_offset;
 		    print CALLS_FILE "$output\tINSERTION\t$qid\t$fivep_flank\t$threep_flank\t$deletion\t$del_len\t$insertion\t$ins_len\t$cur_sid\t$pid\t$del_start\t$del_end\t$fivep_end\t$threep_start\n";
 		}
