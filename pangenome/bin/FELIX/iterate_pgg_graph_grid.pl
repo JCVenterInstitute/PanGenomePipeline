@@ -208,6 +208,7 @@ sub single_grid_job {
     my $working_dir = $cwd;
     $job_ids{&launch_grid_job($job_name, $project, $working_dir, $shell_script, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
     &wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
+    #`rm TMP_*single*`;
 
     return;
 }
@@ -349,8 +350,8 @@ sub do_core_list
 # run single_copy_core.pl to generate input for pgg_annotate.pl
 {
     if (-e $paralogs) {
-	if ($debug) {print STDERR "\nperl $single_copy_path -s $weights -p $paralogs -c $id > $single_copy\n";}
-	&single_grid_job("perl $single_copy_path -s $weights -p $paralogs -c $id > $single_copy 2>> $logfile");
+	if ($debug) {print STDERR "\n$single_copy_path -s $weights -p $paralogs -c $id > $single_copy\n";}
+	&single_grid_job("$single_copy_path -s $weights -p $paralogs -c $id > $single_copy 2>> $logfile");
 	# need to check this completed successfully
     } else {
 	die ("ERROR: paralogs file: $paralogs does not exist!\n");
@@ -360,8 +361,8 @@ sub do_core_list
 sub do_neighbors
 # run core_neighbor_finder.pl to generate input for pgg_annotate.pl
 {
-    if ($debug) {print STDERR "\nperl $core_neighbor_path -v $pgg -cl $single_copy\n";}
-    &single_grid_job("perl $core_neighbor_path -v $pgg -cl $single_copy >> $logfile 2>&1");
+    if ($debug) {print STDERR "\n$core_neighbor_path -v $pgg -cl $single_copy\n";}
+    &single_grid_job("$core_neighbor_path -v $pgg -cl $single_copy >> $logfile 2>&1");
     # need to check this completed successfully
 }
 #############################################################################################
@@ -682,32 +683,32 @@ sub compute
 	`mv tmp.matchtable.col matchtable.col`;                                            # rename file
 	my $start_new_cluster_num = `wc -l < matchtable.col` + 1;
 	if ((-s "new_clusters.txt") && (-s "new_gene_seqs.fasta")){
-	    if ($debug) {print STDERR "\nperl $compute_new_clusters_path -c new_clusters.txt -g Genomes.List -s new_gene_seqs.fasta -n $start_new_cluster_num -i IndexNewClusters -M NewMatches -m NewMedoids\n";}
-	    &single_grid_job("perl $compute_new_clusters_path -c new_clusters.txt -g Genomes.List -s new_gene_seqs.fasta -n $start_new_cluster_num -i IndexNewClusters -M NewMatches -m NewMedoids >> $logfile 2>&1"); # run compute_new_clusters
+	    if ($debug) {print STDERR "\n$compute_new_clusters_path -c new_clusters.txt -g Genomes.List -s new_gene_seqs.fasta -n $start_new_cluster_num -i IndexNewClusters -M NewMatches -m NewMedoids\n";}
+	    &single_grid_job("$compute_new_clusters_path -c new_clusters.txt -g Genomes.List -s new_gene_seqs.fasta -n $start_new_cluster_num -i IndexNewClusters -M NewMatches -m NewMedoids >> $logfile 2>&1"); # run compute_new_clusters
 	    die ("IndexNewClusters is zero size \n") unless (-s "IndexNewClusters");
 	    `cat NewMatches >> matchtable.col`;
 	    `rm NewMatches`;
 	    `cat NewMedoids >> $medoids`;
 	    `rm NewMedoids`;
-	    if ($debug) {print STDERR "\nperl $pgg_combine_edges_path -i IndexNewClusters < AllEdges > pgg.combined\n";}
-	    &single_grid_job("perl $pgg_combine_edges_path -i IndexNewClusters < AllEdges > pgg.combined 2>> $logfile"); # run pgg_combine_edges
+	    if ($debug) {print STDERR "\n$pgg_combine_edges_path -i IndexNewClusters < AllEdges > pgg.combined\n";}
+	    &single_grid_job("$pgg_combine_edges_path -i IndexNewClusters < AllEdges > pgg.combined 2>> $logfile"); # run pgg_combine_edges
 	    die ("pgg.combined is zero size \n") unless (-s "pgg.combined");
 	    `rm *_alledges.txt`; # can remove these files now
 	    `rm IndexNewClusters`;
 	} else {
-	    if ($debug) {print STDERR "\nperl $pgg_combine_edges_path < AllEdges > pgg.combined\n";}
-	    &single_grid_job("perl $pgg_combine_edges_path < AllEdges > pgg.combined 2>> $logfile"); # run pgg_combine_edges
+	    if ($debug) {print STDERR "\n$pgg_combine_edges_path < AllEdges > pgg.combined\n";}
+	    &single_grid_job("$pgg_combine_edges_path < AllEdges > pgg.combined 2>> $logfile"); # run pgg_combine_edges
 	    die ("pgg.combined is zero size \n") unless (-s "pgg.combined");
 	    `rm *_alledges.txt`; # can remove these files now
 	}
 	`rm new_gene_seqs.fasta new_clusters.txt`;
 	`rm output/* multifasta/*`; # clean up any multifasta files from previous iteration
 	if ($strip_version) {
-	    if ($debug) {print STDERR "\nperl $pgg_multifasta_path -X -Q $qsub_queue -V -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R\n";}    # run pgg edge multi_fasta
-	    &single_grid_job("perl $pgg_multifasta_path -X -Q $qsub_queue -V -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1");    # run pgg edge multi_fasta
+	    if ($debug) {print STDERR "\n$pgg_multifasta_path -X -Q $qsub_queue -V -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R\n";}    # run pgg edge multi_fasta
+	    &single_grid_job("$pgg_multifasta_path -X -Q $qsub_queue -V -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1");    # run pgg edge multi_fasta
 	} else {
-	    if ($debug) {print STDERR "\nperl $pgg_multifasta_path -X -Q $qsub_queue -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R\n";}    # run pgg edge multi_fasta
-	    &single_grid_job("perl $pgg_multifasta_path -X -Q $qsub_queue -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1");    # run pgg edge multi_fasta
+	    if ($debug) {print STDERR "\n$pgg_multifasta_path -X -Q $qsub_queue -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R\n";}    # run pgg edge multi_fasta
+	    &single_grid_job("$pgg_multifasta_path -X -Q $qsub_queue -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1");    # run pgg edge multi_fasta
 	}
 	die ("output/pgg.txt is zero size \n") unless (-s "output/pgg.txt");
 	
