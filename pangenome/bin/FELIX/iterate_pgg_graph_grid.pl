@@ -201,13 +201,14 @@ sub single_grid_job {
     #Given a shell script, launch it via qsub and wait for it to complete.
 
     my ($shell_script) = @_;
-    my %job_ids = ();
+    my %single_job_ids = ();
     my $job_name = "cpgg_" . $$ . "_single"; #use a common job name so that qacct can access all of them together
     my $stdoutfile = $cwd . "/" . "TMP_single_qsub_stdout";
     my $stderrfile = $cwd . "/" . "TMP_single_qsub_stderr";
     my $working_dir = $cwd;
-    $job_ids{&launch_grid_job($job_name, $project, $working_dir, $shell_script, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
-    &wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
+    print STDERR "single_grid_job $qsub_queue $project $job_name $shell_script\n";
+    $single_job_ids{&launch_grid_job($job_name, $project, $working_dir, $shell_script, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
+    &wait_for_grid_jobs($qsub_queue, $job_name, 0, \%single_job_ids);
     #`rm TMP_*single*`;
 
     return;
@@ -353,6 +354,7 @@ sub do_core_list
 	if ($debug) {print STDERR "\n$single_copy_path -s $weights -p $paralogs -c $id > $single_copy\n";}
 	&single_grid_job("$single_copy_path -s $weights -p $paralogs -c $id > $single_copy 2>> $logfile");
 	# need to check this completed successfully
+	die ("$single_copy does not exist or is zero size \n") unless ((-e $single_copy) && (-s $single_copy));    
     } else {
 	die ("ERROR: paralogs file: $paralogs does not exist!\n");
     }
@@ -364,6 +366,7 @@ sub do_neighbors
     if ($debug) {print STDERR "\n$core_neighbor_path -v $pgg -cl $single_copy\n";}
     &single_grid_job("$core_neighbor_path -v $pgg -cl $single_copy >> $logfile 2>&1");
     # need to check this completed successfully
+    die ("$core_neighbors does not exist or is zero size \n") unless ((-e $core_neighbors) && (-s $core_neighbors));    
 }
 #############################################################################################
 sub load_genomes
