@@ -202,7 +202,7 @@ sub single_grid_job {
 
     my ($shell_script) = @_;
     my %single_job_ids = ();
-    my $job_name = "cpgg_" . $$ . "_single"; #use a common job name so that qacct can access all of them together
+    my $job_name = "PGG" . $$ . "S"; #use a common job name so that qacct can access all of them together - names need to be <= 16 characters for qstat
     my $stdoutfile = $cwd . "/" . "TMP_single_qsub_stdout";
     my $stderrfile = $cwd . "/" . "TMP_single_qsub_stderr";
     my $working_dir = $cwd;
@@ -459,7 +459,7 @@ sub compute
     my $match_col_files = "";
     for (my $i=1; $i <= $max_iterate; $i++)
     {
-	my $job_name = "cpgg_" . $$ . "$i"; #use a common job name so that qacct can access all of them together
+	my $job_name = "PGG" . $$ . "$i"; #use a common job name so that qacct can access all of them together  - names need to be <= 16 characters for qstat
 	my %job_ids = ();
 	my $num_jobs = 0;
 	my $total_jobs = 0;
