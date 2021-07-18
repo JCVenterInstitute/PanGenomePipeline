@@ -9,7 +9,7 @@ use FileHandle;
 use Getopt::Long;
 use strict;
 my $genome_number;
-my %pgg_edges = ();  # key = pgg core edge, value = array of 0/1 of size number of genomes
+my %pgg_edges = ();  # key = pgg core edge, value = string of 0/1 and tabs of size number of genomes
 my %name_to_cluster = (); # key = gene name, value = cluster number gene is in
 
 my $help_text = "THIS IS PLACEHOLDER TEXT\n";                             #<------------------------------------------------------------------------ TODO: write help text
@@ -42,12 +42,14 @@ sub read_index {
 sub get_edges {  # obtain list of edge files - order will determine column order in PGG output
    
     $genome_number = 0;     # total number of genomes to be processed
-    my @zero_vector = ();   # vector of 0/1 for PGG columns
+    #my @zero_vector = ();   # vector of 0/1 for PGG columns
+    my $zero_string = "";   # string with tabs and 0s
     my @edgefiles = ();     # array of edgefile names
 
     while (my $edgefile = <STDIN>)  {
 	chomp $edgefile;
-	$zero_vector[$genome_number] = 0;
+	#$zero_vector[$genome_number] = 0;
+	$zero_string .= "\t0";
 	$edgefiles[$genome_number] = $edgefile;
 	$genome_number++;
     }
@@ -63,6 +65,7 @@ sub get_edges {  # obtain list of edge files - order will determine column order
 	    my $cluster2;
 	    my $whichend1;
 	    my $whichend2;
+	    my $string_index = ($index * 2) + 1;
 	    if ($edge =~ /\((.+)_([35]),(.+)_([35])\)/) {
 		$cluster1 = $1;
 		$cluster2 = $3;
@@ -79,11 +82,14 @@ sub get_edges {  # obtain list of edge files - order will determine column order
 	    }
 	    $edge = "(" . $cluster1 . "_" . $whichend1 . "," . $cluster2 . "_" . $whichend2 . ")";
 	    if (defined $pgg_edges{$edge}) {
-		$pgg_edges{$edge}[$index] = 1;
+		#$pgg_edges{$edge}[$index] = 1;
+		substr($pgg_edges{$edge}, $string_index, 1) = "1";
 	    } else {
-		$pgg_edges{$edge} = [];
-		@{ $pgg_edges{$edge} } = @zero_vector;
-		$pgg_edges{$edge}[$index] = 1;
+		$pgg_edges{$edge} = $zero_string;
+		substr($pgg_edges{$edge}, $string_index, 1) = "1";
+		#$pgg_edges{$edge} = [];
+		#@{ $pgg_edges{$edge} } = @zero_vector;
+		#$pgg_edges{$edge}[$index] = 1;
 	    }
 	}
 	close ($edgehandle);
@@ -123,9 +129,10 @@ sub print_edges {  # sort and print out the combined PGG edges
 
     foreach my $edge (sort $sort_edges (keys %pgg_edges)) {
 	print STDOUT "$edge";
-	foreach my $value ( @{ $pgg_edges{$edge} } ) {
-	    print STDOUT "\t$value";
-	}
+	print STDOUT "$pgg_edges{$edge}";
+#	foreach my $value ( @{ $pgg_edges{$edge} } ) {
+#	    print STDOUT "\t$value";
+#	}
 	print STDOUT "\n";
     }
     return;
