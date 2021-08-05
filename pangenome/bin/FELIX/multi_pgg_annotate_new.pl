@@ -266,6 +266,23 @@ sub bash_error_check {
     return(1);
 }
 
+sub single_grid_job {
+    #Given a shell script, launch it via qsub and wait for it to complete.
+
+    my ($shell_script) = @_;
+    my %single_job_ids = ();
+    my $job_name = "PGG" . $$ . "S"; #use a common job name so that qacct can access all of them together - names need to be <= 16 characters for qstat
+    my $stdoutfile = $cwd . "/" . "TMP_single_qsub_stdout";
+    my $stderrfile = $cwd . "/" . "TMP_single_qsub_stderr";
+    my $working_dir = $cwd;
+    print STDERR "single_grid_job $qsub_queue $project $job_name $shell_script\n";
+    $single_job_ids{&launch_grid_job($job_name, $project, $working_dir, $shell_script, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
+    &wait_for_grid_jobs($qsub_queue, $job_name, 0, \%single_job_ids);
+    #`rm TMP_*single*`;
+
+    return;
+}
+
 sub launch_grid_job {
 # Given a shell script, launch it via qsub.
 
@@ -399,23 +416,31 @@ sub parse_response_qacct {
 sub do_core_list
 # run single_copy_core.pl to generate input for pgg_annotate.pl
 {
-    if ($debug) {print STDERR "\n$single_copy_path -s $weights -p $paralogs -c $id > $single_copy\n";}
-    `/usr/bin/time -o cpustats -v $single_copy_path -s $weights -p $paralogs -c $id > $single_copy`;
-    `echo "***$single_copy_path***" >> overhead_cpustats`;
-    `cat cpustats >> overhead_cpustats`;
-    `rm cpustats`;
-    &bash_error_check("$single_copy_path -s $weights -p $paralogs -c $id > $single_copy", $?, $!);
+    if (-e $paralogs) {
+	if ($debug) {print STDERR "\n$single_copy_path -s $weights -p $paralogs -c $id > $single_copy\n";}
+	&single_grid_job("/usr/bin/time -o cpustats -v $single_copy_path -s $weights -p $paralogs -c $id > $single_copy");
+	`echo "***$single_copy_path***" >> overhead_cpustats`;
+	`cat cpustats >> overhead_cpustats`;
+	`rm cpustats`;
+	# cannot us for grid jobs &bash_error_check("$single_copy_path -s $weights -p $paralogs -c $id > $single_copy", $?, $!);
+	# need to check this completed successfully
+	die ("$single_copy does not exist or is zero size \n") unless ((-e $single_copy) && (-s $single_copy));    
+    } else {
+	die ("ERROR: paralogs file: $paralogs does not exist!\n");
+    }
 }
 #############################################################################################
 sub do_neighbors
 # run core_neighbor_finder.pl to generate input for pgg_annotate.pl
 {
     if ($debug) {print STDERR "\n$core_neighbor_path -v $pgg -cl $single_copy\n";}
-    `/usr/bin/time -o cpustats -v $core_neighbor_path -v $pgg -cl $single_copy >> $logfile 2>&1`;
+    &single_grid_job("/usr/bin/time -o cpustats -v $core_neighbor_path -v $pgg -cl $single_copy >> $logfile 2>&1");
     `echo "***$core_neighbor_path***" >> overhead_cpustats`;
     `cat cpustats >> overhead_cpustats`;
     `rm cpustats`;
-    &bash_error_check("$core_neighbor_path -v $pgg -cl $single_copy >> $logfile 2>&1", $?, $!);
+    #&bash_error_check("$core_neighbor_path -v $pgg -cl $single_copy >> $logfile 2>&1", $?, $!);
+    # need to check this completed successfully
+    die ("$core_neighbors does not exist or is zero size \n") unless ((-e $core_neighbors) && (-s $core_neighbors));    
 }
 #############################################################################################
 sub read_old_genomes
