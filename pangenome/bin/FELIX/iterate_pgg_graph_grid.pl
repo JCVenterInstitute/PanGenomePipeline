@@ -584,6 +584,7 @@ sub compute
 	    }
 	    if ($resub_jobs > 0) {
 		$num_jobs = 0;
+		$failed_jobs = 0;
 		for (my $j=0; $j <= $#genomes; $j++)
 		{
 		    my $identifier = $genomes[$j][0];                                                 # get genome name
@@ -594,15 +595,23 @@ sub compute
 		    my $stats_name = "$identifier" . "_cluster_stats.txt";
 		    my $anomalies_name = "$identifier" . "_anomalies.txt";
 		    my $working_dir = $cwd . "/TMP_" . $identifier;
-		    if (!(-e $match_name) || !(-e $pgg_name) || !(-e $att_name) || !(-e $anomalies_name) || !(-e $stats_name)){
+		    my $stderr_name = $identifier . "_stderr";
+		    if (!(-e $match_name) || !(-e $pgg_name) || !(-e $att_name)){
 			$num_jobs++;
-			print STDERR "$identifier\t$genome_path\tFAILED\n";
+			if (-e $stderr_name) {
+			    $failed_jobs++; #these are jobs which really failed versus just disappearing after qsub
+			    print STDERR "$identifier\t$genome_path\tFAILED\n";
+			} else {
+			    print STDERR "$identifier\t$genome_path\tQSUB FAILED\n";
+			}
 		    } else {
-			`rm -r $working_dir`;
+			if (-d $working_dir) {
+			    `rm -r $working_dir`;
+			}
 		    }
 		}
 		if ($num_jobs > 0) {
-		    die "Too many grid jobs failed $num_jobs\n";
+		    die "Too many grid jobs failed $failed_jobs:$num_jobs\n";
 		}
 	    }
 	} else {
