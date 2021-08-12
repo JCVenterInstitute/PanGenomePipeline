@@ -225,6 +225,8 @@ sub mod_blast { # eliminate blast matches to the added regions but keep one copy
     unless (open($blast_in,"<", $blastin)) {
 	die ("cannot open file $blastin!\n");
     }
+    my $maxq_bit_thresh = 0;
+    my $cur_clus = "";
     while ($line = <$blast_in>) {
 	if ($line =~ /^#/)                                           # Skip header line
 	{
@@ -266,6 +268,10 @@ sub mod_blast { # eliminate blast matches to the added regions but keep one copy
 	$evalue = $btab_line[9];
 	$score = $btab_line[10];
 	$stitle = $btab_line[11];
+	if ($cur_clus ne $qid) {
+	    $maxq_bit_thresh = 0.5 * $score; #assumes blast output is sorted by qid then by bitscore per sid with highest bitscore sid first
+	    $cur_clus = $qid;
+	}
 	if ($is_circular{$sid}) {
 	    my $ctgbeg = $added{$sid} + 1;
 	    my $ctgend = $added{$sid} + $ctglen{$sid};
@@ -273,20 +279,22 @@ sub mod_blast { # eliminate blast matches to the added regions but keep one copy
 		next; # skip matches entirely in the added regions
 	    }
 	}
-	$blast_matches_raw[$blast_match_num++] = {'clus' => $qid,      # cluster number
-						  'ctg' => $sid,       # contig identifier
-						  'pid' => $pid,       # percent identity
-						  'qbeg' => $qbegin,   # start coordinate of cluster medoid
-						  'qend' => $qend,     # end  coordinate of cluster medoid
-						  'qlen' => $qlength,  # length of cluster medoid
-						  'sbeg' => $sbegin,   # start coordinate on contig
-						  'send' => $send,     # end  coordinate on contig
-						  'ctglen' => $slength,# length of contig
-						  'evalue' => $evalue, # blast evalue
-						  'bits' => $score,    # bit score
-						  'stitle' => $stitle, # subject title
-						  'keep' => 1,         # set this to zero if not to be output
-						  'line' => $line      # 0 if not best score for contig region, 1 otherwise
+	if (($pid >= 90.0) && ($score > $maxq_bit_thresh)) {
+	    $blast_matches_raw[$blast_match_num++] = {'clus' => $qid,      # cluster number
+						      'ctg' => $sid,       # contig identifier
+						      'pid' => $pid,       # percent identity
+						      'qbeg' => $qbegin,   # start coordinate of cluster medoid
+						      'qend' => $qend,     # end  coordinate of cluster medoid
+						      'qlen' => $qlength,  # length of cluster medoid
+						      'sbeg' => $sbegin,   # start coordinate on contig
+						      'send' => $send,     # end  coordinate on contig
+						      'ctglen' => $slength,# length of contig
+						      'evalue' => $evalue, # blast evalue
+						      'bits' => $score,    # bit score
+						      'stitle' => $stitle, # subject title
+						      'keep' => 1,         # set this to zero if not to be output
+						      'line' => $line      # 0 if not best score for contig region, 1 otherwise
+	    }
 	}
     }
     close ($blast_in);
