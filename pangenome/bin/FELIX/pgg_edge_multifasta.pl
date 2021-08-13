@@ -66,7 +66,8 @@ my $single_cores;
 my $topology_file;
 my $strip_version = 0;
 my $codon_opt = 0;
-my $codon_opt_file;
+my $codon_opt_file_mutation;
+my $codon_opt_file_insertion;
 my $qsub_queue = "himem";
 my $wall_time_limit = "24:00:00"; #set qsub wall time limit to 24 hours by default
 my $mem_req = "2gb"; #set qsub memory minimum requirement by default to 2 Gbyte
@@ -182,9 +183,13 @@ if ($codon_opt) {
     if ($target_id eq "") {
 	die "Cannot specify codon optimization output (-O) without providing a target genome (-t)\n";
     }
-    $codon_opt_file = "$basedir/$target_id" . "_codon_opt.txt";
-    unless (open (CODONOPTFILE, ">", $codon_opt_file) )  {
-	die ("ERROR: cannot open codon optimization multifasta file $codon_opt_file\n");
+    $codon_opt_file_mutation = "$basedir/$target_id" . "_codon_opt_mutation.txt";
+    unless (open (CODONOPTMUTFILE, ">", $codon_opt_file_mutation) )  {
+	die ("ERROR: cannot open codon optimization mutation multifasta file $codon_opt_file_mutation\n");
+    }
+    $codon_opt_file_insertion = "$basedir/$target_id" . "_codon_opt_insertion.txt";
+    unless (open (CODONOPTINSFILE, ">", $codon_opt_file_insertion) )  {
+	die ("ERROR: cannot open codon optimization insertion multifasta file $codon_opt_file_insertion\n");
     }
 }
 
@@ -1435,13 +1440,13 @@ sub process_matchtable {
 					    print DIFFFILE "$target_id\t$feat_hash{$feat_name}->{'contig'}\tconserved_clus_allele\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\n";
 					}
 					if ($codon_opt && $diverged_alignment_flag) {
-					    print CODONOPTFILE ">$target_id" . "_$cluster_id\n";
+					    print CODONOPTMUTFILE ">$target_id" . "_$cluster_id\n";
 					    $tmp_seq_len = $seq_len;
 					    for ( $pos = 0 ; $tmp_seq_len > 60 ; $pos += 60 ) {
-						print CODONOPTFILE substr($target_sequence, $pos, 60), "\n";
+						print CODONOPTMUTFILE substr($target_sequence, $pos, 60), "\n";
 						$tmp_seq_len -= 60;
 					    }
-					    print CODONOPTFILE substr($target_sequence, $pos, $tmp_seq_len), "\n";
+					    print CODONOPTMUTFILE substr($target_sequence, $pos, $tmp_seq_len), "\n";
 					}
 					if ($keep_divergent_alignments && $diverged_alignment_flag) {
 					    `mv $combined_file $keep_divergent_alignments/cluster_$target_id.$cluster_id.afa`;
@@ -1466,6 +1471,16 @@ sub process_matchtable {
 			} elsif (($seq_len > $max) && ($seq_len > ($median + (0.02 * $median)))) {
 			    $very_long_clus{$target_id}++;
 			    print DIFFFILE "$target_id\t$feat_hash{$feat_name}->{'contig'}\tvery_long_clus\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\n";
+			    if ($codon_opt) {
+				print CODONOPTINSFILE ">$target_id" . "_$cluster_id\n";
+				my $pos;
+				my $tmp_seq_len = $seq_len;
+				for ( $pos = 0 ; $tmp_seq_len > 60 ; $pos += 60 ) {
+				    print CODONOPTINSFILE substr($target_sequence, $pos, 60), "\n";
+				    $tmp_seq_len -= 60;
+				}
+				print CODONOPTINSFILE substr($target_sequence, $pos, $tmp_seq_len), "\n";
+			    }
 			} elsif ($seq_len > ($median_75 + (0.1 * $median))) {
 			    $long_clus{$target_id}++;
 			    print DIFFFILE "$target_id\t$feat_hash{$feat_name}->{'contig'}\tlong_clus\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\n";
@@ -2326,6 +2341,16 @@ sub process_pgg {
 			    } elsif (($seq_len > $max) && ($seq_len > ($median + (0.02 * $median)))) {
 				$very_long_edge{$target_id}++;
 				print DIFFFILE "$target_id\t$edge_hash{$feat_name}->{'contig'}\tvery_long_edge_allele\t$edge_hash{$feat_name}->{'5p'}\t$edge_hash{$feat_name}->{'3p'}\t$edge_hash{$feat_name}->{'len'}\t$edge_name\n";
+				if ($codon_opt) {
+				    print CODONOPTINSFILE ">$target_id" . "_$edge_id\n";
+				    my $pos;
+				    my $tmp_seq_len = $seq_len;
+				    for ( $pos = 0 ; $tmp_seq_len > 60 ; $pos += 60 ) {
+					print CODONOPTINSFILE substr($target_sequence, $pos, 60), "\n";
+					$tmp_seq_len -= 60;
+				    }
+				    print CODONOPTINSFILE substr($target_sequence, $pos, $tmp_seq_len), "\n";
+				}
 			    } elsif ($seq_len > ($median_75 + (0.1 * $median))) {
 				$long_edge{$target_id}++;
 				print DIFFFILE "$target_id\t$edge_hash{$feat_name}->{'contig'}\tlong_edge_allele\t$edge_hash{$feat_name}->{'5p'}\t$edge_hash{$feat_name}->{'3p'}\t$edge_hash{$feat_name}->{'len'}\t$edge_name\n";
@@ -2841,7 +2866,7 @@ Version: $version
      -f: generate multifasta files with all alleles for clusters and edges
      -F: use multifasta files with all alleles for clusters and edges instead of extracting them directly from genome fasta files
      -C: path to the Muslce executable for multiple sequence alignments - default /usr/local/bin/muscle
-     -O: flag indicating a multifasta file of node/cluster/gene sequences which are significantly diverged should be output for codon optimization
+     -O: flag indicating two multifasta files of node/cluster/gene sequences which are significantly diverged or inserted should be output for codon optimization
      -r: path to the Rscript executable for Rscript scripts - default /usr/local/bin/Rscript
      -Q: name of qsub queue to use for Muscle jobs - default himem
      -G: minimum memory requirement for grid jobs in format (integer)gb where 2gb is the default
@@ -2975,7 +3000,8 @@ if ((!$suppress) && ($align_all)) {
     &compute_alignments;
 }
 if ($codon_opt) {
-    close (CODONOPTFILE);
+    close (CODONOPTMUTFILE);
+    close (CODONOPTINSFILE);
 }
 print STDERR "Finished processing - exiting\n";
 exit(0);
