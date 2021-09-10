@@ -95,7 +95,7 @@ if ($opt_M) {$medoids_path = $opt_M;} else {$medoids_path = "";}
 if ($opt_s) {$single_cores = $opt_s;} else {$single_cores = "";}
 if ($opt_X) {$no_stats = 1;} else {$no_stats = 0;}
 if ($opt_F) {$use_multifasta = 1;} else {$use_multifasta = 0;}
-if ($opt_f) {$write_multifasta = 1;} else {$write_multifasta = 0;}
+if ($opt_f) {$write_multifasta = 1;$use_multifasta = 1;} else {$write_multifasta = 0;}
 if ($opt_O) {$codon_opt = 1;} else {$codon_opt = 0;}
 if ($opt_R) {$remake_files = 1;} else {$remake_files = 0;}
 if ($opt_V) {$strip_version = 1;} else {$strip_version = 0;}
@@ -245,6 +245,62 @@ my @renumber = ();             # maps old cluster numbers to new cluster numbers
 my @mf_files = ();             # a list of multifasta files which are created can can be aligned (not zero length and not singleton)
  
 ######################################################################################################################################################################
+sub read_topology_less {
+
+    unless (open (CIRCFILE, "<", "$topology_file") )  {
+	die ("ERROR: can not open contig topology file $topology_file.\n");
+    }
+    my $cur_tag = "";
+    while (<CIRCFILE>) {
+	my $tag = "";
+	my $asmbl_id = "";
+	my $type = "";
+
+	($tag, $asmbl_id, $type) = split(/\t/, $_);  # split the scalar $line on tab
+	if (($tag eq "") || ($asmbl_id eq "") || ($type eq "")) {
+	    die ("ERROR: genome id, assembly id/contig id, and type  must not be empty/null in the contig topology file $topology_file.\nLine:\n$_\n");
+	}
+	$cur_tag = $tag;
+	
+	if (($target_id eq "") || ($target_id eq $cur_tag)) {
+	    unless (open (TOPFILE, ">", $cur_tag . "_topology.txt") )  {
+		die ("ERROR: can not open contig topology file $cur_tag" . "_topology.txt.\n");
+	    }
+	    print TOPFILE $_;
+	}
+	last;
+    }
+    while (<CIRCFILE>) {
+	my $tag = "";
+	my $asmbl_id = "";
+	my $type = "";
+
+	($tag, $asmbl_id, $type) = split(/\t/, $_);  # split the scalar $line on tab
+	if (($tag eq "") || ($asmbl_id eq "") || ($type eq "")) {
+	    die ("ERROR: genome id, assembly id/contig id, and type  must not be empty/null in the contig topology file $topology_file.\nLine:\n$_\n");
+	}
+	if ($tag ne $cur_tag) {
+	    if (($target_id eq "") || ($target_id eq $cur_tag)) {
+		close (TOPFILE);
+	    }
+	    $cur_tag = $tag;
+	    if (($target_id eq "") || ($target_id eq $cur_tag)) {
+		unless (open (TOPFILE, ">>", $cur_tag . "_topology.txt") )  { # open for appending allows genome tags not to be consecutive but we expect them to be
+		    die ("ERROR: can not open contig topology file $cur_tag" . "_topology.txt.\n");
+		}
+	    }
+	}
+	if (($target_id eq "") || ($target_id eq $cur_tag)) {
+	    print TOPFILE $_;
+	}
+    }
+    if (($target_id eq "") || ($target_id eq $cur_tag)) {
+	close (TOPFILE);
+    }
+    close (CIRCFILE);
+    return;
+}
+######################################################################################################################################################################
 sub read_topology {
 
     unless (open (CIRCFILE, "<", "$topology_file") )  {
@@ -307,6 +363,81 @@ sub get_genomes {  # obtain list of genomes - must be in the same order as the m
 	    }
 	}
 	if (!$use_multifasta || ($target_id eq $name)) { #only read in the target genome - will use multiple fasta files for edges and clusters instead
+	    if ($use_multifasta) {
+		my $single_topology_file = $name . "_topology.txt";
+		unless (open (TOPFILE, "<", $single_topology_file) )  {
+		    die ("ERROR: can not open contig topology file $single_topology_file.\n");
+		}
+		while (<TOPFILE>) {
+		    my $tag = "";
+		    my $asmbl_id = "";
+		    my $type = "";
+		    
+		    chomp;
+		    ($tag, $asmbl_id, $type) = split(/\t/, $_);  # split the scalar $line on tab
+		    if (($tag eq "") || ($asmbl_id eq "") || ($type eq "")) {
+			die ("ERROR: genome id, assembly id/contig id, and type  must not be empty/null in the contig topology file $single_topology_file.\nLine:\n$_\n");
+		    }
+		    if ($strip_version) {
+			$asmbl_id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
+		    }
+		    if ($type eq "circular") {
+			$is_circular{$tag}->{$asmbl_id} = 1;
+		    } elsif ($type eq "linear") {
+			$is_circular{$tag}->{$asmbl_id} = 0;
+		    } else {
+			die ("ERROR: type $type must be either circular or linear in the  contig topology file $single_topology_file.\nLine:\n$_\n");
+		    }
+		}
+		close (TOPFILE);
+		
+		my $single_attributes_file = $name . "_attributes.txt";
+		unless (open (SINGATTFILE, "<", $single_attributes_file))  {
+		    die ("ERROR: can not open attributes file $single_attributes_file.\n");
+		}
+		my $failed = 0;
+		while (<SINGATTFILE>) {
+		    my @att_line = ();
+		    my $med_pid = "";
+		    my $tag = "";
+		    my $end5 = "";
+		    my $end3 = "";
+		    my $asmbl_id = "";
+		    my $feat_name = "";
+		    my $anno = "";
+		    chomp;
+		    @att_line = split(/\t/, $_);  # split the scalar $line on tab
+		    $asmbl_id = $att_line[0];
+		    $feat_name = $att_line[1];
+		    $end5 = $att_line[2];
+		    $end3 = $att_line[3];
+		    $anno = $att_line[4];
+		    $tag = $att_line[5];
+		    $med_pid = $att_line[6];
+		    if ($asmbl_id eq "") {
+			print STDERR "ERROR: assembly id/contig id must not be empty/null in the gene attribute file\n$_\n";
+			$failed = 1;
+		    }
+		    if ($strip_version) {
+			$asmbl_id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
+		    }
+		    if (defined $feat_hash{$feat_name}) {
+			print STDERR "ERROR: $feat_name appears more than once in the gene attribute file $att_file!\n";
+			$failed = 1;
+		    }
+		    $feat_hash{$feat_name}->{'5p'} = $end5;
+		    $feat_hash{$feat_name}->{'3p'} = $end3;
+		    $feat_hash{$feat_name}->{'anno'} = $anno;
+		    $feat_hash{$feat_name}->{'gtag'} = $tag;
+		    $feat_hash{$feat_name}->{'contig'} = $asmbl_id;
+		    $feat_hash{$feat_name}->{'mpid'} = $med_pid; #this is the percentage identity of the medoid blast hit from the PGG annotation of the target genome
+		}
+		close (SINGATTFILE);
+		`rm $single_topology_file $single_attributes_file`;
+		if ($failed) {
+		    die ("ERROR: problems detected in attribute file $single_attributes_file!\n");
+		}
+	    }
 	    my $contigfile;
 	    unless (open ($contigfile, "<", $contig_file) )  {
 		die ("ERROR: cannot open file $contig_file.\n");
@@ -407,6 +538,77 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 	    print  STDERR "$name\t$genome_number\n" if ($DEBUG);
 	    $genome_number++;
 	}
+	my $single_topology_file = $name . "_topology.txt";
+	unless (open (TOPFILE, "<", $single_topology_file) )  {
+	    die ("ERROR: can not open contig topology file $single_topology_file.\n");
+	}
+	while (<TOPFILE>) {
+	    my $tag = "";
+	    my $asmbl_id = "";
+	    my $type = "";
+	    
+	    chomp;
+	    ($tag, $asmbl_id, $type) = split(/\t/, $_);  # split the scalar $line on tab
+	    if (($tag eq "") || ($asmbl_id eq "") || ($type eq "")) {
+		die ("ERROR: genome id, assembly id/contig id, and type  must not be empty/null in the contig topology file $single_topology_file.\nLine:\n$_\n");
+	    }
+	    if ($strip_version) {
+		$asmbl_id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
+	    }
+	    if ($type eq "circular") {
+		$is_circular{$tag}->{$asmbl_id} = 1;
+	    } elsif ($type eq "linear") {
+		$is_circular{$tag}->{$asmbl_id} = 0;
+	    } else {
+		die ("ERROR: type $type must be either circular or linear in the  contig topology file $single_topology_file.\nLine:\n$_\n");
+	    }
+	}
+	close (TOPFILE);
+
+	my $single_attributes_file = $name . "_attributes.txt";
+	unless (open (SINGATTFILE, "<", $single_attributes_file))  {
+	    die ("ERROR: can not open attributes file $single_attributes_file.\n");
+	}
+	my $failed = 0;
+	while (<SINGATTFILE>) {
+	    my @att_line = ();
+	    my $tag = "";
+	    my $end5 = "";
+	    my $end3 = "";
+	    my $asmbl_id = "";
+	    my $feat_name = "";
+	    my $anno = "";
+	    chomp;
+	    @att_line = split(/\t/, $_);  # split the scalar $line on tab
+	    $asmbl_id = $att_line[0];
+	    $feat_name = $att_line[1];
+	    $end5 = $att_line[2];
+	    $end3 = $att_line[3];
+	    $anno = $att_line[4];
+	    $tag = $att_line[5];
+	    if ($asmbl_id eq "") {
+		print STDERR "ERROR: assembly id/contig id must not be empty/null in the gene attribute file\n$_\n";
+		$failed = 1;
+	    }
+	    if ($strip_version) {
+		$asmbl_id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
+	    }
+	    if (defined $feat_hash{$feat_name}) {
+		print STDERR "ERROR: $feat_name appears more than once in the gene attribute file $att_file!\n";
+		$failed = 1;
+	    }
+	    $feat_hash{$feat_name}->{'5p'} = $end5;
+	    $feat_hash{$feat_name}->{'3p'} = $end3;
+	    $feat_hash{$feat_name}->{'anno'} = $anno;
+	    $feat_hash{$feat_name}->{'gtag'} = $tag;
+	    $feat_hash{$feat_name}->{'contig'} = $asmbl_id;
+	}
+	close (SINGATTFILE);
+	`rm $single_topology_file $single_attributes_file`;
+	if ($failed) {
+	    die ("ERROR: problems detected in attribute file $single_attributes_file!\n");
+	}
+
 	my $contigfile;
 	unless (open ($contigfile, "<", $contig_file) )  {
 	    die ("ERROR: cannot open file $contig_file.\n");
@@ -524,7 +726,7 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 	    unless (open (OUTFILE, ">>$multifastadir/cluster_full_$cluster_id.fasta") )  {
 		die ("ERROR: cannot open file $multifastadir/cluster_full_$cluster_id.fasta\n");
 	    }
-	    print OUTFILE ">$genome_tag\t$feat_name\n";
+	    print OUTFILE ">$genome_tag\t$feat_name\t$feat_hash{$feat_name}->{'contig'}\t$fivep\t$threep\n";
 	    my $pos;
 	    my $tmp_seq_len = $seq_len;
 	    for ( $pos = 0 ; $tmp_seq_len > 60 ; $pos += 60 ) {
@@ -766,7 +968,7 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 		unless (open (OUTFILE, ">>$multifastadir/full_$edge_id.fasta") )  {
 		    die ("ERROR: cannot open file $multifastadir/full_$edge_id.fasta\n");
 		}
-		print OUTFILE ">$genome_tag\t$edge_5p\t$edge_3p\n";
+		print OUTFILE ">$genome_tag\t$contig1\t$edge_5p\t$edge_3p\n";
 		my $pos;
 		my $tmp_seq_len = $seq_len;
 		for ( $pos = 0 ; $tmp_seq_len > 60 ; $pos += 60 ) {
@@ -780,9 +982,62 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 	close (PGGFILE);
 	$genseq_hash{$name} = (); #free up memory
 	$genseq_hash{$name}->{"Placeholder"} = "EMPTY"; #this is just here to allow checking for duplicate genome names
+	%feat_hash = (); #free up memory
+	%is_circular = (); #free up memory
     }
     close($infile);
     print  STDERR "$genome_number genomes\n\n";
+}
+
+sub get_attributes_less {
+
+    my $cur_tag = "";
+
+    unless (open (ATTFILE, "<$att_file") )  {
+	die ("ERROR: cannot open file $att_file.\n");
+    }
+    while (<ATTFILE>) {
+	my @att_line = ();
+	my $tag = "";
+	chomp;
+	@att_line = split(/\t/, $_);  # split the scalar $line on tab
+	$tag = $att_line[5];
+	$cur_tag = $tag;
+
+	if (($target_id eq "") || ($target_id eq $cur_tag)) {
+	    unless (open (SINGATTFILE, ">", $cur_tag . "_attributes.txt") )  {
+		die ("ERROR: can not open attributes file $cur_tag" . "_attributes.txt.\n");
+	    }
+	    print SINGATTFILE $_;
+	}
+	last;
+    }
+    while (<ATTFILE>) {
+	my @att_line = ();
+	my $tag = "";
+	@att_line = split(/\t/, $_);  # split the scalar $line on tab
+	$tag = $att_line[5];
+	if ($tag ne $cur_tag) {
+	    if (($target_id eq "") || ($target_id eq $cur_tag)) {
+		close (SINGATTFILE);
+	    }
+	    $cur_tag = $tag;
+	    if (($target_id eq "") || ($target_id eq $cur_tag)) {
+		unless (open (SINGATTFILE, ">>", $cur_tag . "_attributes.txt") )  { # open for appending allows genome tags not to be consecutive but we expect them to be
+		    die ("ERROR: can not open attributes file $cur_tag" . "_attributes.txt.\n");
+		}
+	    }
+	}
+	if (($target_id eq "") || ($target_id eq $cur_tag)) {
+	    print SINGATTFILE $_;
+	}
+    }
+    if (($target_id eq "") || ($target_id eq $cur_tag)) {
+	close (SINGATTFILE);
+    }
+    close (ATTFILE);
+
+    return;
 }
 
 sub get_attributes {
@@ -926,20 +1181,10 @@ sub process_matchtable {
 			    die ("ERROR: shifted off the end of the genome tag array while looking for $genome_tag with featname $feat_name for cluster $cluster_id and target $target_id\n");
 			}
 		    }
-		    if (!defined $feat_hash{$feat_name}) { # should not happen
-			die ("ERROR: process_amtchtable:cluster gene identifier $feat_name in $matchtable_file is not in $att_file!\n");
-		    }
-		    if ($genome_tag ne $feat_hash{$feat_name}->{'gtag'}) {
-			die ("ERROR: genome tag in $att_file ($feat_hash{$feat_name}->{'gtag'}) not the same as expected column in $matchtable_file ($genome_tag)");
-		    }
-		    if (!defined $feat_hash{$feat_name}->{'contig'}) { # should not happen
-			die ("ERROR: contig identifier was not assigned for $feat_name in $matchtable_file should have come from $att_file!\n");
-		    }
 		    if (!defined $genseq_hash{$genome_tag}) { # should not happen
 			die ("ERROR: genseq_hash genome tag ($genome_tag) is not defined!\n");
 		    }
 		    $cluster_to_feat_hash{$genome_tag}->{$cluster_id} = $feat_name;
-		    $feat_hash{$feat_name}->{'len'} = $seq_len;
 		    if ($seq_len <= 0) { #should not happen
 			die ("ERROR: from multifasta file seq_len $seq_len for $feat_name!\n");
 		    }
@@ -1590,8 +1835,9 @@ sub process_pgg {
 		    if ($strip_version) {
 			$genome_tag =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
 		    }
-		    my $edge_5p = $fields[1];
-		    my $edge_3p = $fields[2];
+		    my $contig = $fields[1];
+		    my $edge_5p = $fields[2];
+		    my $edge_3p = $fields[3];
 		    $sequence =~ s/[^a-zA-Z]//g; # remove any non-alphabet characters
 		    my $seq_len = length($sequence);
 		    if ($genome_tag eq $ignore_id) {
@@ -1610,16 +1856,13 @@ sub process_pgg {
 		    }
 		    my $feat_name1 = $cluster_to_feat_hash{$genome_tag}->{$cluster1};
 		    my $feat_name2 = $cluster_to_feat_hash{$genome_tag}->{$cluster2};
-		    my $contig1 = $feat_hash{$feat_name1}->{'contig'};
-		    my $contig2 = $feat_hash{$feat_name2}->{'contig'};
+		    my $contig1 = $contig;
+		    my $contig2 = $contig;
 		    if ((!defined $feat_name1) || (!defined $feat_name2) || (!defined $contig1) || (!defined $contig2)) { # should not happen
 			die ("ERROR: process_pgg:edge cluster to feat_name mapping is in conflict $genome_tag $cluster1 $cluster2!\n");
 		    }
 		    if ($contig1 ne $contig2) { # should not happen
 			die ("ERROR: for edge $edge_id cluster features $feat_name1:$feat_name2 are not on the same contig $contig1:$contig2");
-		    }
-		    if (($genome_tag ne $feat_hash{$feat_name1}->{'gtag'}) || ($genome_tag ne $feat_hash{$feat_name2}->{'gtag'})) { # should not happen
-			die ("ERROR: Inconsistency in genome tag between $att_file, $matchtable_file, and $pgg_file for $feat_name1 and $feat_name2");
 		    }
 		    if (!defined $genseq_hash{$genome_tag}) { # should not happen
 			die ("ERROR: genome tag identifier was not assigned for $pgg_file should have come from $att_file!\n");
@@ -2863,7 +3106,7 @@ Version: $version
      -c: output size files in -B directory computed cluster sizes(program  adds cluster_sizes.txt) and edge sizes(program  adds edge_sizes.txt) files
      -P: project code for qsub jobs
      -j: the maximum number of grid jobs to run for multiple sequence alignments
-     -f: generate multifasta files with all alleles for clusters and edges
+     -f: generate multifasta files with all alleles for clusters and edges also forces the -F flag to be set
      -F: use multifasta files with all alleles for clusters and edges instead of extracting them directly from genome fasta files
      -C: path to the Muslce executable for multiple sequence alignments - default /usr/local/bin/muscle
      -O: flag indicating two multifasta files of node/cluster/gene sequences which are significantly diverged or inserted should be output for codon optimization
@@ -2903,10 +3146,17 @@ if ($no_stats) {
     print STDERR "No stats just remaking files so not reading genomes\n";
     &get_genome_names;
 } else {
-    print  STDERR "Getting topology from $topology_file\n";
-    &read_topology;
-    print  STDERR "Gathering gene coordinates and attribute information from $att_file\n";
-    &get_attributes;
+    if (($write_multifasta) || ($use_multifasta)) {
+	print  STDERR "Getting topology from $topology_file writing individual topology files\n";
+	&read_topology_less;
+	print  STDERR "Gathering gene coordinates and attribute information from $att_file writing individual attributes files\n";
+	&get_attributes_less;
+    } else {
+	print  STDERR "Getting topology from $topology_file\n";
+	&read_topology;
+	print  STDERR "Gathering gene coordinates and attribute information from $att_file\n";
+	&get_attributes;
+    }
     if ($write_multifasta) {
 	print STDERR "Reading genomes, matchtable, and pgg then writing multifasta clusters and edges\n";
 	&output_multifasta;
@@ -2918,6 +3168,10 @@ if ($no_stats) {
 	 }
 	 &get_genomes;
      }
+}
+if ($write_multifasta && !$align_all) {
+    print STDERR "Finished processing - exiting - only wrote multifasta files for clusters and edges but did not align them\n";
+    exit(0);
 }
 print  STDERR "Reading single copy core clusters from $single_cores\n";
 &read_single_cores;
