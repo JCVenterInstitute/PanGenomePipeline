@@ -1000,7 +1000,6 @@ sub get_attributes_less {
     while (<ATTFILE>) {
 	my @att_line = ();
 	my $tag = "";
-	chomp;
 	@att_line = split(/\t/, $_);  # split the scalar $line on tab
 	$tag = $att_line[5];
 	$cur_tag = $tag;
