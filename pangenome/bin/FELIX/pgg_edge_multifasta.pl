@@ -604,7 +604,6 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 	    $feat_hash{$feat_name}->{'contig'} = $asmbl_id;
 	}
 	close (SINGATTFILE);
-	`rm $single_topology_file $single_attributes_file`;
 	if ($failed) {
 	    die ("ERROR: problems detected in attribute file $single_attributes_file!\n");
 	}
@@ -659,13 +658,13 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 	    my $seq_len;
 	    my $sequence;
 	    if (!defined $feat_hash{$feat_name}) { # should not happen
-		die ("ERROR: output_multifasta: gene identifier $feat_name in $matchtable_file is not in $att_file!\n");
+		die ("ERROR: output_multifasta: gene identifier $feat_name in $matchtable_file is not in $single_attributes_file!\n");
 	    }
 	    if ($genome_tag ne $feat_hash{$feat_name}->{'gtag'}) {
-		die ("ERROR: genome tag in $att_file ($feat_hash{$feat_name}->{'gtag'}) not the same as expected column in $matchtable_file ($genome_tag)");
+		die ("ERROR: genome tag in $single_attributes_file ($feat_hash{$feat_name}->{'gtag'}) not the same as expected column in $matchtable_file ($genome_tag)");
 	    }
 	    if (!defined $feat_hash{$feat_name}->{'contig'}) { # should not happen
-		die ("ERROR: contig identifier was not assigned for $feat_name in $matchtable_file should have come from $att_file!\n");
+		die ("ERROR: contig identifier was not assigned for $feat_name in $matchtable_file should have come from $single_attributes_file!\n");
 	    }
 	    if (!defined $genseq_hash{$genome_tag}) { # should not happen
 		die ("ERROR: genseq_hash genome_tag ($genome_tag) is undefined!\n");
@@ -980,8 +979,10 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 	    }
 	}
 	close (PGGFILE);
+	`rm $single_topology_file $single_attributes_file`;
 	$genseq_hash{$name} = (); #free up memory
 	$genseq_hash{$name}->{"Placeholder"} = "EMPTY"; #this is just here to allow checking for duplicate genome names
+	$genseq_len{$name} = (); #free up memory
 	%feat_hash = (); #free up memory
 	%is_circular = (); #free up memory
     }
