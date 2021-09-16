@@ -1125,6 +1125,7 @@ sub process_matchtable {
     while (my $line = <TABLEFILE>) {
 	chomp $line;
 	my @feat_names = split(/\t/, $line);  # split the scalar $line on tab
+	my @tmp_feat_names = ();  # when using multifasta files need these to delete out of %feat_hash
 	my $cluster_id = shift @feat_names;
 	my $out_line = join("\t", @feat_names);
 	if ($cluster_num != $cluster_id) {
@@ -1153,7 +1154,7 @@ sub process_matchtable {
 		while (my $line2 = <CLUSTERFILE>) {
 		    (my $title, my $sequence) = split(/\n/, $line2, 2); # split the header line and sequence (very cool)
 		    my @fields = split(/\t/, $title);  # split the scalar $line on space or tab (to separate the identifier from the header and store in array @line
-		    $genome_tag = $fields[0]; # unique orf identifier is in column 0, com_name is in rest
+		    $genome_tag = $fields[0]; # genome identifier is in column 0
 		    $genome_tag =~ s/>\s*//; # remove leading > and spaces
 		    if ($strip_version) {
 			$genome_tag =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
@@ -1162,11 +1163,17 @@ sub process_matchtable {
 		    $sequence =~ s/[^a-zA-Z]//g; # remove any non-alphabet characters
 		    my $seq_len = length($sequence);
 		    if ($genome_tag eq $ignore_id) {
-			next; # need to get target genome info from actual fasta file not from multifasta file
+			next; # need to ignore this genome
 		    }
 		    if ($genome_tag eq $target_id) {
 			die ("ERROR: $target_id is the target genome and should not be in the multifasta files\n"); # need to get target genome info from actual fasta file not from multifasta file
 		    }
+		    $feat_hash{$feat_name}->{'gtag'} = $genome_tag;
+		    $feat_hash{$feat_name}->{'len'} = $seq_len;
+		    $feat_hash{$feat_name}->{'contig'} = $fields[2];
+		    $feat_hash{$feat_name}->{'5p'} = $fields[3];
+		    $feat_hash{$feat_name}->{'3p'} = $fields[4];
+		    push(@tmp_feat_names, $feat_name);
 		    my $tag = shift @tmp_array;
 		    #if ($tag ne $genome_tag) {
 			#print  STDERR "tag=$tag ne $genome_tag\n" if ($DEBUG);
@@ -1501,10 +1508,10 @@ sub process_matchtable {
 			$uniq_clus{$genome_tag}++;
 		    } elsif (defined $genome_seqs[$index]) {
 			my $feat_name = $cluster_to_feat_hash{$genome_tag}->{$cluster_id};
-			if (!defined $feat_pres{$genome_seqs[$index]}) {
+			#if (!defined $feat_pres{$genome_seqs[$index]}) {
 			    #print STDERR "$genome_tag:$index:$feat_name:\n$genome_seqs[$index]\n" if ($DEBUG);
-			}
-			my $seq_len = $feat_hash{$feat_name}->{'len'};
+			#}
+			my $seq_len = length($genome_seqs[$index]);
 			my $ambig_count = $genome_seqs[$index] =~ tr/ACGTacgt//c;
 			if (($ambig_count >= 10) || ((($ambig_count * 100) / $seq_len) > 20)) {
 			    # do not include sequences with a lot of ambiguous base calls
@@ -1756,9 +1763,12 @@ sub process_matchtable {
 	    $renumber[$cluster_num] = 0;
 	}
 	$cluster_num++;
+	delete(@feat_hash{(@tmp_feat_names)});
 	undef %feat_pres;
 	undef @genome_seqs;
 	undef @sizes;
+	undef @feat_names;
+	undef @tmp_feat_names;
     }
     if ($remake_files) {
 	close (OUTMATCHFILE);
@@ -3146,11 +3156,12 @@ if ($no_stats) {
     print STDERR "No stats just remaking files so not reading genomes\n";
     &get_genome_names;
 } else {
-    if (($write_multifasta) || ($use_multifasta)) {
+    if (($write_multifasta) || ($use_multifasta && ($target_id ne ""))) {
 	print  STDERR "Getting topology from $topology_file writing individual topology files\n";
 	&read_topology_less;
 	print  STDERR "Gathering gene coordinates and attribute information from $att_file writing individual attributes files\n";
 	&get_attributes_less;
+    } elsif ($use_multifasta && $align_all) {
     } else {
 	print  STDERR "Getting topology from $topology_file\n";
 	&read_topology;
