@@ -872,8 +872,10 @@ sub compute
     `mkdir Attributes Anomalies CPU CALLS CoreRegions Stderr Stdout`;
     if ($codon_opt) {
 	`mkdir Codon_Opt`;
-	`mv *_codon_opt.txt Codon_Opt`;
+	`mv *_codon_opt_*.txt Codon_Opt`;
     }
+    `mkdir Novel_Plasmids`;
+    `mv *_novel_plasmids.txt Novel_Plasmids`;
     `mv *_anomalies.txt Anomalies`;
     `mv *_attributes.txt Attributes`;
     `mv *_cpu* CPU`;

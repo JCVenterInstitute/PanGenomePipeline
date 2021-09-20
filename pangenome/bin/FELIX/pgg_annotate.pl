@@ -2190,7 +2190,11 @@ sub output_files
     }
     my $rearrange;
     unless (open ($rearrange, ">", ($rootname . "_rearrange.txt")) )  {
-	die ("cannot open rearrangementss file: $rootname" . "_rearrange.txt!\n");
+	die ("cannot open rearrangements file: $rootname" . "_rearrange.txt!\n");
+    }
+    my $novel_plasmids;
+    unless (open ($novel_plasmids, ">", ($rootname . "_novel_plasmids.txt")) )  {
+	die ("cannot open novel_plasmids file: $rootname" . "_novel_plasmids.txt!\n");
     }
     my $alledgesfile;
     my $seqsfile;
@@ -2245,6 +2249,7 @@ sub output_files
 	my $core_start = 0;
 	my $core_end = 0;
 	my $core_region_clusters = "";
+	my $annotated_bp = 0;
 	foreach my $column (@{ $columns{$contig} }) {
 	    if ($columns_status{$contig}->[$col_index] > 0) {
 		(my $clus, my $index) = split('_', $column);
@@ -2341,6 +2346,7 @@ sub output_files
 		    my $matchlen = ($reduced_by_region[$index]->{'qend'} - $reduced_by_region[$index]->{'qbeg'}) + 1;
 		    $sumANI += $reduced_by_region[$index]->{'pid'} * $matchlen;
 		    $sumANIlen += $matchlen;
+		    $annotated_bp += ($end_align - $beg_align) + 1;
 		} elsif ($columns_status{$contig}->[$col_index] == 2) { # for now we are ignoring paralogs and so these will become part of the edges
 		} else { # right now this should never happen
 		    die ("Encountered a gene call which is not an ortholog or paralog: COL$col_index:$column:$columns_status{$contig}->[$col_index]:$reduced_by_region[$index]->{'sinv'}\n");
@@ -2422,8 +2428,21 @@ sub output_files
 	    $hash_edges{'(' . $prev_clus_orient . ',' . $first_clus_orient . ')'} = "$target\t$contig\tuniq_edge\t$edge_start\t$edge_end\t$tmp_len\t";
 	    $hash_edges{'(' . $first_clus_orient . ',' . $prev_clus_orient . ')'} = "$target\t$contig\tuniq_edge\t$edge_end\t$edge_start\t$tmp_len\t";
 	}
+	if ((((100 * $annotated_bp) / $contig_len{$contig}) < 40) && (($contig_len{$contig} >= 1500) || $is_circular{$contig})) {
+	    # for contigs check to see if a lack of dense annotation may indicate it is a possible novel plasmid
+	    # ignore really short contigs which might just be noise but not if they are circular
+	    print $novel_plasmids ">$contig\t$rootname\n";
+	    my $pos;
+	    my $tmp_seq_len = $contig_len{$contig};
+	    for ( $pos = 0 ; $tmp_seq_len > 60 ; $pos += 60 ) {
+		print $novel_plasmids substr($contigs{$contig}, $pos, 60), "\n";
+		$tmp_seq_len -= 60;
+	    }
+	    print $novel_plasmids substr($contigs{$contig}, $pos, $tmp_seq_len), "\n";
+	}
 	
     }
+    close ($novel_plasmids);
     my $tmpANI;
     if ($sumANIlen > 0) {
 	$tmpANI = $sumANI / $sumANIlen;
