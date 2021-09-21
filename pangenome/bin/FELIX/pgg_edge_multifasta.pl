@@ -422,7 +422,7 @@ sub get_genomes {  # obtain list of genomes - must be in the same order as the m
 			$asmbl_id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
 		    }
 		    if (defined $feat_hash{$feat_name}) {
-			print STDERR "ERROR: $feat_name appears more than once in the gene attribute file $att_file!\n";
+			print STDERR "ERROR:A: $feat_name appears more than once in the gene attribute file $att_file!\n";
 			$failed = 1;
 		    }
 		    $feat_hash{$feat_name}->{'5p'} = $end5;
@@ -594,7 +594,7 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 		$asmbl_id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
 	    }
 	    if (defined $feat_hash{$feat_name}) {
-		print STDERR "ERROR: $feat_name appears more than once in the gene attribute file $att_file!\n";
+		print STDERR "ERROR:B: $feat_name appears more than once in the gene attribute file $att_file!\n";
 		$failed = 1;
 	    }
 	    $feat_hash{$feat_name}->{'5p'} = $end5;
@@ -1082,7 +1082,7 @@ sub get_attributes {
 	    $asmbl_id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
 	}
 	if (defined $feat_hash{$feat_name}) {
-	    print STDERR "ERROR: $feat_name appears more than once in the gene attribute file $att_file!\n";
+	    print STDERR "ERROR:C: $feat_name appears more than once in the gene attribute file $att_file!\n";
 	    $failed = 1;
 	}
 	#if (!defined $genseq_hash{$tag}) {
