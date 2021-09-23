@@ -422,7 +422,7 @@ sub get_genomes {  # obtain list of genomes - must be in the same order as the m
 			$asmbl_id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
 		    }
 		    if (defined $feat_hash{$feat_name}) {
-			print STDERR "ERROR:A: $feat_name appears more than once in the gene attribute file $att_file!\n";
+			print STDERR "ERROR:A: $feat_name appears more than once in the gene attribute file $single_attributes_file!\n";
 			$failed = 1;
 		    }
 		    $feat_hash{$feat_name}->{'5p'} = $end5;
@@ -433,10 +433,10 @@ sub get_genomes {  # obtain list of genomes - must be in the same order as the m
 		    $feat_hash{$feat_name}->{'mpid'} = $med_pid; #this is the percentage identity of the medoid blast hit from the PGG annotation of the target genome
 		}
 		close (SINGATTFILE);
-		`rm $single_topology_file $single_attributes_file`;
 		if ($failed) {
 		    die ("ERROR: problems detected in attribute file $single_attributes_file!\n");
 		}
+		`rm $single_topology_file $single_attributes_file`;
 	    }
 	    my $contigfile;
 	    unless (open ($contigfile, "<", $contig_file) )  {
