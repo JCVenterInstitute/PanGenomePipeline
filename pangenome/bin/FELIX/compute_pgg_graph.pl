@@ -246,9 +246,6 @@ sub compute
     if (!$no_MSA) {
 	$pgg_multifasta_path .= " -l ";
     }
-    if ($less_memory) {
-	$pgg_multifasta_path .= " -F ";
-    }
     if ($muscle_path ne "") {
 	$pgg_multifasta_path .= " -C $muscle_path ";
     }
@@ -350,15 +347,24 @@ sub compute
 	    }
 	}
 	if ($duplicate) {
-	    `cat $topology_name | sed -e 's/\t/_ReDoDuP\t/' >> full_topology.txt`; 
+	    my $dup_topology_name = "dup_" . $topology_name;
+	    `sed -e 's/\t/_ReDoDuP\t/' $topology_name > $dup_topology_name`; 
+	    `cat $dup_topology_name >> full_topology.txt`; 
+	    if ($less_memory) {
+		$pgg_multifasta_path .= " -F -e $att_name -i $dup_topology_name ";
+	    }
 	    if ($debug) {print STDERR "\n/usr/bin/time -o tmp_cpu_stats -v $pgg_multifasta_path -T full_topology.txt -I $genome_name -B output -b $multifastadir -g combined_genome_list -m matchtable.col -a combined.att -p pgg.col -t $dup_genome_name -S -s $single_copy\n";}
 	    `/usr/bin/time -o tmp_cpu_stats -v $pgg_multifasta_path -T full_topology.txt -I $genome_name -B output -b $multifastadir -g combined_genome_list -m matchtable.col -a combined.att -p pgg.col -t $dup_genome_name -S -s $single_copy`;    # run pgg edge multi_fasta
 	    `echo "***$pgg_multifasta_path***" >> $cpu_name`;
 	    `cat tmp_cpu_stats >> $cpu_name`;
 	    `rm tmp_cpu_stats`;
+	    `rm $dup_topology_name`;
 	    &bash_error_check("/usr/bin/time -o tmp_cpu_stats -v $pgg_multifasta_path -T full_topology.txt -I $genome_name -B output -b $multifastadir -g combined_genome_list -m matchtable.col -a combined.att -p pgg.col -t $dup_genome_name -S -s $single_copy", $?, $!);
 	} else {
 	    `cat $topology_name >> full_topology.txt`; 
+	    if ($less_memory) {
+		$pgg_multifasta_path .= " -F -e $att_name -i $topology_name ";
+	    }
 	    if ($debug) {print STDERR "\n/usr/bin/time -o tmp_cpu_stats -v $pgg_multifasta_path -T full_topology.txt -B output -b $multifastadir -g combined_genome_list -m matchtable.col -a combined.att -p pgg.col -t $genome_name -S -s $single_copy\n";}
 	    `/usr/bin/time -o tmp_cpu_stats -v $pgg_multifasta_path -T full_topology.txt -B output -b $multifastadir -g combined_genome_list -m matchtable.col -a combined.att -p pgg.col -t $genome_name -S -s $single_copy`;    # run pgg edge multi_fasta
 	    `echo "***$pgg_multifasta_path***" >> $cpu_name`;
