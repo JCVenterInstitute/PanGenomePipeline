@@ -26,8 +26,8 @@ use strict;
 use warnings;
 use Getopt::Std;
 use File::Basename;
-getopts ('j:I:ORSALlDhb:B:m:p:P:a:g:t:M:s:T:Vk:FfC:Q:N:Xr:W:G:');
-our ($opt_j,$opt_I,$opt_O,$opt_S,$opt_A,$opt_L,$opt_l,$opt_D,$opt_h,$opt_b,$opt_m,$opt_p,$opt_P,$opt_a,$opt_g,$opt_t,$opt_M,$opt_r,$opt_R,$opt_B,$opt_s,$opt_T,$opt_V,$opt_k,$opt_F,$opt_f,$opt_C,$opt_Q,$opt_N,$opt_X,$opt_W,$opt_G);
+getopts ('j:I:ORSALlDhb:B:m:p:P:a:g:t:M:s:T:Vk:FfC:Q:N:Xr:W:G:e:i:');
+our ($opt_j,$opt_I,$opt_O,$opt_S,$opt_A,$opt_L,$opt_l,$opt_D,$opt_h,$opt_b,$opt_m,$opt_p,$opt_P,$opt_a,$opt_g,$opt_t,$opt_M,$opt_r,$opt_R,$opt_B,$opt_s,$opt_T,$opt_V,$opt_k,$opt_F,$opt_f,$opt_C,$opt_Q,$opt_N,$opt_X,$opt_W,$opt_G,$opt_e,$opt_i);
 
 ## use boolean logic:  TRUE = 1, FALSE = 0
 
@@ -74,6 +74,8 @@ my $mem_req = "2gb"; #set qsub memory minimum requirement by default to 2 Gbyte
 my $MAX_ALIGN_EDGE = 30000; #maximum length of an edge that we are willing to multiple sequence align to
 my $MIN_ALIGN_EDGE = 5; #minimum length of an edge that we are willing to multiple sequence align to
 my $MIN_PGG_PID = 101; #minimum threshold to perform multiple sequence alignment of genomes - must be below this threshold to align (set to 98 if fewer alignments desired)
+my $target_single_attributes_file = "";
+my $target_single_topology_file = "";
 
 if ($opt_W) { # should really check time format
     $wall_time_limit = $opt_W;
@@ -192,6 +194,18 @@ if ($codon_opt) {
 	die ("ERROR: cannot open codon optimization insertion multifasta file $codon_opt_file_insertion\n");
     }
 }
+if ($opt_e) {
+    if (!$use_multifasta || ($target_id eq "")) {
+	die ("ERROR: cannot specify a target attribute file $opt_e without specifying -F and -t\n");
+    }
+    $target_single_attributes_file = $opt_e;
+}
+if ($opt_i) {
+    if (!$use_multifasta || ($target_id eq "")) {
+	die ("ERROR: cannot specify a target topology file $opt_i without specifying -F and -t\n");
+    }
+    $target_single_topology_file = $opt_i;
+}  
 
 my $num_size_one_clus = 0;
 my $num_shared_clus = 0;
@@ -262,12 +276,10 @@ sub read_topology_less {
 	}
 	$cur_tag = $tag;
 	
-	if (($target_id eq "") || ($target_id eq $cur_tag)) {
-	    unless (open (TOPFILE, ">", $cur_tag . "_topology.txt") )  {
-		die ("ERROR: can not open contig topology file $cur_tag" . "_topology.txt.\n");
-	    }
-	    print TOPFILE $_;
+	unless (open (TOPFILE, ">", $cur_tag . "_topology.txt") )  {
+	    die ("ERROR: can not open contig topology file $cur_tag" . "_topology.txt.\n");
 	}
+	print TOPFILE $_;
 	last;
     }
     while (<CIRCFILE>) {
@@ -280,23 +292,15 @@ sub read_topology_less {
 	    die ("ERROR: genome id, assembly id/contig id, and type  must not be empty/null in the contig topology file $topology_file.\nLine:\n$_\n");
 	}
 	if ($tag ne $cur_tag) {
-	    if (($target_id eq "") || ($target_id eq $cur_tag)) {
-		close (TOPFILE);
-	    }
+	    close (TOPFILE);
 	    $cur_tag = $tag;
-	    if (($target_id eq "") || ($target_id eq $cur_tag)) {
-		unless (open (TOPFILE, ">>", $cur_tag . "_topology.txt") )  { # open for appending allows genome tags not to be consecutive but we expect them to be
-		    die ("ERROR: can not open contig topology file $cur_tag" . "_topology.txt.\n");
-		}
+	    unless (open (TOPFILE, ">>", $cur_tag . "_topology.txt") )  { # open for appending allows genome tags not to be consecutive but we expect them to be
+		die ("ERROR: can not open contig topology file $cur_tag" . "_topology.txt.\n");
 	    }
 	}
-	if (($target_id eq "") || ($target_id eq $cur_tag)) {
-	    print TOPFILE $_;
-	}
-    }
-    if (($target_id eq "") || ($target_id eq $cur_tag)) {
-	close (TOPFILE);
-    }
+	print TOPFILE $_;
+   }
+    close (TOPFILE);
     close (CIRCFILE);
     return;
 }
@@ -364,9 +368,8 @@ sub get_genomes {  # obtain list of genomes - must be in the same order as the m
 	}
 	if (!$use_multifasta || ($target_id eq $name)) { #only read in the target genome - will use multiple fasta files for edges and clusters instead
 	    if ($use_multifasta) {
-		my $single_topology_file = $name . "_topology.txt";
-		unless (open (TOPFILE, "<", $single_topology_file) )  {
-		    die ("ERROR: can not open contig topology file $single_topology_file.\n");
+		unless (open (TOPFILE, "<", $target_single_topology_file) )  {
+		    die ("ERROR: can not open contig topology file $target_single_topology_file.\n");
 		}
 		while (<TOPFILE>) {
 		    my $tag = "";
@@ -376,7 +379,7 @@ sub get_genomes {  # obtain list of genomes - must be in the same order as the m
 		    chomp;
 		    ($tag, $asmbl_id, $type) = split(/\t/, $_);  # split the scalar $line on tab
 		    if (($tag eq "") || ($asmbl_id eq "") || ($type eq "")) {
-			die ("ERROR: genome id, assembly id/contig id, and type  must not be empty/null in the contig topology file $single_topology_file.\nLine:\n$_\n");
+			die ("ERROR: genome id, assembly id/contig id, and type  must not be empty/null in the contig topology file $target_single_topology_file.\nLine:\n$_\n");
 		    }
 		    if ($strip_version) {
 			$asmbl_id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
@@ -386,14 +389,13 @@ sub get_genomes {  # obtain list of genomes - must be in the same order as the m
 		    } elsif ($type eq "linear") {
 			$is_circular{$tag}->{$asmbl_id} = 0;
 		    } else {
-			die ("ERROR: type $type must be either circular or linear in the  contig topology file $single_topology_file.\nLine:\n$_\n");
+			die ("ERROR: type $type must be either circular or linear in the  contig topology file $target_single_topology_file.\nLine:\n$_\n");
 		    }
 		}
 		close (TOPFILE);
 		
-		my $single_attributes_file = $name . "_attributes.txt";
-		unless (open (SINGATTFILE, "<", $single_attributes_file))  {
-		    die ("ERROR: can not open attributes file $single_attributes_file.\n");
+		unless (open (SINGATTFILE, "<", $target_single_attributes_file))  {
+		    die ("ERROR: can not open attributes file $target_single_attributes_file.\n");
 		}
 		my $failed = 0;
 		while (<SINGATTFILE>) {
@@ -415,14 +417,14 @@ sub get_genomes {  # obtain list of genomes - must be in the same order as the m
 		    $tag = $att_line[5];
 		    $med_pid = $att_line[6];
 		    if ($asmbl_id eq "") {
-			print STDERR "ERROR: assembly id/contig id must not be empty/null in the gene attribute file\n$_\n";
+			print STDERR "ERROR: assembly id/contig id must not be empty/null in the gene attribute file $target_single_attributes_file!\n$_\n";
 			$failed = 1;
 		    }
 		    if ($strip_version) {
 			$asmbl_id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
 		    }
 		    if (defined $feat_hash{$feat_name}) {
-			print STDERR "ERROR:A: $feat_name appears more than once in the gene attribute file $single_attributes_file!\n";
+			print STDERR "ERROR:A: $feat_name appears more than once in the gene attribute file $target_single_attributes_file!\n";
 			$failed = 1;
 		    }
 		    $feat_hash{$feat_name}->{'5p'} = $end5;
@@ -434,9 +436,8 @@ sub get_genomes {  # obtain list of genomes - must be in the same order as the m
 		}
 		close (SINGATTFILE);
 		if ($failed) {
-		    die ("ERROR: problems detected in attribute file $single_attributes_file!\n");
+		    die ("ERROR: problems detected in attribute file $target_single_attributes_file!\n");
 		}
-		`rm $single_topology_file $single_attributes_file`;
 	    }
 	    my $contigfile;
 	    unless (open ($contigfile, "<", $contig_file) )  {
@@ -1004,12 +1005,10 @@ sub get_attributes_less {
 	$tag = $att_line[5];
 	$cur_tag = $tag;
 
-	if (($target_id eq "") || ($target_id eq $cur_tag)) {
-	    unless (open (SINGATTFILE, ">", $cur_tag . "_attributes.txt") )  {
-		die ("ERROR: can not open attributes file $cur_tag" . "_attributes.txt.\n");
-	    }
-	    print SINGATTFILE $_;
+	unless (open (SINGATTFILE, ">", $cur_tag . "_attributes.txt") )  {
+	    die ("ERROR: can not open attributes file $cur_tag" . "_attributes.txt.\n");
 	}
+	print SINGATTFILE $_;
 	last;
     }
     while (<ATTFILE>) {
@@ -1018,23 +1017,15 @@ sub get_attributes_less {
 	@att_line = split(/\t/, $_);  # split the scalar $line on tab
 	$tag = $att_line[5];
 	if ($tag ne $cur_tag) {
-	    if (($target_id eq "") || ($target_id eq $cur_tag)) {
-		close (SINGATTFILE);
-	    }
+	    close (SINGATTFILE);
 	    $cur_tag = $tag;
-	    if (($target_id eq "") || ($target_id eq $cur_tag)) {
-		unless (open (SINGATTFILE, ">>", $cur_tag . "_attributes.txt") )  { # open for appending allows genome tags not to be consecutive but we expect them to be
-		    die ("ERROR: can not open attributes file $cur_tag" . "_attributes.txt.\n");
-		}
+	    unless (open (SINGATTFILE, ">>", $cur_tag . "_attributes.txt") )  { # open for appending allows genome tags not to be consecutive but we expect them to be
+		die ("ERROR: can not open attributes file $cur_tag" . "_attributes.txt.\n");
 	    }
 	}
-	if (($target_id eq "") || ($target_id eq $cur_tag)) {
-	    print SINGATTFILE $_;
-	}
+	print SINGATTFILE $_;
     }
-    if (($target_id eq "") || ($target_id eq $cur_tag)) {
-	close (SINGATTFILE);
-    }
+    close (SINGATTFILE);
     close (ATTFILE);
 
     return;
@@ -3156,12 +3147,12 @@ if ($no_stats) {
     print STDERR "No stats just remaking files so not reading genomes\n";
     &get_genome_names;
 } else {
-    if (($write_multifasta) || ($use_multifasta && ($target_id ne ""))) {
+    if ($write_multifasta)  {
 	print  STDERR "Getting topology from $topology_file writing individual topology files\n";
 	&read_topology_less;
 	print  STDERR "Gathering gene coordinates and attribute information from $att_file writing individual attributes files\n";
 	&get_attributes_less;
-    } elsif ($use_multifasta && $align_all) {
+    } elsif ($use_multifasta) {
     } else {
 	print  STDERR "Getting topology from $topology_file\n";
 	&read_topology;
