@@ -205,7 +205,11 @@ if ($opt_i) {
 	die ("ERROR: cannot specify a target topology file $opt_i without specifying -F and -t\n");
     }
     $target_single_topology_file = $opt_i;
-}  
+}
+if (($use_multifasta && ($target_id ne "")) && (($target_single_attributes_file eq "") || ($target_single_topology_file eq ""))) {
+    die ("ERROR: cannot specify -F and -t without specifying both -e and -i\n");
+}
+ 
 
 my $num_size_one_clus = 0;
 my $num_shared_clus = 0;
@@ -3109,6 +3113,8 @@ Version: $version
      -j: the maximum number of grid jobs to run for multiple sequence alignments
      -f: generate multifasta files with all alleles for clusters and edges also forces the -F flag to be set
      -F: use multifasta files with all alleles for clusters and edges instead of extracting them directly from genome fasta files
+     -e: the file name of the attributes file for the target genome specified with -t when using -F
+     -i: the file name of the topology file for the target genome specified with -t when using -F
      -C: path to the Muslce executable for multiple sequence alignments - default /usr/local/bin/muscle
      -O: flag indicating two multifasta files of node/cluster/gene sequences which are significantly diverged or inserted should be output for codon optimization
      -r: path to the Rscript executable for Rscript scripts - default /usr/local/bin/Rscript
