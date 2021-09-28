@@ -394,8 +394,11 @@ sub compute
 	    `mv $stats_name $stats_name_genome`;
 	}
 	if ($codon_opt) {
-	    my $codon_opt_name = "output/$genome_name" . "_codon_opt.txt";
-	    my $codon_opt_name_genome = "$genome_name" . "_codon_opt.txt";
+	    my $codon_opt_name = "output/$genome_name" . "_codon_opt_mutation.txt";
+	    my $codon_opt_name_genome = "$genome_name" . "_codon_opt_mutation.txt";
+	    `mv $codon_opt_name $codon_opt_name_genome`;
+	    $codon_opt_name = "output/$genome_name" . "_codon_opt_insertion.txt";
+	    $codon_opt_name_genome = "$genome_name" . "_codon_opt_insertion.txt";
 	    `mv $codon_opt_name $codon_opt_name_genome`;
 	}
 	`rm -r output multifasta`;
