@@ -3113,6 +3113,7 @@ Version: $version
      -j: the maximum number of grid jobs to run for multiple sequence alignments
      -f: generate multifasta files with all alleles for clusters and edges also forces the -F flag to be set
      -F: use multifasta files with all alleles for clusters and edges instead of extracting them directly from genome fasta files
+     -X: only renumbering clusters and edges in matchtable and pgg file during refinement iteration not generating alignments files or statistics
      -e: the file name of the attributes file for the target genome specified with -t when using -F
      -i: the file name of the topology file for the target genome specified with -t when using -F
      -C: path to the Muslce executable for multiple sequence alignments - default /usr/local/bin/muscle
@@ -3177,7 +3178,7 @@ if ($no_stats) {
 	 &get_genomes;
      }
 }
-if ($write_multifasta && !$align_all) {
+if ($write_multifasta && !$align_all && !$no_stats) {
     print STDERR "Finished processing - exiting - only wrote multifasta files for clusters and edges but did not align them\n";
     exit(0);
 }
