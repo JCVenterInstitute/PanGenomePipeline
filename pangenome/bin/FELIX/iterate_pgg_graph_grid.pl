@@ -437,9 +437,9 @@ sub compute
 {
     `cut -f 1 $genome_list_path > Genomes.List`;
     if ($debug) {print STDERR "Starting compute ...\n\n";}
-    if ($less_memory) {
-	$pgg_multifasta_path .= " -f -F ";
-    }
+    #if ($less_memory) {# no longer need this with the no_stats -X option
+	#$pgg_multifasta_path .= " -f -F ";
+    #}
     if ($muscle_path ne "") {
 	$compute_path .= " -muscle_path $muscle_path ";
 	$pgg_multifasta_path .= " -C $muscle_path ";
