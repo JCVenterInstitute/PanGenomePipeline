@@ -176,6 +176,9 @@ while (my $line = <$infile>)  {
     my $anno = "";
     while (my $line = <GBFILE>) {
 	chomp($line);
+ 	if ($line =~ /^\s*ORIGIN/) {
+	    last;
+	}
  	if ($line =~ /^\s*LOCUS\s+([\S]+)/) {
 	    $locus_id = $1;
 	    $locus_id =~ s/\.\d+$//; # remove trailing version number if it exists!
@@ -262,17 +265,73 @@ while (my $line = <$infile>)  {
 	    $coord3p = $2;
 	    next;
 	}
-	if ($line =~ /^\s*\/gene="([^"]*}")/) {
+	if ($line =~ /^\s*5'UTR\s+(\d+)\.\.(\d+)/) {
+	    if ($type ne "") {
+		$count++;
+		$cur_locus_id = $locus_id . "_" . $count;
+		$annotations[$count][CONTIG] = $contig_name;     # contig
+		$annotations[$count][ANNOTATION] = $anno;       # annotation
+		$annotations[$count][TYPE] = $type;       # type
+		$annotations[$count][LOCUS] = $cur_locus_id;      # locus_id
+		$annotations[$count][GENOME] = $genome_id;     # genome
+		$annotations[$count][DELETE] = 0;     # subsumed by another segment
+		if ($coord5p <= $coord3p) {
+		    $annotations[$count][START] = $coord5p; # start
+		    $annotations[$count][STOP] = $coord3p; # stop
+		    $annotations[$count][INVERT] = 0;              # invert
+		    $annotations[$count][LENGTH] = ($coord3p - $coord5p) + 1;     # length
+		} else {
+		    $annotations[$count][START] = $coord3p; # start
+		    $annotations[$count][STOP] = $coord5p; # stop
+		    $annotations[$count][INVERT] = 1;              # invert
+		    $annotations[$count][LENGTH] = ($coord5p - $coord3p) + 1;     # length
+		}
+	    }
+	    $type = "5putr";
+	    $anno = "5'UTR";
+	    $coord5p = $1;
+	    $coord3p = $2;
+	    next;
+	}
+	if ($line =~ /^\s*3'UTR\s+(\d+)\.\.(\d+)/) {
+	    if ($type ne "") {
+		$count++;
+		$cur_locus_id = $locus_id . "_" . $count;
+		$annotations[$count][CONTIG] = $contig_name;     # contig
+		$annotations[$count][ANNOTATION] = $anno;       # annotation
+		$annotations[$count][TYPE] = $type;       # type
+		$annotations[$count][LOCUS] = $cur_locus_id;      # locus_id
+		$annotations[$count][GENOME] = $genome_id;     # genome
+		$annotations[$count][DELETE] = 0;     # subsumed by another segment
+		if ($coord5p <= $coord3p) {
+		    $annotations[$count][START] = $coord5p; # start
+		    $annotations[$count][STOP] = $coord3p; # stop
+		    $annotations[$count][INVERT] = 0;              # invert
+		    $annotations[$count][LENGTH] = ($coord3p - $coord5p) + 1;     # length
+		} else {
+		    $annotations[$count][START] = $coord3p; # start
+		    $annotations[$count][STOP] = $coord5p; # stop
+		    $annotations[$count][INVERT] = 1;              # invert
+		    $annotations[$count][LENGTH] = ($coord5p - $coord3p) + 1;     # length
+		}
+	    }
+	    $type = "3putr";
+	    $anno = "3'UTR";
+	    $coord5p = $1;
+	    $coord3p = $2;
+	    next;
+	}
+	if ($line =~ /^\s*\/gene="([^"]*)"/) {
 	    $anno = $1;
 	    next;
 	}
-	if ($line =~ /^\s*\/product="([^"]*}")/) {
+	if ($line =~ /^\s*\/product="([^"]*)"/) {
 	    if (($type eq "gene") || ($type eq "mat_peptide")) {
 		$anno .= " " . $1;
 	    }
 	    next;
 	}
-	if ($line =~ /^\s*\/note="([^"]*}")/) {
+	if ($line =~ /^\s*\/note="([^"]*)"/) {
 	    if ($type eq "stem_loop") {
 		$anno .= " " . $1;
 	    }
