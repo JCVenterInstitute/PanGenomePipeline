@@ -125,43 +125,12 @@ while (my $line = <$infile>)  {
     # clear data structures for the next genome
     @annotations = ();  # These are the lines of the attribute files but with 3 changes: 1) there BEST, VALUE, and TYPE fields 2) coordinates are now smallest then largest, not start then stop 3) there is an INVERT field to indicate strand rather than STOP being smaller than START
     @ordered = ();      # Same as above but sorted by CONTIG then START
-    @query_coords = ();   # Combine intervals from ordered: QCCTG is contig, QCBEG is start coordinate, QCEND is stop coordinate, QCNAME is query sequence name, QCDEL for deleted - sort by QCCTG then QCBEG
-    %contigs = ();      # key = contig id, value = sequence of contig
-    %contig_len = ();   # key = contig id, value = length of contig
     
     chomp $line;
-    (my $genome_id, my $genome_file, my $gb_file) = split(/\t/, $line);  # split the scalar $line on tab
+    (my $genome_id, my $gb_file) = split(/\t/, $line);  # split the scalar $line on tab
 
-    # read in contigs from genome file
-    my $contigfile;
-    unless (open ($contigfile, "<", $genome_file) )  {
-	die ("cannot open genome file: $genome_file!\n");
-    }
-    my $save_input_separator = $/;
     my $line;
-    $/="\n>";
     my $contig_name = "";
-    while ($line = <$contigfile>) {
-	(my $title, my $sequence) = split(/\n/, $line, 2); # split the header line and sequence (very cool)
-	my @fields = split(/\s+/, $title);  # split the scalar $line on space or tab (to separate the identifier from the header and store in array @line
-	my $id = $fields[0]; # unique orf identifier is in column 0, com_name is in rest
-	$id =~ s/>\s*//; # remove leading > and spaces
-	if ($strip_version) {
-	    $id =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
-	}
-	$sequence =~ s/[^a-zA-Z]//g; # remove any non-alphabet characters
-	my $contig_length = length($sequence);
-	#print STDERR "$id\t$contig_length";
-	$contigs{$id} = $sequence;
-	$contig_len{$id} = $contig_length;
-	$contig_name = $id;
-	#print STDERR "\t$id";
-	#print STDERR "\n";
-	$title = ""; # clear the title for the next contig
-	$sequence = ""; #clear out the sequence for the next contig
-    }
-    $/ = $save_input_separator; # restore the input separator
-    close ($contigfile);
 
     #read in annotation inforamtion for genome from .gb file
     unless (open (GBFILE, "<", "$gb_file") )  {
@@ -174,14 +143,29 @@ while (my $line = <$infile>)  {
     my $coord5p;
     my $coord3p;
     my $anno = "";
+    my $bp_count;
+    my $max_coord = 0;
+    my $first = 1;
     while (my $line = <GBFILE>) {
 	chomp($line);
+	if ($first) {
+	    if ($line =~ /^\s*LOCUS\s+(\S+)\s+(\d+)\s+bp/) {
+		$locus_id = $1;
+		$locus_id =~ s/\.\d+$//; # remove trailing version number if it exists!
+		$bp_count = $2;
+		$first = 0;
+		next;
+	    }
+	    die ("ERROR: line in .gb file $gb_file is not in expected LOCUS line format:\n$line\n");
+	}
  	if ($line =~ /^\s*ORIGIN/) {
 	    last;
 	}
- 	if ($line =~ /^\s*LOCUS\s+([\S]+)/) {
-	    $locus_id = $1;
-	    $locus_id =~ s/\.\d+$//; # remove trailing version number if it exists!
+ 	if ($line =~ /^\s*VERSION\s+(\S+)/) {
+	    $contig_name = $1;
+	    if ($strip_version) {
+		$contig_name =~ s/\.\d+$//; # remove trailing version number if it exists - hopefully nonversioned contig names do not have this!
+	    }
 	    next;
 	}
 	if ($line =~ /^\s*gene\s+(\d+)\.\.(\d+)/) {
@@ -209,6 +193,15 @@ while (my $line = <$infile>)  {
 	    $type = "gene";
 	    $coord5p = $1;
 	    $coord3p = $2;
+	    if ($coord5p > $max_coord) {
+		$max_coord = $coord5p;
+	    }
+	    if ($coord3p > $max_coord) {
+		$max_coord = $coord3p;
+	    }
+	    if ($bp_count < $max_coord) {
+		die ("ERROR: contig length in LOCUS line ($bp_count) is less than a feature coordinate in .gb file $gb_file:\n$line\n");
+	    }
 	    next;
 	}
 	if ($line =~ /^\s*mat_peptide\s+(\d+)\.\.(\d+)/) {
@@ -236,6 +229,15 @@ while (my $line = <$infile>)  {
 	    $type = "mat_peptide";
 	    $coord5p = $1;
 	    $coord3p = $2;
+	    if ($coord5p > $max_coord) {
+		$max_coord = $coord5p;
+	    }
+	    if ($coord3p > $max_coord) {
+		$max_coord = $coord3p;
+	    }
+	    if ($bp_count < $max_coord) {
+		die ("ERROR: contig length in LOCUS line ($bp_count) is less than a feature coordinate in .gb file $gb_file:\n$line\n");
+	    }
 	    next;
 	}
 	if ($line =~ /^\s*stem_loop\s+(\d+)\.\.(\d+)/) {
@@ -263,6 +265,15 @@ while (my $line = <$infile>)  {
 	    $type = "stem_loop";
 	    $coord5p = $1;
 	    $coord3p = $2;
+	    if ($coord5p > $max_coord) {
+		$max_coord = $coord5p;
+	    }
+	    if ($coord3p > $max_coord) {
+		$max_coord = $coord3p;
+	    }
+	    if ($bp_count < $max_coord) {
+		die ("ERROR: contig length in LOCUS line ($bp_count) is less than a feature coordinate in .gb file $gb_file:\n$line\n");
+	    }
 	    next;
 	}
 	if ($line =~ /^\s*5'UTR\s+(\d+)\.\.(\d+)/) {
@@ -291,6 +302,15 @@ while (my $line = <$infile>)  {
 	    $anno = "5'UTR";
 	    $coord5p = $1;
 	    $coord3p = $2;
+	    if ($coord5p > $max_coord) {
+		$max_coord = $coord5p;
+	    }
+	    if ($coord3p > $max_coord) {
+		$max_coord = $coord3p;
+	    }
+	    if ($bp_count < $max_coord) {
+		die ("ERROR: contig length in LOCUS line ($bp_count) is less than a feature coordinate in .gb file $gb_file:\n$line\n");
+	    }
 	    next;
 	}
 	if ($line =~ /^\s*3'UTR\s+(\d+)\.\.(\d+)/) {
@@ -319,6 +339,15 @@ while (my $line = <$infile>)  {
 	    $anno = "3'UTR";
 	    $coord5p = $1;
 	    $coord3p = $2;
+	    if ($coord5p > $max_coord) {
+		$max_coord = $coord5p;
+	    }
+	    if ($coord3p > $max_coord) {
+		$max_coord = $coord3p;
+	    }
+	    if ($bp_count < $max_coord) {
+		die ("ERROR: contig length in LOCUS line ($bp_count) is less than a feature coordinate in .gb file $gb_file:\n$line\n");
+	    }
 	    next;
 	}
 	if ($line =~ /^\s*\/gene="([^"]*)"/) {
@@ -359,8 +388,21 @@ while (my $line = <$infile>)  {
 	    $annotations[$count][LENGTH] = ($coord5p - $coord3p) + 1;     # length
 	}
     }
+    my $contig_sequence = "";
+    while (my $line = <GBFILE>) {# this is after the ORIGIN line to get the contig sequence
+	chomp($line);
+	if ($line =~ /^\/\//) {
+	    last;
+	}
+	$line =~ s/[^a-zA-Z]//g; # remove any non-alphabet characters
+	$contig_sequence .= $line
+    }
     close (GBFILE);
-
+    my $contig_length = length($contig_sequence);
+    if ($contig_length != $bp_count) {
+	    die ("ERROR: contig length in LOCUS line ($bp_count) not equal to length of contig sequence after ORIGIN line ($contig_length) in .gb file $gb_file.\n");
+    }
+    
     if ($debug) {
 	print STDERR "DEBUG***annotations\n";
 	for (my $j=0; $j < @annotations; $j++) {
@@ -450,12 +492,15 @@ while (my $line = <$infile>)  {
 	if ($ordered[$j][DELETE]) {
 	    last;
 	}
-	my $feature_seq = substr($contigs{$ordered[$j][CONTIG]}, ($ordered[$j][START] - 1), (($ordered[$j][STOP] - $ordered[$j][START]) + 1));
+	if ((($ordered[$j][STOP] - $ordered[$j][START]) + 1) != $ordered[$j][LENGTH]) {
+	    die ("In the ordered array, the stop and start coordinates are not consistent with the length for entry $j ($ordered[$j][STOP],$ordered[$j][START],$ordered[$j][LENGTH])\n");
+	}
+	my $feature_seq = substr($contig_sequence, ($ordered[$j][START] - 1), (($ordered[$j][STOP] - $ordered[$j][START]) + 1));
 	if ($ordered[$j][INVERT]) {
 	    my $swap = $ordered[$j][START];
 	    $ordered[$j][START] = $ordered[$j][STOP];
 	    $ordered[$j][STOP] = $swap;
-	    my $tmp_seq = reverse($contigs{$ordered[$j][CONTIG]});
+	    my $tmp_seq = reverse($feature_seq);
 	    $feature_seq = $tmp_seq;
 	    $feature_seq =~ tr/AGCTYRWSKMDVHBagctyrwskmdvhb/TCGARYWSMKHBDVtcgarywsmkhbdv/;
 	}
