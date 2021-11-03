@@ -20,9 +20,6 @@ my $commandline = join (" ", @ARGV);
 print STDERR "$commandline\n";
 my @annotations = ();  # These are the lines of the attribute files but with 3 changes: 1) there are BEST, VALUE, and TYPE fields 2) coordinates are now smallest then largest, not start then stop 3) there is an INVERT field to indicate strand rather than STOP being smaller than START
 my @ordered = ();      # Same as above but sorted by CONTIG then START
-my @query_coords = (); # Same as above but first combining intervals
-my %contig_len = ();   # key = contig id, value = length of contig
-my %contigs = ();      # key = contig id, value = sequence of contig
 
 # CONSTANTS #
 use constant CONTIG => 0;
@@ -43,10 +40,12 @@ my $debug;
 my $strip_version;
 my $att_dir = "";
 my $fasta_dir = "";
+my $genome_dir = "";
 
 GetOptions('genomes=s' => \ $genomes,
 	   'att_dir=s' => \ $att_dir,
 	   'fasta_dir=s' => \ $fasta_dir,
+	   'genome_dir=s' => \ $genome_dir,
 	   'strip_version' => \ $strip_version,
 	   'help' => \ $help,
 	   'debug' => \ $debug);
@@ -83,12 +82,29 @@ if ($fasta_dir) {
     $fasta_dir = "";
 }
 
+if ($genome_dir) {
+    if (-d $genome_dir) {
+	if (substr($genome_dir, -1, 1) ne "/") {
+	    $genome_dir .= "/";
+	}
+	if (substr($genome_dir, 0, 1) ne "/") {
+	    $genome_dir = $cwd . "/$genome_dir";
+	}
+    } else {
+	print STDERR "Error with -genome_dir $genome_dir\n";
+	$help = 1;
+    }
+} else {
+    $genome_dir = "";
+}
+
 if ($help) {
    system("clear");
    print STDERR <<_EOB_;
 GetOptions('genomes=s' => genomes,
 	   'att_dir=s' => att_dir,
 	   'fasta_dir=s' => fasta_dir,
+	   'genome_dir=s' => genome_dir,
 	   'help' => help,
 	   'debug' => debug,
 	   'strip_version' => strip_version);
@@ -395,6 +411,7 @@ while (my $line = <$infile>)  {
 	    last;
 	}
 	$line =~ s/[^a-zA-Z]//g; # remove any non-alphabet characters
+	$line =~ tr/a-z/A-Z/; # convert to upper case
 	$contig_sequence .= $line
     }
     close (GBFILE);
@@ -478,6 +495,13 @@ while (my $line = <$infile>)  {
 	    print ("$j: $ordered[$j][CONTIG]\t$ordered[$j][LOCUS]\t$ordered[$j][START]\t$ordered[$j][STOP]\t$ordered[$j][TYPE]\t$ordered[$j][ANNOTATION]\t$ordered[$j][GENOME]\t$ordered[$j][INVERT]\n");
 	}
     }
+    my $genome_file = $genome_dir . $genome_id . ".fasta";
+    my $genome_fp;
+    unless (open ($genome_fp, ">", $genome_file) )  {
+	die ("cannot open file $genome_file!\n");
+    }
+    &print_fasta($genome_fp, $contig_name, $contig_sequence, 1, $contig_length); 
+    close($genome_fp);
     my $att_file = $att_dir . $genome_id . ".natt";
     my $att_fp;
     unless (open ($att_fp, ">", $att_file) )  {
@@ -507,6 +531,8 @@ while (my $line = <$infile>)  {
 	&print_fasta($fasta_fp, $ordered[$j][LOCUS], $feature_seq, 1, $ordered[$j][LENGTH]); 
 	print $att_fp "$ordered[$j][CONTIG]\t$ordered[$j][LOCUS]\t$ordered[$j][START]\t$ordered[$j][STOP]\t$ordered[$j][ANNOTATION]\t$ordered[$j][GENOME]\n";
     }
+    close($att_fp);
+    close ($fasta_fp);
 }
-
+close ($infile);
 exit(0);
