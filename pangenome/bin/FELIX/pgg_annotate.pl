@@ -2427,6 +2427,10 @@ sub output_files
 	    #print STDERR "Unique edge across end of circular contig: $edge_start $first_edge_end $edge_end $tmp_len $target $contig($contig_len{$contig}) ($prev_clus_orient,$first_clus_orient)\n";
 	    $hash_edges{'(' . $prev_clus_orient . ',' . $first_clus_orient . ')'} = "$target\t$contig\tuniq_edge\t$edge_start\t$edge_end\t$tmp_len\t";
 	    $hash_edges{'(' . $first_clus_orient . ',' . $prev_clus_orient . ')'} = "$target\t$contig\tuniq_edge\t$edge_end\t$edge_start\t$tmp_len\t";
+	    if ($reannotate) {
+		print $alledgesfile '(' . $prev_clus_orient . ',' . $first_clus_orient . ')', "\n";
+		print $alledgesfile '(' . $first_clus_orient . ',' . $prev_clus_orient . ')', "\n";
+	    }
 	}
 	if ((((100 * $annotated_bp) / $contig_len{$contig}) < 40) && (($contig_len{$contig} >= 1500) || $is_circular{$contig})) {
 	    # for contigs check to see if a lack of dense annotation may indicate it is a possible novel plasmid
