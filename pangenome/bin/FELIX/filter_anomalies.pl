@@ -406,7 +406,7 @@ while (my $line = <$infile>)  {
 	    print STDERR "WARNING: not expecting length of any anomaly to be greater than 100,000bp\n$line\n"; # warn on long length edge anomalies
 	}
 	my $category = $split_line[2];
-	if (($category =~ /^divergent/) || ($category =~ /^very/) || ($category eq "uniq_edge")) {
+	if (($category =~ /^divergent/) || ($category =~ /^very/) || ($category =~ /^short/) || ($category =~ /^long/) || ($category eq "uniq_edge")) {
 	    $category = DIVERGED;
 	} elsif ($category =~ /^identical_clus/) { #ignore edges as context anchors
 	    $category = IDENTICAL;
@@ -652,6 +652,7 @@ while (my $line = <$infile>)  {
     my $end_diverged = 0;
     my $cur_type;
     my $cur_locus;
+    my $prev_locus;
     my $diverged_type = "";
     my $qc_index = 0;
     my $first_qc_index = -1;
@@ -672,20 +673,42 @@ while (my $line = <$infile>)  {
 	$cur_category = $ordered[$i][CATEGORY];
 	$seen_contig{$cur_contig} = 1;
 	if ($prev_contig ne $cur_contig) { # first segment for this contig
-	    if (($prev_contig ne "") && ($beg_diverged != 0)) {
-		#print STDERR "New contig $cur_contig ($prev_contig) $beg_diverged:$end_diverged $diverged_type\n";
-		$query_coords[$qc_index][QCNAME] = $prev_contig . "_DIV_" . $beg_diverged . "_" . $end_diverged . "_" . $diverged_type;
-		$query_coords[$qc_index][QCCTG] = $prev_contig;
-		$query_coords[$qc_index][QCBEG] = $beg_diverged;
-		$query_coords[$qc_index][QCEND] = $end_diverged;
-		$query_coords[$qc_index][QCDEL] = 0;
-		if (($first_qc_index >= 0) && ($query_coords[$first_qc_index][QCBEG] <= 0) && ($end_diverged > $contig_len{$prev_contig})) {
-		    $query_coords[$first_qc_index][QCDEL] = 1; # discard the off the beginning segment in favor of the off the end segment for ciruclar contigs
-		    $first_qc_index = -1;
-		    $query_coords[$qc_index][QCNAME] .= "_" . $query_coords[$first_qc_index][QCNAME];
-		    $query_coords[$qc_index][QCEND] = $contig_len{$prev_contig} + $query_coords[$qc_index][QCEND];
+	    if ($prev_contig ne "") {
+		if ($beg_diverged != 0) {
+		    if (($end_diverged > $end_conserved) && ($end_diverged <= $contig_len{$prev_contig})) {
+			$end_diverged = $contig_len{$prev_contig}; #extend terminal diverged regions
+		    }
+		    #print STDERR "New contig $cur_contig ($prev_contig) $beg_diverged:$end_diverged $diverged_type\n";
+		    $query_coords[$qc_index][QCNAME] = $prev_contig . "_DIV_" . $beg_diverged . "_" . $end_diverged . "_" . $diverged_type;
+		    $query_coords[$qc_index][QCCTG] = $prev_contig;
+		    $query_coords[$qc_index][QCBEG] = $beg_diverged;
+		    $query_coords[$qc_index][QCEND] = $end_diverged;
+		    $query_coords[$qc_index][QCDEL] = 0;
+		    if (($first_qc_index >= 0) && ($query_coords[$first_qc_index][QCBEG] <= 0) && ($end_diverged > $contig_len{$prev_contig})) {
+			$query_coords[$first_qc_index][QCDEL] = 1; # discard the off the beginning segment in favor of the off the end segment for ciruclar contigs
+			$query_coords[$qc_index][QCNAME] .= "_" . $query_coords[$first_qc_index][QCNAME];
+			$query_coords[$qc_index][QCEND] = $contig_len{$prev_contig} + $query_coords[$first_qc_index][QCEND];
+		    }
+		    $qc_index++;
+		} elsif (!$is_circular{$prev_contig} && (($contig_len{$prev_contig} - $prev_end) >= 500)) { # treat unannoted contig ends >= 500 bp as diverged regions, less than that assume they are assembly noise
+		    my $tmp_seq = substr($contigs{$prev_contig}, $prev_end, ($contig_len{$prev_contig} - $prev_end));
+		    if ($tmp_seq !~ /NNNNN/) { # do not use sequences with gaps in them - perhaps should split on gaps instead
+			if (($end_conserved - $beg_conserved) > CONTEXTLEN)  {
+			    $beg_diverged = $end_conserved - CONTEXTLEN;
+			} elsif ($beg_conserved > 0) {
+			    $beg_diverged = $beg_conserved;
+			} else {
+			    $beg_diverged = 1; # instead of $cur_beg to include context around the diverged region
+			}
+			$diverged_type = "Unannotated_" . $prev_locus . "_" . $beg_diverged . "_" . $contig_len{$prev_contig};
+			$query_coords[$qc_index][QCNAME] = $prev_contig . "_DIV_" . $beg_diverged . "_" . $contig_len{$prev_contig} . "_" . $diverged_type;
+			$query_coords[$qc_index][QCCTG] = $prev_contig;
+			$query_coords[$qc_index][QCBEG] = $beg_diverged;
+			$query_coords[$qc_index][QCEND] = $contig_len{$prev_contig};
+			$query_coords[$qc_index][QCDEL] = 0;
+			$qc_index++;
+		    }
 		}
-		$qc_index++;
 	    }
 	    $beg_diverged = 0;
 	    $end_diverged = 0;
@@ -714,6 +737,13 @@ while (my $line = <$infile>)  {
 		    #$qc_index++;
 		#}
 	    #}
+	    if (!$is_circular{$cur_contig} && ($cur_beg > 500)) { # treat unannoted contig ends >= 500 bp as diverged regions, less than that assume they are assembly noise
+		my $tmp_seq = substr($contigs{$cur_contig}, 0, ($cur_beg - 1));
+		if ($tmp_seq !~ /NNNNN/) { # do not use sequences with gaps in them - perhaps should split on gaps instead
+		    $beg_diverged = 1; # include context around the diverged region
+		    $diverged_type = "Unannotated_" . $cur_locus . "_" . $beg_diverged . "_" . ($cur_beg - 1);
+		}
+	    }
 	    if (($prev_contig ne "") && ($range_beg != 0)) {
 		print $file_ranges "$prev_contig\t$range_beg\t$range_end\t$categories[$prev_category]\n";
 	    }
@@ -726,6 +756,7 @@ while (my $line = <$infile>)  {
 	    $range_beg = 0;
 	    $range_end = 0;
 	    $prev_category = -1;
+	    $first_qc_index = -1;
 	}
 	
 	if ($range_beg == 0) {
@@ -802,6 +833,7 @@ while (my $line = <$infile>)  {
 	$prev_end = $cur_end;
 	$prev_category = $cur_category;
 	$prev_contig = $cur_contig;
+	$prev_locus = $cur_locus;
     }
     if (($prev_contig ne "") && ($range_beg != 0)) {
 	print $file_ranges "$prev_contig\t$range_beg\t$range_end\t$categories[$prev_category]\n";
@@ -810,20 +842,42 @@ while (my $line = <$infile>)  {
 	print $file_ranges "$prev_contig\t", ($range_end + 1), "\t$contig_len{$prev_contig}\tunannotated\n";
     }
     close($file_ranges);
-    if (($prev_contig ne "") && ($beg_diverged != 0)) {
-	#print STDERR "Last diverged region $cur_contig $beg_diverged:$end_diverged $beg_conserved:$end_conserved $diverged_type\n";
-	$query_coords[$qc_index][QCNAME] = $prev_contig . "_DIV_" . $beg_diverged . "_" . $end_diverged . "_" . $diverged_type;
-	$query_coords[$qc_index][QCCTG] = $prev_contig;
-	$query_coords[$qc_index][QCBEG] = $beg_diverged;
-	$query_coords[$qc_index][QCEND] = $end_diverged;
-	$query_coords[$qc_index][QCDEL] = 0;
-	if (($first_qc_index >= 0) && ($query_coords[$first_qc_index][QCBEG] <= 0) && ($end_diverged > $contig_len{$prev_contig})) {
-	    $query_coords[$first_qc_index][QCDEL] = 1; # discard the off the beginning segment in favor of the off the end segment for ciruclar contigs
-	    $first_qc_index = -1;
-	    $query_coords[$qc_index][QCNAME] .= "_" . $query_coords[$first_qc_index][QCNAME];
-	    $query_coords[$qc_index][QCEND] = $contig_len{$prev_contig} + $query_coords[$qc_index][QCEND];
+    if ($prev_contig ne "") {
+	if ($beg_diverged != 0) {
+	    if (($end_diverged > $end_conserved) && ($end_diverged <= $contig_len{$prev_contig})) {
+		$end_diverged = $contig_len{$prev_contig}; #extend terminal diverged regions
+	    }
+	    #print STDERR "New contig $cur_contig ($prev_contig) $beg_diverged:$end_diverged $diverged_type\n";
+	    $query_coords[$qc_index][QCNAME] = $prev_contig . "_DIV_" . $beg_diverged . "_" . $end_diverged . "_" . $diverged_type;
+	    $query_coords[$qc_index][QCCTG] = $prev_contig;
+	    $query_coords[$qc_index][QCBEG] = $beg_diverged;
+	    $query_coords[$qc_index][QCEND] = $end_diverged;
+	    $query_coords[$qc_index][QCDEL] = 0;
+	    if (($first_qc_index >= 0) && ($query_coords[$first_qc_index][QCBEG] <= 0) && ($end_diverged > $contig_len{$prev_contig})) {
+		$query_coords[$first_qc_index][QCDEL] = 1; # discard the off the beginning segment in favor of the off the end segment for ciruclar contigs
+		$query_coords[$qc_index][QCNAME] .= "_" . $query_coords[$first_qc_index][QCNAME];
+		$query_coords[$qc_index][QCEND] = $contig_len{$prev_contig} + $query_coords[$first_qc_index][QCEND];
+	    }
+	    $qc_index++;
+	} elsif (!$is_circular{$prev_contig} && (($contig_len{$prev_contig} - $prev_end) >= 500)) { # treat unannoted contig ends >= 500 bp as diverged regions, less than that assume they are assembly noise
+	    my $tmp_seq = substr($contigs{$prev_contig}, $prev_end, ($contig_len{$prev_contig} - $prev_end));
+	    if ($tmp_seq !~ /NNNNN/) { # do not use sequences with gaps in them - perhaps should split on gaps instead
+		if (($end_conserved - $beg_conserved) > CONTEXTLEN)  {
+		    $beg_diverged = $end_conserved - CONTEXTLEN;
+		} elsif ($beg_conserved > 0) {
+		    $beg_diverged = $beg_conserved;
+		} else {
+		    $beg_diverged = 1; # instead of $cur_beg to include context around the diverged region
+		}
+		$diverged_type = "Unannotated_" . $prev_locus . "_" . $beg_diverged . "_" . $contig_len{$prev_contig};
+		$query_coords[$qc_index][QCNAME] = $prev_contig . "_DIV_" . $beg_diverged . "_" . $contig_len{$prev_contig} . "_" . $diverged_type;
+		$query_coords[$qc_index][QCCTG] = $prev_contig;
+		$query_coords[$qc_index][QCBEG] = $beg_diverged;
+		$query_coords[$qc_index][QCEND] = $contig_len{$prev_contig};
+		$query_coords[$qc_index][QCDEL] = 0;
+		$qc_index++;
+	    }
 	}
-	$qc_index++;
     }
     #if (($prev_contig ne "") && (($contig_len{$prev_contig} - $prev_end) > 20)) { # include unannotated contig ends > 20 bp
 	#my $tmp_seq = substr($contigs{$prev_contig}, $prev_end, ($contig_len{$prev_contig} - $prev_end));
@@ -1007,7 +1061,7 @@ while (my $line = <$infile>)  {
 	}
     }
     $count--;
-    $#pgg_blast_results = $count; #make sure that if last blast result was not supposed to be saved that it is tuncated off
+    $#pgg_blast_results = $count; #make sure that if last blast result was not supposed to be saved that it is truncated off
     close(PGG_BLAST_FILE);
     open(PGG_BLAST_FILE, ">", $filtered_PGG_blast) || die ("Couldn't open $filtered_PGG_blast for writing\n");
     open(CALLS_FILE, ">", $out_predictions) || die ("Couldn't open $out_predictions for writing\n");
@@ -1304,20 +1358,46 @@ while (my $line = <$infile>)  {
 		    print CALLS_FILE "$output\tINSERTION\t$qid\t$fivep_flank\t$threep_flank\t$deletion\t$del_len\t$insertion\t$ins_len\t$cur_sid\t$pid\t$del_start\t$del_end\t$fivep_end\t$threep_start\n";
 		}
 	    }
-	} elsif ($fivep_index >= 0) {# possible deletion
-	    if (($fivep_index > $#pgg_blast_results) || ($fivep_index < 0)) {
-		die ("ERROR: fivep_index out of range $fivep_index not in [0 - $#pgg_blast_results]\n");
+	} elsif (($fivep_index >= 0) || ($threep_index >= 0)) {# possible partial insertion
+	    if ($fivep_index >= 0) {
+		if (($fivep_index > $#pgg_blast_results) || ($fivep_index < 0)) {
+		    die ("ERROR: fivep_index out of range $fivep_index not in [0 - $#pgg_blast_results]\n");
+		}
+		my $btab = join("\t", @{ $pgg_blast_results[$fivep_index] });
+		print PGG_BLAST_FILE "$btab\n";
+		#print STDERR "$btab\n";
+		my $cur_sid = $pgg_blast_results[$fivep_index][SSEQID];
+		my $pid = $pgg_blast_results[$fivep_index][PIDENT];
+		my $qlen = $pgg_blast_results[$fivep_index][QLEN];
+		my $fivep_end = $pgg_blast_results[$fivep_index][QEND];
+		my $fivep_flank = substr($query_seqs{$qid}, ($fivep_start - 1), (($fivep_end - $fivep_start) + 1));
+		my $insertion = substr($query_seqs{$qid}, $fivep_end, ($qlen - $fivep_end));
+		my $deletion = "";
+		my $del_len = 0;
+		my $ins_len = length($insertion);
+		$fivep_end += $start_offset + 1; # add 1 to move into insertion region not last 5p flanking bp
+		$qlen += $start_offset;
+		print CALLS_FILE "$output\tPARTIAL INSERTION\t$qid\t$fivep_flank\t\t$deletion\t$del_len\t$insertion\t$ins_len\t$cur_sid\t$pid\t0\t0\t$fivep_end\t$qlen\n";
+	    } elsif ($threep_index >= 0) {
+		if (($threep_index > $#pgg_blast_results) || ($threep_index < 0)) {
+		    die ("ERROR: threep_index out of range $threep_index not in [0 - $#pgg_blast_results]\n");
+		}
+		my $btab = join("\t", @{ $pgg_blast_results[$threep_index] });
+		print PGG_BLAST_FILE "$btab\n";
+		#print STDERR "$btab\n";
+		my $cur_sid = $pgg_blast_results[$threep_index][SSEQID];
+		my $pid = $pgg_blast_results[$threep_index][PIDENT];
+		my $qlen = $pgg_blast_results[$threep_index][QLEN];
+		my $threep_start = $pgg_blast_results[$threep_index][QSTART];
+		my $threep_flank = substr($query_seqs{$qid}, ($threep_start - 1), (($threep_end - $threep_start) + 1));
+		my $insertion = substr($query_seqs{$qid}, 0, ($threep_start - 1));
+		my $deletion = "";
+		my $del_len = 0;
+		my $ins_len = length($insertion);
+		$threep_start += $start_offset - 1;  # subtract 1 to move into insertion region not first 3p flanking bp
+		my $qstart = $start_offset + 1;
+		print CALLS_FILE "$output\tPARTIAL INSERTION\t$qid\t\t$threep_flank\t$deletion\t$del_len\t$insertion\t$ins_len\t$cur_sid\t$pid\t0\t0\t$qstart\t$threep_start\n";
 	    }
-	    my $btab = join("\t", @{ $pgg_blast_results[$fivep_index] });
-	    print PGG_BLAST_FILE "$btab\n";
-	    #print STDERR "$btab\n";
-	} elsif ($threep_index >= 0) {# possible deletion
-	    if (($threep_index > $#pgg_blast_results) || ($threep_index < 0)) {
-		die ("ERROR: threep_index out of range $threep_index not in [0 - $#pgg_blast_results]\n");
-	    }
-	    my $btab = join("\t", @{ $pgg_blast_results[$threep_index] });
-	    print PGG_BLAST_FILE "$btab\n";
-	    #print STDERR "$btab\n";
 	} else {
 	    die ("ERROR: query sequence $qid no blast matches found against $PGGdb\n");
 	}

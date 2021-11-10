@@ -7,13 +7,13 @@ use File::Basename;
 
 my $dirname = dirname(__FILE__);
 
-my ($second_diff, $mash_file, $mash_ver, $name_add, $input, $out, $help, $cut_off, $run_phy, $tmp_path, $show_cnt, $also_run, $run_all_v_all, $is_read, $is_contig, $mat_only, $verb, $self, $kmer, $size, $trim_file, $is_reset, $version, $quiet, $input_file, $input_col, $id_col, $prev, $notable);
+my ($second_diff, $mash_file, $mash_ver, $name_add, $input, $out, $help, $cut_off, $run_phy, $tmp_path, $show_cnt, $also_run, $run_all_v_all, $is_read, $is_contig, $mat_only, $verb, $self, $kmer, $size, $trim_file, $is_reset, $version, $quiet, $input_file, $input_col, $id_col, $prev, $type_strain, $notable);
 $tmp_path = getcwd;
 my $MAX = 1000;
 $input_col = 1;
 $name_add = ".fasta";
 $size = 1000;
-GetOptions("second|w=s"=>\$second_diff, "add|a=s"=>\$name_add, "num|e=s"=>\$MAX, "phy|u=s"=>\$run_phy, "mash_file|m=s"=>\$mash_file, "mash_exec|M=s"=>\$mash_ver, "read|g"=>\$is_read, "all|j=s"=>\$run_all_v_all, "size|z=s"=>\$size, "trim|r=s"=>\$trim_file, "only_matrix|y"=>\$mat_only, "cnt|b"=>\$show_cnt, "kmer|k=s"=>\$kmer, "self|s"=>\$self, "notable|x"=>\$notable, "version|v=s"=>\$version, "quiet|q"=>\$quiet, "input|i=s"=>\$input, "out|o=s"=>\$out, "help|h|?"=>\$help, "cutoff|c=s"=>\$cut_off, "tmp_dir|t=s"=>\$tmp_path, "contig|t" =>\$is_contig, "reset|n" =>\$is_reset, "file|f=s"=>\$input_file, "col|l=s"=>\$input_col, "id|d=s"=>\$id_col, "prev|p=s"=>\$prev);
+GetOptions("second|w=s"=>\$second_diff, "add|a=s"=>\$name_add, "num|e=s"=>\$MAX, "phy|u=s"=>\$run_phy, "mash_file|m=s"=>\$mash_file, "mash_exec|M=s"=>\$mash_ver, "read|g"=>\$is_read, "all|j=s"=>\$run_all_v_all, "size|z=s"=>\$size, "trim|r=s"=>\$trim_file, "only_matrix|y"=>\$mat_only, "cnt|b"=>\$show_cnt, "kmer|k=s"=>\$kmer, "self|s"=>\$self, "notable|x"=>\$notable, "version|v=s"=>\$version, "quiet|q"=>\$quiet, "input|i=s"=>\$input, "out|o=s"=>\$out, "help|h|?"=>\$help, "cutoff|c=s"=>\$cut_off, "tmp_dir|t=s"=>\$tmp_path, "contig|t" =>\$is_contig, "reset|n" =>\$is_reset, "file|f=s"=>\$input_file, "col|l=s"=>\$input_col, "id|d=s"=>\$id_col, "prev|p=s"=>\$prev, "type_strain|T=s"=>\$type_strain);
 if ($help || !(($mash_file || $run_all_v_all) && ($input || $input_file)))
 {
 	print STDERR "Runs MASH of a directory or fasta file against the MASH sketch\n\n";
@@ -30,6 +30,7 @@ if ($help || !(($mash_file || $run_all_v_all) && ($input || $input_file)))
 	print STDERR "	-M mash executable\n";
 	print STDERR "	-s remove self vs self output in the text file\n";
 	print STDERR "	-t run files as a contigs\n";
+	print STDERR "	-T type strain identifier to use for flitering and first row and column\n";
 	print STDERR "	-v version of mash to use (1.1 or 2.0). Default of 2.0\n";
 	print STDERR "	-q quiet mode\n";
 	print STDERR "	-k kmer sketch size. Default is sketch file\n";	
@@ -253,10 +254,10 @@ if ($dir)
 			print STDERR "kmer warning give for $kmer size. K of $7 is recommended. Re-running sketch with new kmer size....\n";
 			$k = $7;
 			$addk = "-k $k";
-			$hide = `mash sketch $addk $add1 $dir1 2>&1`;
+			$hide = `$mash_ver sketch $addk $add1 $dir1 2>&1`;
 		}
 		$add1 = $addk . $add1;
-		if (! -e $temp_mash_id . ".msh")
+		if (! -e ($temp_mash_id . ".msh"))
 		{
 			warn("Cannot make mash sketch file... quitting...\n");
 			exit(1);
@@ -347,7 +348,7 @@ if ($dir)
 		exit(0);
 	}
 
-my @refs = keys(%$refs);
+my @refs = keys(%$refs); #add a sort here? how are we sure this is the same sort as the row order
 my $out_str = "ID";
 my $out_str2;
 
