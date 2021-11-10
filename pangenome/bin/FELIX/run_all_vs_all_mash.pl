@@ -4,6 +4,7 @@ use strict;
 use Getopt::Long;
 use Cwd;
 use File::Basename;
+use Scalar::Util qw(looks_like_number);
 
 my $dirname = dirname(__FILE__);
 
