@@ -16,21 +16,22 @@ my @print_ids; #array parallel to @genome_ids which indicates the row/col should
 my $mean_all;
 my $num_all = 0;
 my $total_all = 0;
+my $min_all = 101;
 my $mean_kept;
 my $num_kept = 0;
 my $total_kept = 0;
-my $min_kept = -1;
-my $max_kept = 101;
+my $min_kept = 101;
+my $max_kept = -1;
 my $mean_discard;
 my $num_discard = 0;
 my $total_discard = 0;
-my $min_discard = -1;
-my $max_discard = 101;
+my $min_discard = 101;
+my $max_discard = -1;
 my $mean_cross;
 my $num_cross = 0;
 my $total_cross = 0;
-my $min_cross = -1;
-my $max_cross = 101;
+my $min_cross = 101;
+my $max_cross = -1;
 my $genomes_kept = 0;
 my $genomes_discard = 0;
 $size = 10000;
@@ -178,6 +179,9 @@ while ($list =~ /([^\n\r]+)([\n\r])/g) {
     }
     $num_all++;
     $total_all += $ani_est;
+    if ($ani_est < $min_all) {
+	$min_all = $ani_est;
+    }
     if ($cutoff) {
 	if ($print_ids[$col_count] && $print_ids[$row_count]) {
 	    $num_kept++;
@@ -225,7 +229,7 @@ if ($num_all > 0) {
 } else {
     $mean_all = 0;
 }
-print STDERR "Mean pairwise ANI for all $genome_ids_size genomes: $mean_all\n";
+print STDERR "Mean, min pairwise ANI for all $genome_ids_size genomes: $mean_all, $min_all\n";
 if ($cutoff && ($genomes_discard > 0)) {
     if ($num_kept > 0) {
 	$mean_kept = $total_kept / $num_kept;
