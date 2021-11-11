@@ -155,6 +155,7 @@ if ($cutoff) {
 	    last;
 	}
     }
+    pos($list) = 0; #reset global regex pattern matching to begining of $list
 } else {
     foreach my $id (@genome_ids) {
 	print STDOUT "\t$id";
