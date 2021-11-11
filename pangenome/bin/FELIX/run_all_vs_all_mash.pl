@@ -123,7 +123,7 @@ if ($input_file) {
     if ($genome_paths_size != $genome_ids_size) {
 	die ("ERROR: The number of genome identifiers ($genome_ids_size) is not equal to the number of genome paths ($genome_paths_size)!\n");
     }
-    print STDERR "Executing command:\n$mash_exec sketch -k $kmer -s $size -o $out -l $input_file 2>&1";
+    print STDERR "Executing command:\n$mash_exec sketch -k $kmer -s $size -o $out -l $input_file 2>&1\n";
     my $mash_output = `$mash_exec sketch -k $kmer -s $size -o $out -l $input_file 2>&1`;
     $mash_file = $out . ".msh";
     if (($mash_output =~ /ERROR/) || ($mash_output =~ /WARNING/) || !(-e $mash_file) || !(-s $mash_file)) {
@@ -131,7 +131,7 @@ if ($input_file) {
     }
 }
 
-print STDERR "Executing command:\n$mash_exec dist $mash_file $mash_file | cut -f 3";
+print STDERR "Executing command:\n$mash_exec dist $mash_file $mash_file | cut -f 3\n";
 my $list = `$mash_exec dist $mash_file $mash_file | cut -f 3`;
 my $row_count = 0;
 my $col_count = 0;
@@ -171,15 +171,9 @@ while ($list =~ /([^\n\r]+)([\n\r])/g) {
 	if (!$cutoff || $print_ids[$row_count]) {
 	    print STDOUT "$genome_ids[$row_count]";
 	}
-	$row_count++;
     }
     if (!$cutoff || ($print_ids[$col_count] && $print_ids[$row_count])) {
 	print STDOUT "\t$ani_est";
-    }
-    $col_count++;
-    if ($col_count >= $genome_ids_size) {
-	$col_count = 0;
-	print STDOUT "\n";
     }
     $num_all++;
     $total_all += $ani_est;
@@ -211,6 +205,14 @@ while ($list =~ /([^\n\r]+)([\n\r])/g) {
 	    if ($ani_est > $max_discard) {
 		$max_discard = $ani_est;
 	    }
+	}
+    }
+    $col_count++;
+    if ($col_count >= $genome_ids_size) {
+	$col_count = 0;
+	$row_count++;
+	if (!$cutoff || $print_ids[$row_count]) {
+	    print STDOUT "\n";
 	}
     }
 }
