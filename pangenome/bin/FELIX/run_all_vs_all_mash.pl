@@ -12,6 +12,7 @@ my ($mash_file, $mash_exec, $help, $cutoff, $out, $kmer, $size, $input_file, $id
 my $cwd = getcwd;
 my @genome_ids; #array of genome identifiers used for row labels
 my @print_ids; #array parallel to @genome_ids which indicates the row/col should be printed (1) or skipped (0) based on ANI cutoff to the type strain.
+my @sum_distances; #sum of distances to other genomes used to determine medoid
 #my $MAX = 1000;
 my $mean_all;
 my $num_all = 0;
@@ -58,7 +59,7 @@ if ($help || !($mash_file || $input_file) || !$id_file || !$mash_exec || ($mash_
     print STDERR "	-s sketch size. Default is 10000\n";	
     print STDERR "	-? or -h help\n";
 		
-    exit(0);
+    exit(1);
 }
 
 if (!$out) {
@@ -132,14 +133,33 @@ if ($input_file) {
     }
 }
 
-print STDERR "Executing command:\n$mash_exec dist $mash_file $mash_file | cut -f 3\n";
-my $list = `$mash_exec dist $mash_file $mash_file | cut -f 3`;
+#print STDERR "Executing command:\n$mash_exec dist $mash_file $mash_file | cut -f 3\n";
+#my $list = `$mash_exec dist $mash_file $mash_file | cut -f 3`;
+my $dist_file = $out . ".dist";
+my $mash_out_file = $out . ".mash_out";
+print STDERR "Executing command:\n$mash_exec dist $mash_file $mash_file > $mash_out_file\n";
+`$mash_exec dist $mash_file $mash_file > $mash_out_file`;
+if (!(-e $mash_out_file) || !(-s $mash_out_file)) {
+    die ( "ERROR: mash dist command failed: $mash_out_file does not exist or is zero size!\n");
+}
+print STDERR "Executing command:\ncut -f 3 $mash_out_file > $dist_file\n";
+`cut -f 3 $mash_out_file > $dist_file`;
+if (!(-e $dist_file) || !(-s $dist_file)) {
+    die ( "ERROR: cut command failed: $dist_file does not exist or is zero size!\n");
+}
+my $dist_fh;
+unless (open ($dist_fh, "<", $dist_file) )  {
+    die ("ERROR: Cannot open mash distances file $dist_file!\n");
+}
 my $row_count = 0;
 my $col_count = 0;
 print STDOUT "ID";
 if ($cutoff) {
-    while ($list =~ /([^\n\r]+)([\n\r])/g) { #process the first line to output the column headers when cutoff filtering
-	my $ani_est = 100 * (1 - $1);
+    while (my $dist = <$dist_fh>) {
+	chomp ($dist); #remove newline
+    #while ($list =~ /([^\n\r]+)([\n\r])/g) { #process the first line to output the column headers when cutoff filtering
+	#my $ani_est = 100 * (1 - $1);
+	my $ani_est = 100 * (1 - $dist);
 	if ($ani_est >= $cutoff) {
 	    $print_ids[$col_count] = 1;
 	    print STDOUT "\t$genome_ids[$col_count]";
@@ -156,7 +176,11 @@ if ($cutoff) {
 	    last;
 	}
     }
-    pos($list) = 0; #reset global regex pattern matching to begining of $list
+    #pos($list) = 0; #reset global regex pattern matching to begining of $list
+    close($dist_fh);
+    unless (open ($dist_fh, "<", $dist_file) )  {
+	die ("ERROR: Cannot open mash distances file $dist_file!\n");
+    }
 } else {
     foreach my $id (@genome_ids) {
 	print STDOUT "\t$id";
@@ -164,8 +188,11 @@ if ($cutoff) {
     print STDOUT "\n";
 }
 
-while ($list =~ /([^\n\r]+)([\n\r])/g) {
-    my $ani_est = 100 * (1 - $1);
+while (my $dist = <$dist_fh>) {
+    chomp ($dist); #remove newline
+#while ($list =~ /([^\n\r]+)([\n\r])/g) {
+    #my $ani_est = 100 * (1 - $1);
+    my $ani_est = 100 * (1 - $dist);
     if ($col_count == 0) {
 	if ($row_count >= $genome_ids_size) {
 	    die ("ERROR: too many mash distances (>$num_all) returned for the number of genome identifiers ($genome_ids_size)\n");
@@ -173,7 +200,9 @@ while ($list =~ /([^\n\r]+)([\n\r])/g) {
 	if (!$cutoff || $print_ids[$row_count]) {
 	    print STDOUT "$genome_ids[$row_count]";
 	}
+	$sum_distances[$row_count] = 0;
     }
+    $sum_distances[$row_count] += $dist;
     if (!$cutoff || ($print_ids[$col_count] && $print_ids[$row_count])) {
 	print STDOUT "\t$ani_est";
     }
@@ -221,9 +250,22 @@ while ($list =~ /([^\n\r]+)([\n\r])/g) {
 	}
     }
 }
+close($dist_fh);
 if ($row_count < $genome_ids_size) {
     die ("ERROR: too few mash distances ($num_all) returned for the number of genome identifiers ($genome_ids_size)\n");
 }
+my $index = 0;
+my $min_sum_dist = $genome_ids_size + 1;
+my $medoid_genome_id;
+foreach my $sum_dist (@sum_distances) {
+    if ($sum_dist < $min_sum_dist) {
+	$min_sum_dist = $sum_dist;
+	$medoid_genome_id = $genome_ids[$index];
+    }
+    $index++;
+}
+my $medoid_genome_ANI = 100 * (1 - ($min_sum_dist / ($genome_ids_size - 1)));
+print STDERR "Medoid genome: $medoid_genome_id\nMean pairwise ANI for medoid genome: $medoid_genome_ANI\n"; 
 if ($num_all > 0) {
     $mean_all = $total_all / $num_all;
 } else {
@@ -251,4 +293,4 @@ if ($cutoff && ($genomes_discard > 0)) {
     print STDERR "Mean, min, max pairwise ANI for just discarded genomes: $mean_discard, $min_discard, $max_discard\n";
     print STDERR "Mean, min, max pairwise ANI between kept and discarded genomes: $mean_cross, $min_cross, $max_cross\n";
 }
-exit (1);
+exit (0);
