@@ -125,41 +125,51 @@ if ($input_file) {
     if ($genome_paths_size != $genome_ids_size) {
 	die ("ERROR: The number of genome identifiers ($genome_ids_size) is not equal to the number of genome paths ($genome_paths_size)!\n");
     }
-    print STDERR "Executing command:\n$mash_exec sketch -k $kmer -s $size -o $out -l $input_file 2>&1\n";
-    my $mash_output = `$mash_exec sketch -k $kmer -s $size -o $out -l $input_file 2>&1`;
+    my $mash_sketch_out = $out . ".mash_sketch_error";
+    print STDERR "Executing command:\n$mash_exec sketch -k $kmer -s $size -o $out -l $input_file >& $mash_sketch_out\n";
+    `$mash_exec sketch -k $kmer -s $size -o $out -l $input_file >& $mash_sketch_out`;
     $mash_file = $out . ".msh";
-    if (($mash_output =~ /ERROR/) || ($mash_output =~ /WARNING/) || !(-e $mash_file) || !(-s $mash_file)) {
-	die ("mash had a problem quitting:\n$mash_output");
+    if (!(-e $mash_file) || !(-s $mash_file)) {
+	die ("mash had a problem quitting:\nNo or zero size .msh sketch file created\nSee file: $mash_sketch_out for complete mash sketch output\n");
     }
+    my $sketch_fh;
+    unless (open ($sketch_fh, "<", $mash_sketch_out) )  {
+	die ("ERROR: Cannot open mash sketch output file $mash_sketch_out!\n");
+    }
+    while (my $mash_output = <$sketch_fh>) {
+	if (($mash_output =~ /ERROR/) || ($mash_output =~ /WARNING/)) {
+	    die ("mash had a problem quitting:\n$mash_output\nSee file: $mash_sketch_out for complete mash sketch output\n");
+	}
+    }
+    close($sketch_fh);
 }
 
-#print STDERR "Executing command:\n$mash_exec dist $mash_file $mash_file | cut -f 3\n";
-#my $list = `$mash_exec dist $mash_file $mash_file | cut -f 3`;
-my $dist_file = $out . ".dist";
-my $mash_out_file = $out . ".mash_out";
-print STDERR "Executing command:\n$mash_exec dist $mash_file $mash_file > $mash_out_file\n";
-`$mash_exec dist $mash_file $mash_file > $mash_out_file`;
+my $mash_out_file = $out . ".mash_dist_out";
+print STDERR "Executing command:\n$mash_exec dist -t $mash_file $mash_file > $mash_out_file\n";
+`$mash_exec dist -t $mash_file $mash_file > $mash_out_file`;
 if (!(-e $mash_out_file) || !(-s $mash_out_file)) {
     die ( "ERROR: mash dist command failed: $mash_out_file does not exist or is zero size!\n");
 }
-print STDERR "Executing command:\ncut -f 3 $mash_out_file > $dist_file\n";
-`cut -f 3 $mash_out_file > $dist_file`;
-if (!(-e $dist_file) || !(-s $dist_file)) {
-    die ( "ERROR: cut command failed: $dist_file does not exist or is zero size!\n");
-}
 my $dist_fh;
-unless (open ($dist_fh, "<", $dist_file) )  {
-    die ("ERROR: Cannot open mash distances file $dist_file!\n");
+unless (open ($dist_fh, "<", $mash_out_file) )  {
+    die ("ERROR: Cannot open mash distances file $mash_out_file!\n");
 }
 my $row_count = 0;
 my $col_count = 0;
 print STDOUT "ID";
 if ($cutoff) {
-    while (my $dist = <$dist_fh>) {
-	chomp ($dist); #remove newline
-    #while ($list =~ /([^\n\r]+)([\n\r])/g) { #process the first line to output the column headers when cutoff filtering
-	#my $ani_est = 100 * (1 - $1);
-	my $ani_est = 100 * (1 - $dist);
+    my $dist = <$dist_fh>; #skip header line
+    $dist = <$dist_fh>;
+    my $first = 1;
+    while ($dist =~ /([^\t\n\r]+)([\t\n\r])/g) { #process the tab delimited distances
+	if ($first) {
+	    $first = 0;
+	    next; #skip header
+	}
+	if ($col_count >= $genome_ids_size) {
+	    die ("ERROR: The number of distances in a single row of the tabular mash output exceeds the number of genome identifiers provided ($genome_ids_size).\n");
+	}
+	my $ani_est = 100 * (1 - $1);
 	if ($ani_est >= $cutoff) {
 	    $print_ids[$col_count] = 1;
 	    print STDOUT "\t$genome_ids[$col_count]";
@@ -170,16 +180,13 @@ if ($cutoff) {
 	    $genomes_discard++;
 	}
 	$col_count++;
-	if ($col_count >= $genome_ids_size) {
-	    $col_count = 0;
-	    print STDOUT "\n";
-	    last;
-	}
     }
-    #pos($list) = 0; #reset global regex pattern matching to begining of $list
+    $col_count = 0;
+    print STDOUT "\n";
+    #pos($dist) = 0; #reset global regex pattern matching to begining of $list
     close($dist_fh);
-    unless (open ($dist_fh, "<", $dist_file) )  {
-	die ("ERROR: Cannot open mash distances file $dist_file!\n");
+    unless (open ($dist_fh, "<", $mash_out_file) )  {
+	die ("ERROR: Cannot reopen mash distances file $mash_out_file!\n");
     }
 } else {
     foreach my $id (@genome_ids) {
@@ -188,71 +195,75 @@ if ($cutoff) {
     print STDOUT "\n";
 }
 
-while (my $dist = <$dist_fh>) {
-    chomp ($dist); #remove newline
-#while ($list =~ /([^\n\r]+)([\n\r])/g) {
-    #my $ani_est = 100 * (1 - $1);
-    my $ani_est = 100 * (1 - $dist);
-    if ($col_count == 0) {
-	if ($row_count >= $genome_ids_size) {
-	    die ("ERROR: too many mash distances (>$num_all) returned for the number of genome identifiers ($genome_ids_size)\n");
+my $dist = <$dist_fh>; #skip header line
+while ($dist = <$dist_fh>) {
+    if ($row_count >= $genome_ids_size) {
+	die ("ERROR: too many mash distances rows for the number of genome identifiers ($genome_ids_size)\n");
+    }
+    if (!$cutoff || $print_ids[$row_count]) {
+	print STDOUT "$genome_ids[$row_count]";
+    }
+    $sum_distances[$row_count] = 0;
+    my $first = 1;
+    while ($dist =~ /([^\t\n\r]+)([\t\n\r])/g) { #process the tab delimited distances
+	if ($first) {
+	    $first = 0;
+	    next; #skip header
 	}
-	if (!$cutoff || $print_ids[$row_count]) {
-	    print STDOUT "$genome_ids[$row_count]";
+	if ($col_count >= $genome_ids_size) {
+	    die ("ERROR: The number of distances in a single row of the tabular mash output exceeds the number of genome identifiers provided ($genome_ids_size).\n");
 	}
-	$sum_distances[$row_count] = 0;
-    }
-    $sum_distances[$row_count] += $dist;
-    if (!$cutoff || ($print_ids[$col_count] && $print_ids[$row_count])) {
-	print STDOUT "\t$ani_est";
-    }
-    $num_all++;
-    $total_all += $ani_est;
-    if ($ani_est < $min_all) {
-	$min_all = $ani_est;
-    }
-    if ($cutoff) {
-	if ($print_ids[$col_count] && $print_ids[$row_count]) {
-	    $num_kept++;
-	    $total_kept += $ani_est;
-	    if ($ani_est < $min_kept) {
-		$min_kept = $ani_est;
-	    }
-	    if ($ani_est > $max_kept) {
-		$max_kept = $ani_est;
-	    }
-	} elsif ($print_ids[$col_count] || $print_ids[$row_count]) {
-	    $num_cross++;
-	    $total_cross += $ani_est;
-	    if ($ani_est < $min_cross) {
-		$min_cross = $ani_est;
-	    }
-	    if ($ani_est > $max_cross) {
-		$max_cross = $ani_est;
-	    }
-	} else {
-	    $num_discard++;
-	    $total_discard += $ani_est;
-	    if ($ani_est < $min_discard) {
-		$min_discard = $ani_est;
-	    }
-	    if ($ani_est > $max_discard) {
-		$max_discard = $ani_est;
+	my $ani_est = 100 * (1 - $1);
+	$sum_distances[$row_count] += $dist;
+	if (!$cutoff || ($print_ids[$col_count] && $print_ids[$row_count])) {
+	    print STDOUT "\t$ani_est";
+	}
+	$num_all++;
+	$total_all += $ani_est;
+	if ($ani_est < $min_all) {
+	    $min_all = $ani_est;
+	}
+	if ($cutoff) {
+	    if ($print_ids[$col_count] && $print_ids[$row_count]) {
+		$num_kept++;
+		$total_kept += $ani_est;
+		if ($ani_est < $min_kept) {
+		    $min_kept = $ani_est;
+		}
+		if ($ani_est > $max_kept) {
+		    $max_kept = $ani_est;
+		}
+	    } elsif ($print_ids[$col_count] || $print_ids[$row_count]) {
+		$num_cross++;
+		$total_cross += $ani_est;
+		if ($ani_est < $min_cross) {
+		    $min_cross = $ani_est;
+		}
+		if ($ani_est > $max_cross) {
+		    $max_cross = $ani_est;
+		}
+	    } else {
+		$num_discard++;
+		$total_discard += $ani_est;
+		if ($ani_est < $min_discard) {
+		    $min_discard = $ani_est;
+		}
+		if ($ani_est > $max_discard) {
+		    $max_discard = $ani_est;
+		}
 	    }
 	}
+	$col_count++;
     }
-    $col_count++;
-    if ($col_count >= $genome_ids_size) {
-	$col_count = 0;
-	$row_count++;
-	if (!$cutoff || $print_ids[$row_count]) {
-	    print STDOUT "\n";
-	}
+    if (!$cutoff || $print_ids[$row_count]) {
+	print STDOUT "\n";
     }
+    $col_count = 0;
+    $row_count++;
 }
 close($dist_fh);
 if ($row_count < $genome_ids_size) {
-    die ("ERROR: too few mash distances ($num_all) returned for the number of genome identifiers ($genome_ids_size)\n");
+    die ("ERROR: too few mash distances rows ($row_count) for the number of genome identifiers ($genome_ids_size)\n");
 }
 my $index = 0;
 my $min_sum_dist = $genome_ids_size + 1;
