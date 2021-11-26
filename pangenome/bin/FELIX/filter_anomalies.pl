@@ -891,21 +891,21 @@ while (my $line = <$infile>)  {
 	#}
     #}
 
-    # output entire contigs with no annotation
-    foreach my $id (keys %contigs)  { # go through all contigs
-	if ((!defined $seen_contig{$id}) && ($contigs{$id} ne "IGNORE")) {
-	    #print STDERR "not seen: $id\t$contig_len{$id}\n";
-	    my $tmp_seq = substr($contigs{$id}, 0, $contig_len{$id});
-	    if ($tmp_seq !~ /NNNNN/) { # do not use sequences with gaps in them - perhaps should split on gaps instead
-		$query_coords[$qc_index][QCNAME] = $id . "_WHOLE_1_" . $contig_len{$id};
-		$query_coords[$qc_index][QCCTG] = $id;
-		$query_coords[$qc_index][QCBEG] = 1;
-		$query_coords[$qc_index][QCEND] = $contig_len{$id};
-		$query_coords[$qc_index][QCDEL] = 0;
-		$qc_index++;
-	    }
-	}
-    }
+    # output entire contigs with no annotation - currently not used outputting possibly novel plasmids instead
+    #foreach my $id (keys %contigs)  { # go through all contigs
+	#if ((!defined $seen_contig{$id}) && ($contigs{$id} ne "IGNORE")) {
+	    ##print STDERR "not seen: $id\t$contig_len{$id}\n";
+	    #my $tmp_seq = substr($contigs{$id}, 0, $contig_len{$id});
+	    #if ($tmp_seq !~ /NNNNN/) { # do not use sequences with gaps in them - perhaps should split on gaps instead
+		#$query_coords[$qc_index][QCNAME] = $id . "_WHOLE_1_" . $contig_len{$id};
+		#$query_coords[$qc_index][QCCTG] = $id;
+		#$query_coords[$qc_index][QCBEG] = 1;
+		#$query_coords[$qc_index][QCEND] = $contig_len{$id};
+		#$query_coords[$qc_index][QCDEL] = 0;
+		#$qc_index++;
+	    #}
+	#}
+    #}
 
     # open file for extracted interesting sequences
     my $out_fasta_seqs = $output . "_QUERY_SEQS.fasta";
@@ -1116,7 +1116,7 @@ while (my $line = <$infile>)  {
 		}
 	    }
 	}
-	print STDERR "Findmax:$qid:$max_sid:$full_max:$full_index:$sum_max:$fivep_index:$threep_index:$#pgg_blast_results\n";
+	#print STDERR "Findmax:$qid:$max_sid:$full_max:$full_index:$sum_max:$fivep_index:$threep_index:$#pgg_blast_results\n";
 	if ($max_sid eq "") {
 	    next; #no good matches for this query sequence
 	}
@@ -1130,6 +1130,15 @@ while (my $line = <$infile>)  {
 	my $start_offset;
 	my $end_offset;
 	if ($qid =~ /.*_DIV_([0-9]+)_([0-9]+)_/) {
+	    $start_offset = $1 - 1;
+	    $end_offset = $2;
+	} elsif ($qid =~ /.*_BEG_([0-9]+)_([0-9]+)_/) {
+	    $start_offset = $1 - 1;
+	    $end_offset = $2;
+	} elsif ($qid =~ /.*_END_([0-9]+)_([0-9]+)_/) {
+	    $start_offset = $1 - 1;
+	    $end_offset = $2;
+	} elsif ($qid =~ /.*_WHOLE_([0-9]+)_([0-9]+)_/) {
 	    $start_offset = $1 - 1;
 	    $end_offset = $2;
 	} else {
@@ -1369,6 +1378,7 @@ while (my $line = <$infile>)  {
 		my $cur_sid = $pgg_blast_results[$fivep_index][SSEQID];
 		my $pid = $pgg_blast_results[$fivep_index][PIDENT];
 		my $qlen = $pgg_blast_results[$fivep_index][QLEN];
+		my $fivep_start = $pgg_blast_results[$fivep_index][QSTART];
 		my $fivep_end = $pgg_blast_results[$fivep_index][QEND];
 		my $fivep_flank = substr($query_seqs{$qid}, ($fivep_start - 1), (($fivep_end - $fivep_start) + 1));
 		my $insertion = substr($query_seqs{$qid}, $fivep_end, ($qlen - $fivep_end));
@@ -1389,6 +1399,7 @@ while (my $line = <$infile>)  {
 		my $pid = $pgg_blast_results[$threep_index][PIDENT];
 		my $qlen = $pgg_blast_results[$threep_index][QLEN];
 		my $threep_start = $pgg_blast_results[$threep_index][QSTART];
+		my $threep_end = $pgg_blast_results[$threep_index][QEND];
 		my $threep_flank = substr($query_seqs{$qid}, ($threep_start - 1), (($threep_end - $threep_start) + 1));
 		my $insertion = substr($query_seqs{$qid}, 0, ($threep_start - 1));
 		my $deletion = "";
