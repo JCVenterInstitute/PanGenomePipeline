@@ -18,6 +18,7 @@ my $mean_all;
 my $num_all = 0;
 my $total_all = 0;
 my $min_all = 101;
+my $max_all = -1;
 my $mean_kept;
 my $num_kept = 0;
 my $total_kept = 0;
@@ -142,6 +143,7 @@ if ($input_file) {
 	}
     }
     close($sketch_fh);
+    `rm $mash_sketch_out`;
 }
 
 my $mash_out_file = $out . ".mash_dist_out";
@@ -214,42 +216,47 @@ while ($dist = <$dist_fh>) {
 	    die ("ERROR: The number of distances in a single row of the tabular mash output exceeds the number of genome identifiers provided ($genome_ids_size).\n");
 	}
 	my $ani_est = 100 * (1 - $1);
-	$sum_distances[$row_count] += $dist;
 	if (!$cutoff || ($print_ids[$col_count] && $print_ids[$row_count])) {
 	    print STDOUT "\t$ani_est";
 	}
-	$num_all++;
-	$total_all += $ani_est;
-	if ($ani_est < $min_all) {
-	    $min_all = $ani_est;
-	}
-	if ($cutoff) {
-	    if ($print_ids[$col_count] && $print_ids[$row_count]) {
-		$num_kept++;
-		$total_kept += $ani_est;
-		if ($ani_est < $min_kept) {
-		    $min_kept = $ani_est;
-		}
-		if ($ani_est > $max_kept) {
-		    $max_kept = $ani_est;
-		}
-	    } elsif ($print_ids[$col_count] || $print_ids[$row_count]) {
-		$num_cross++;
-		$total_cross += $ani_est;
-		if ($ani_est < $min_cross) {
-		    $min_cross = $ani_est;
-		}
-		if ($ani_est > $max_cross) {
-		    $max_cross = $ani_est;
-		}
-	    } else {
-		$num_discard++;
-		$total_discard += $ani_est;
-		if ($ani_est < $min_discard) {
-		    $min_discard = $ani_est;
-		}
-		if ($ani_est > $max_discard) {
-		    $max_discard = $ani_est;
+	if ($row_count < $col_count) {#don't count self matches in statistics - matrix is symmetric so just use upper half
+	    $sum_distances[$row_count] += $1;
+	    $num_all++;
+	    $total_all += $ani_est;
+	    if ($ani_est < $min_all) {
+		$min_all = $ani_est;
+	    }
+	    if ($ani_est > $max_all) {
+		$max_all = $ani_est;
+	    }
+	    if ($cutoff) {
+		if ($print_ids[$col_count] && $print_ids[$row_count]) {
+		    $num_kept++;
+		    $total_kept += $ani_est;
+		    if ($ani_est < $min_kept) {
+			$min_kept = $ani_est;
+		    }
+		    if ($ani_est > $max_kept) {
+			$max_kept = $ani_est;
+		    }
+		} elsif ($print_ids[$col_count] || $print_ids[$row_count]) {
+		    $num_cross++;
+		    $total_cross += $ani_est;
+		    if ($ani_est < $min_cross) {
+			$min_cross = $ani_est;
+		    }
+		    if ($ani_est > $max_cross) {
+			$max_cross = $ani_est;
+		    }
+		} else {
+		    $num_discard++;
+		    $total_discard += $ani_est;
+		    if ($ani_est < $min_discard) {
+			$min_discard = $ani_est;
+		    }
+		    if ($ani_est > $max_discard) {
+			$max_discard = $ani_est;
+		    }
 		}
 	    }
 	}
@@ -265,6 +272,7 @@ close($dist_fh);
 if ($row_count < $genome_ids_size) {
     die ("ERROR: too few mash distances rows ($row_count) for the number of genome identifiers ($genome_ids_size)\n");
 }
+`rm $mash_out_file`;
 my $index = 0;
 my $min_sum_dist = $genome_ids_size + 1;
 my $medoid_genome_id;
@@ -282,7 +290,7 @@ if ($num_all > 0) {
 } else {
     $mean_all = 0;
 }
-print STDERR "Mean, min pairwise ANI for all $genome_ids_size genomes: $mean_all, $min_all\n";
+print STDERR "Mean, min, max pairwise ANI for all $genome_ids_size genomes: $mean_all, $min_all, $max_all\n";
 if ($cutoff && ($genomes_discard > 0)) {
     if ($num_kept > 0) {
 	$mean_kept = $total_kept / $num_kept;
