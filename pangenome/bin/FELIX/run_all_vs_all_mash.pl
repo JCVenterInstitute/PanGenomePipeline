@@ -109,10 +109,14 @@ my $id_fh;
 unless (open ($id_fh, "<", $id_file) )  {
     die ("ERROR: Cannot open genome identifiers input file $id_file!\n");
 }
+my $row_count = 0;
 while (my $id = <$id_fh>) {
     chomp ($id); #remove newline
     push @genome_ids, $id;
+    $sum_distances[$row_count] = 0;
+    $row_count++;
 }
+$row_count = 0;
 my $genome_ids_size = @genome_ids; #size of the array / number of genome identifiers
 if ($input_file) {
     if (!(-e $input_file)) {
@@ -156,7 +160,6 @@ my $dist_fh;
 unless (open ($dist_fh, "<", $mash_out_file) )  {
     die ("ERROR: Cannot open mash distances file $mash_out_file!\n");
 }
-my $row_count = 0;
 my $col_count = 0;
 print STDOUT "ID";
 if ($cutoff) {
@@ -205,7 +208,6 @@ while ($dist = <$dist_fh>) {
     if (!$cutoff || $print_ids[$row_count]) {
 	print STDOUT "$genome_ids[$row_count]";
     }
-    $sum_distances[$row_count] = 0;
     my $first = 1;
     while ($dist =~ /([^\t\n\r]+)([\t\n\r])/g) { #process the tab delimited distances
 	if ($first) {
