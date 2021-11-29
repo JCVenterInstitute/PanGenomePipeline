@@ -221,6 +221,7 @@ while ($dist = <$dist_fh>) {
 	}
 	if ($row_count < $col_count) {#don't count self matches in statistics - matrix is symmetric so just use upper half
 	    $sum_distances[$row_count] += $1;
+	    $sum_distances[$col_count] += $1; #have to do this because we are only doing upper half of symmetric matrix
 	    $num_all++;
 	    $total_all += $ani_est;
 	    if ($ani_est < $min_all) {
