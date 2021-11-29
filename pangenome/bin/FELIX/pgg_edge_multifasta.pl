@@ -1122,6 +1122,7 @@ sub process_matchtable {
 	my @feat_names = split(/\t/, $line);  # split the scalar $line on tab
 	my @tmp_feat_names = ();  # when using multifasta files need these to delete out of %feat_hash
 	my $cluster_id = shift @feat_names;
+	my $cluster_file = "$multifastadir/cluster_$cluster_id.fasta";
 	my $out_line = join("\t", @feat_names);
 	if ($cluster_num != $cluster_id) {
 	    die ("ERROR: clusters are not sequentially ordered starting from 1: expecting $cluster_num but got $cluster_id\n");
@@ -1429,8 +1430,13 @@ sub process_matchtable {
 	    }
 	}
 	if (!$suppress) {
-	    unless (open (OUTFILE, ">$multifastadir/cluster_$cluster_id.fasta") )  {
-		die ("ERROR: cannot open file $multifastadir/cluster_$cluster_id.fasta\n");
+	    my $skip_output = 0;
+	    if (!(-e $cluster_file) || !(-s $cluster_file)) {
+		# skip if file already exists and is not zero size
+		unless (open (OUTFILE, ">$cluster_file") )  {
+		    die ("ERROR: cannot open file $cluster_file\n");
+		}
+		$skip_output = 1;
 	    }
 	    my $index = 0;
 	    my $nr_allele_num = 0;
@@ -1452,21 +1458,27 @@ sub process_matchtable {
 			    $empty = 1;
 			} else {
 			    $nr_allele_num++;
-			    print OUTFILE ">$genome_tag\n";
-			    my $pos;
-			    my $tmp_seq_len = $seq_len;
-			    for ( $pos = 0 ; $tmp_seq_len > 60 ; $pos += 60 ) {
-				print OUTFILE substr($sequence, $pos, 60), "\n";
-				$tmp_seq_len -= 60;
+			    if (!$skip_output) {
+				# skip if file already exists and is not zero size
+				print OUTFILE ">$genome_tag\n";
+				my $pos;
+				my $tmp_seq_len = $seq_len;
+				for ( $pos = 0 ; $tmp_seq_len > 60 ; $pos += 60 ) {
+				    print OUTFILE substr($sequence, $pos, 60), "\n";
+				    $tmp_seq_len -= 60;
+				}
+				print OUTFILE substr($sequence, $pos, $tmp_seq_len), "\n";
 			    }
-			    print OUTFILE substr($sequence, $pos, $tmp_seq_len), "\n";
 			}
 		    }
 		}
 		$index++;
 	    }
-	    push (@mf_files, "$multifastadir/cluster_$cluster_id.fasta\t$nr_allele_num\t$empty");
-	    close (OUTFILE);
+	    push (@mf_files, "$cluster_file\t$nr_allele_num\t$empty");
+	    if (!$skip_output) {
+		# skip if file already exists and is not zero size
+		close (OUTFILE);
+	    }
 	} else {
 	    my $index = 0;
 	    foreach my $genome_tag (@genome_array) {
@@ -1827,9 +1839,10 @@ sub process_pgg {
 	my $sum = 0;
 	my $sumsquared = 0;
 	my $seen = 0;
+	my $edge_file = ($cluster1 < $cluster2) ? "$multifastadir/$edge_id.fasta" : "$multifastadir/$alt_edge_id.fasta";
 	if ($use_multifasta && !$no_stats) {
-	    my $edge_file = ($cluster1 < $cluster2) ? "full_$edge_id.fasta" : "full_$alt_edge_id.fasta";
-	    if (open (EDGEFILE, "<$multifastadir/$edge_file") )  { #if the file isn't there it's because the edge was empty and going away on the next iteration
+	    my $edge_full_file = ($cluster1 < $cluster2) ? "$multifastadir/full_$edge_id.fasta" : "$multifastadir/full_$alt_edge_id.fasta";
+	    if (open (EDGEFILE, "<$edge_full_file") )  { #if the file isn't there it's because the edge was empty and going away on the next iteration
 		my ($save_input_separator) = $/;
 		$/="\n>";
 		while (my $line2 = <EDGEFILE>) {
@@ -1921,7 +1934,7 @@ sub process_pgg {
 		}		$/ = $save_input_separator; # restore the input separator
 		close (EDGEFILE);
 	    } else {
-		print STDERR "$edge_file not found\n";
+		print STDERR "$edge_full_file not found\n";
 	    }
 	}
 	@tmp_array = @genome_array;
@@ -2300,8 +2313,13 @@ sub process_pgg {
 	    }
 	}
 	if (!$suppress && ($cluster1 <= $cluster2)) { # only need to do this for one orientation of the edge - not sure if the clusters can be equal or if there are two edges in this case - do a 3' 5' test?
-	    unless (open (OUTFILE, ">$multifastadir/$edge_id.fasta") )  {
-		die ("ERROR: cannot open file $multifastadir/$edge_id.fasta\n");
+	    my $skip_output = 0;
+	    if ((-e $edge_file) && (-s $edge_file)) {
+		# skip if file already exists and is not zero size
+		unless (open (OUTFILE, ">$edge_file") )  {
+		    die ("ERROR: cannot open file $edge_file\n");
+		}
+		$skip_output = 1;
 	    }
 	    my $index = 0;
 	    my $nr_allele_num = 0;
@@ -2328,23 +2346,29 @@ sub process_pgg {
 			    # do not include length outliers in the multifasta file
 			} else {
 			    $nr_allele_num++;
-			    print OUTFILE ">$genome_tag\n";
-			    my $pos;
-			    my $tmp_seq_len = $seq_len;
-			    for ( $pos = 0 ; $tmp_seq_len > 60 ; $pos += 60 ) {
-				print OUTFILE substr($sequence, $pos, 60), "\n";
-				$tmp_seq_len -= 60;
+			    if (!$skip_output) {
+				# skip if file already exists and is not zero size
+				print OUTFILE ">$genome_tag\n";
+				my $pos;
+				my $tmp_seq_len = $seq_len;
+				for ( $pos = 0 ; $tmp_seq_len > 60 ; $pos += 60 ) {
+				    print OUTFILE substr($sequence, $pos, 60), "\n";
+				    $tmp_seq_len -= 60;
+				}
+				print OUTFILE substr($sequence, $pos, $tmp_seq_len), "\n";
 			    }
-			    print OUTFILE substr($sequence, $pos, $tmp_seq_len), "\n";
 			}
 		    }
 		}
 		$index++;
 	    }
 	    if ($median_75 <= $MAX_ALIGN_EDGE) {
-		push (@mf_files, "$multifastadir/$edge_id.fasta\t$nr_allele_num\t$empty");
+		push (@mf_files, "$edge_file\t$nr_allele_num\t$empty");
 	    }
-	    close (OUTFILE);
+	    if (!$skip_output) {
+		# skip if file already exists and is not zero size
+		close (OUTFILE);
+	    }
 	} else {
 	    my $index = 0;
 	    foreach my $genome_tag (@genome_array) {
