@@ -50,6 +50,7 @@ my $use_existing_db = 0;
 my $codon_opt = 0;
 my $soft_mask_id = "";
 my $pggdb_topology_file = "";
+my $use_local_disk;
 
 GetOptions('genome=s' => \ $genome_path,
 	   'weights=s' => \ $weights,
@@ -71,6 +72,7 @@ GetOptions('genome=s' => \ $genome_path,
 	   'multifastadir=s' => \ $multifastadir,
 	   'alignments=s' => \ $keep_divergent_alignments,
 	   'duplicate=i' => \ $duplicate,
+	   'use_local_disk' => \ $use_local_disk,
 	   'strip_version' => \ $strip_version,
 	   'no_MSA' => \ $no_MSA,
 	   'no_filter_anomalies' => \ $no_filter_anomalies,
@@ -163,6 +165,7 @@ GetOptions('genome=s' => \ genome_path,
 	   'multifastadir=s' => \ multifastadir,
 	   'alignments=s' => \ keep_divergent_alignments,
 	   'duplicate=i' => \ duplicate,
+	   'use_local_disk' => \ use_local_disk,
 	   'strip_version' => \ strip_version,
 	   'no_MSA' => \ no_MSA,
 	   'no_filter_anomalies' => \ no_filter_anomalies,
@@ -270,6 +273,10 @@ sub compute
     if ($use_existing_db) {
 	$filter_anomalies_path .= " -use_existing_db ";
     }	
+    if ($use_local_disk) {
+	$medoid_blast_path .= " -use_local_disk ";
+	$filter_anomalies_path .= " -use_local_disk ";
+    }
     if ($blast_directory) {
 	$medoid_blast_path .= " -blast_directory $blast_directory ";
 	$filter_anomalies_path .= " -blast_directory $blast_directory ";

@@ -49,6 +49,7 @@ my $cwd = getcwd;
 my $qsub_queue = "himem";
 my $wall_time_limit = "24:00:00"; #set qsub wall time limit to 24 hours by default
 my $mem_req = "8gb"; #set qsub memory minimum requirement by default to 8 Gbyte
+my $use_local_disk;
 
 GetOptions('genomes=s' => \ $genome_list_path,
 	   'weights=s' => \ $weights,
@@ -70,6 +71,7 @@ GetOptions('genomes=s' => \ $genome_list_path,
 	   'iterations=i' => \ $max_iterate,
 	   'id=i' => \ $id,
 	   'max_grid_jobs=i' => \ $max_grid_jobs,
+	   'use_local_disk' => \ $use_local_disk,
 	   'strip_version' => \ $strip_version,
 	   'from_medoids' => \ $from_medoids,
 	   'less_memory' => \ $less_memory,
@@ -131,6 +133,7 @@ GetOptions('genomes=s' => \ genome_list_path,
 	   'iterations=i' => \ max_iterate,
 	   'id=i' => \ id,
 	   'max_grid_jobs=i' => \ max_grid_jobs,
+	   'use_local_disk' => \ use_local_disk,
 	   'strip_version' => \ strip_version,
 	   'from_medoids' => \ from_medoids,
 	   'less_memory' => \ less_memory,
@@ -440,6 +443,9 @@ sub compute
     #if ($less_memory) {# no longer need this with the no_stats -X option
 	#$pgg_multifasta_path .= " -f -F ";
     #}
+    if ($use_local_disk) {
+	$compute_path .= " -use_local_disk ";
+    }
     if ($muscle_path ne "") {
 	$compute_path .= " -muscle_path $muscle_path ";
 	$pgg_multifasta_path .= " -C $muscle_path ";
