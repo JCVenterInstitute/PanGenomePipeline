@@ -15,9 +15,13 @@ my $commandline = join (" ", @ARGV);
 print STDERR "$commandline\n";
 my $cwd = getcwd;
 my $blast_task = "blastn";
-my $help_text = "This program BLASTs a FASTA file of medoids against a genome.
-This work is done in a folder called C_BLAST_TMP, which is deleted when the 
-program finishes.
+my $help_text = 'This program BLASTs a FASTA file of medoids against a genome.
+This work is done in a directory called PGGPDBS_XXXXXX, which is deleted when the program finishes.
+The directory is created by mktemp and the XXXXXX is replaced by random characters.
+The directory is created in the current working directory unless the use_local_disk flag is specified.
+If using local disk the directory is created in the $HOME(~) directory on the grid node. This is risky if
+there is not enough available space in this area but was implemented because of NFS issues for the
+makebalstdb command on some systems. Should only use as a last resort.
 
 Input Flags:
 -medoids - The nucleotide multiFASTA file containing the medoids centroids.fasta for PanOCT (required)
@@ -30,7 +34,8 @@ Input Flags:
 -strip_version - strip versions from contig names
 -filter_anomalies - called for filter anomalies rather than medoid search
 -combine_topology_ids - flag to use when the ids in the topology file need to be combined to create the id in contig file
--help - Outputs this help text";
+-use_local_disk - flag to use local disk on grid nodes in the $HOME(~) directory instead of the current working directory
+-help - Outputs this help text';
 
 GetOptions('medoids=s' => \my $medoids,
 	   'genome=s' => \my $genome,
@@ -41,6 +46,7 @@ GetOptions('medoids=s' => \my $medoids,
 	   'blastout=s' => \my $blastout,
 	   'filter_anomalies' => \my $filter_anomalies,
 	   'combine_topology_ids' => \ my $combine_topology_ids,
+	   'use_local_disk' => \ my $use_local_disk,
 	   'strip_version' => \my $strip_version,
 	   'help' => \my $help);
 	
@@ -220,7 +226,7 @@ sub mod_blast { # eliminate blast matches to the added regions but keep one copy
     my $line = ""; # raw input line
     my $blast_match_num = 0; #current blast match used for array index
     my $blast_in;
-    my $blast_out;
+    my $blast_out_fp;
     
     unless (open($blast_in,"<", $blastin)) {
 	die ("cannot open file $blastin!\n");
@@ -346,10 +352,10 @@ sub mod_blast { # eliminate blast matches to the added regions but keep one copy
 	@matches_by_cluster = sort $sort_by_cluster_score (@blast_matches_raw);
     }
 
-    unless (open($blast_out,">", $blastout)) {
+    unless (open($blast_out_fp,">", $blastout)) {
 	die ("cannot open file $blastout!\n");
     }
-    print $blast_out "#qid\tsid\t%id\tqbeg\tqend\tqlen\tsbeg\tsend\tslen\tevalue\tbitscore\tstitle\n";
+    print $blast_out_fp "#qid\tsid\t%id\tqbeg\tqend\tqlen\tsbeg\tsend\tslen\tevalue\tbitscore\tstitle\n";
     foreach my $i (0 .. $#matches_by_cluster) {
 	my $match = $matches_by_cluster[$i];
 	my $cur_cluster = $match->{'clus'};
@@ -399,22 +405,31 @@ sub mod_blast { # eliminate blast matches to the added regions but keep one copy
 	    $match->{'ctglen'} = $ctglen{$cur_ctg};
 	}
 	if ($match->{'keep'}) {
-	    print $blast_out "$match->{'clus'}\t$match->{'ctg'}\t$match->{'pid'}\t$match->{'qbeg'}\t$match->{'qend'}\t$match->{'qlen'}\t$match->{'sbeg'}\t$match->{'send'}\t$match->{'ctglen'}\t$match->{'evalue'}\t$match->{'bits'}\t$match->{'stitle'}\n";
+	    print $blast_out_fp "$match->{'clus'}\t$match->{'ctg'}\t$match->{'pid'}\t$match->{'qbeg'}\t$match->{'qend'}\t$match->{'qlen'}\t$match->{'sbeg'}\t$match->{'send'}\t$match->{'ctglen'}\t$match->{'evalue'}\t$match->{'bits'}\t$match->{'stitle'}\n";
 	}
     }
-    close ($blast_out);
+    close ($blast_out_fp);
     return;
 }
 
 {#main
-    `mkdir C_BLAST_TMP`;
+    my $tmp_blast_dir;
+    my $tmp_blast_out = $blastout . "_TMP";
+    if ($use_local_disk) {
+	$tmp_blast_dir = `mktemp -d -p ~ PGGPDBS_XXXXXX`;
+    } else {
+	$tmp_blast_dir = `mktemp -d PGGPDBS_XXXXXX`;
+    }
+    if (!(-d $tmp_blast_dir)) {
+	die ("ERROR: could not create temporary balst directory PGGPDBS_XXXXXX using mktemp\n")
+    }
     &read_genome;
     &read_topology;
-    &write_genome("C_BLAST_TMP/temp_fasta.ftmp");
+    &write_genome("$tmp_blast_dir/temp_fasta.ftmp");
     my $makeblastdb = $blast_directory . "makeblastdb";
-    `$makeblastdb -in C_BLAST_TMP/temp_fasta.ftmp -dbtype nucl -out C_BLAST_TMP/temp_fasta.ftmp`;
+    `$makeblastdb -in $tmp_blast_dir/temp_fasta.ftmp -dbtype nucl -out $tmp_blast_dir/temp_fasta.ftmp`;
     my $blastn = $blast_directory . "blastn";
-    `$blastn -query $medoids -db C_BLAST_TMP/temp_fasta.ftmp -out C_BLAST_TMP/temp_results.ftmp -task $blast_task -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\"`;
-    &mod_blast("C_BLAST_TMP/temp_results.ftmp");
-    `rm -r C_BLAST_TMP`;
+    `$blastn -query $medoids -db $tmp_blast_dir/temp_fasta.ftmp -out $tmp_blast_out -task $blast_task -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\"`;
+    &mod_blast("$tmp_blast_out");
+    `rm -f -r $tmp_blast_dir $tmp_blast_out`;
 }

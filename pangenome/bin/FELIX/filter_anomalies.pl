@@ -95,6 +95,7 @@ my $strip_version;
 my $combine_topology_ids = 0;
 my $use_existing_db = 0;
 my $soft_mask_id = "";
+my $use_local_disk;
 
 GetOptions('genomes=s' => \ $genomes,
 	   'strip_version' => \ $strip_version,
@@ -105,6 +106,7 @@ GetOptions('genomes=s' => \ $genomes,
 	   'bin_directory=s' => \ $bin_directory,
 	   'blast_directory=s' => \ $blast_directory,
 	   'ld_load_directory=s' => \ $ld_load_directory,
+	   'use_local_disk' => \ $use_local_disk,
 	   'PGGdb_topology=s' => \ $pggdb_topology_file,
 	   'blast_task=s' => \ $blast_task,
 	   'soft_mask_id=s' => \ $soft_mask_id,
@@ -166,6 +168,7 @@ GetOptions('genomes=s' => genomes,
 	   'bin_directory=s' => \ bin_directory,
 	   'blast_directory=s' => \ blast_directory,
 	   'ld_load_directory=s' => \ ld_load_directory,
+	   'use_local_disk' => \ use_local_disk,
 	   'PGGdb_topology=s' => \ pggdb_topology_file,
 	   'blast_task=s' => \ blast_task,
 	   'soft_mask_id=s' => \ soft_mask_id,
@@ -984,6 +987,9 @@ while (my $line = <$infile>)  {
 	$cmd = "$medoid_blast_path -blastout $out_PGG_blast -genome $PGGdb -topology $pggdb_topology_file -blast_directory $blast_directory -ld_load_directory $ld_load_directory -medoids $out_fasta_seqs -blast_task $blast_task -filter_anomalies";
 	if ($combine_topology_ids) {
 	    $cmd .= " -combine_topology_ids";
+	}
+	if ($use_local_disk) {
+	    $cmd .= " -use_local_disk ";
 	}
 	`$cmd`;
     }

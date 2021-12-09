@@ -65,6 +65,7 @@ my $use_existing_db = 0;
 my $codon_opt = 0;
 my $soft_mask_id = "";
 my $pggdb_topology_file = "";
+my $use_local_disk;
 
 GetOptions('genomes=s' => \ $genome_list_path,
 	   'new_genomes=s' => \ $new_genomes,
@@ -96,6 +97,7 @@ GetOptions('genomes=s' => \ $genome_list_path,
 	   'id=i' => \ $id,
 	   'qsub_queue=s' => \ $qsub_queue,
 	   'max_grid_jobs=i' => \ $max_grid_jobs,
+	   'use_local_disk' => \ $use_local_disk,
 	   'strip_version' => \ $strip_version,
 	   'no_MSA' => \ $no_MSA,
 	   'no_filter_anomalies' => \ $no_filter_anomalies,
@@ -171,6 +173,7 @@ GetOptions('genomes=s' => \ genome_list_path,
 	   'id=i' => \ id,
 	   'qsub_queue=s' => \ qsub_queue,
 	   'max_grid_jobs=i' => \ max_grid_jobs,
+	   'use_local_disk' => \ use_local_disk,
 	   'strip_version' => \ strip_version,
 	   'no_MSA' => \ no_MSA,
 	   'no_filter_anomalies' => \ no_filter_anomalies,
@@ -534,6 +537,9 @@ sub compute
     my $total_jobs = 0;
     my $duplicate;
     if ($debug) {print STDERR "Starting grid genome processing\n\n";}
+    if ($use_local_disk) {
+	$compute_path .= " -use_local_disk ";
+    }
     if ($pggdb_topology_file ne "") {
 	$compute_path .= " -PGGdb_topology $pggdb_topology_file ";
     }
