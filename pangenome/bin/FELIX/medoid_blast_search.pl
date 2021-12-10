@@ -420,8 +420,9 @@ sub mod_blast { # eliminate blast matches to the added regions but keep one copy
     } else {
 	$tmp_blast_dir = `mktemp -d PGGPDBS_XXXXXX`;
     }
+    chomp $tmp_blast_dir;
     if (!(-d $tmp_blast_dir)) {
-	die ("ERROR: could not create temporary balst directory PGGPDBS_XXXXXX using mktemp\n")
+	die ("ERROR: could not create temporary blast directory PGGPDBS_XXXXXX($tmp_blast_dir) using mktemp\n")
     }
     &read_genome;
     &read_topology;
