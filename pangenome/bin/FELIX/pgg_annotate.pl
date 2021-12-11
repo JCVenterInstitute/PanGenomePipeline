@@ -2193,8 +2193,10 @@ sub output_files
 	die ("cannot open rearrangements file: $rootname" . "_rearrange.txt!\n");
     }
     my $novel_plasmids;
-    unless (open ($novel_plasmids, ">", ($rootname . "_novel_plasmids.txt")) )  {
-	die ("cannot open novel_plasmids file: $rootname" . "_novel_plasmids.txt!\n");
+    if (!$reannotate) {
+	unless (open ($novel_plasmids, ">", ($rootname . "_novel_plasmids.txt")) )  {
+	    die ("cannot open novel_plasmids file: $rootname" . "_novel_plasmids.txt!\n");
+	}
     }
     my $alledgesfile;
     my $seqsfile;
@@ -2432,21 +2434,25 @@ sub output_files
 		print $alledgesfile '(' . $first_clus_orient . ',' . $prev_clus_orient . ')', "\n";
 	    }
 	}
-	if ((((100 * $annotated_bp) / $contig_len{$contig}) < 40) && (($contig_len{$contig} >= 1500) || $is_circular{$contig})) {
-	    # for contigs check to see if a lack of dense annotation may indicate it is a possible novel plasmid
-	    # ignore really short contigs which might just be noise but not if they are circular
-	    print $novel_plasmids ">$contig\t$rootname\n";
-	    my $pos;
-	    my $tmp_seq_len = $contig_len{$contig};
-	    for ( $pos = 0 ; $tmp_seq_len > 60 ; $pos += 60 ) {
-		print $novel_plasmids substr($contigs{$contig}, $pos, 60), "\n";
-		$tmp_seq_len -= 60;
+	if (!$reannotate) {
+	    if ((((100 * $annotated_bp) / $contig_len{$contig}) < 40) && (($contig_len{$contig} >= 1500) || $is_circular{$contig})) {
+		# for contigs check to see if a lack of dense annotation may indicate it is a possible novel plasmid
+		# ignore really short contigs which might just be noise but not if they are circular
+		print $novel_plasmids ">$contig\t$rootname\n";
+		my $pos;
+		my $tmp_seq_len = $contig_len{$contig};
+		for ( $pos = 0 ; $tmp_seq_len > 60 ; $pos += 60 ) {
+		    print $novel_plasmids substr($contigs{$contig}, $pos, 60), "\n";
+		    $tmp_seq_len -= 60;
+		}
+		print $novel_plasmids substr($contigs{$contig}, $pos, $tmp_seq_len), "\n";
 	    }
-	    print $novel_plasmids substr($contigs{$contig}, $pos, $tmp_seq_len), "\n";
 	}
 	
     }
-    close ($novel_plasmids);
+    if (!$reannotate) {
+	close ($novel_plasmids);
+    }
     my $tmpANI;
     if ($sumANIlen > 0) {
 	$tmpANI = $sumANI / $sumANIlen;
