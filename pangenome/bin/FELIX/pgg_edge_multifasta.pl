@@ -26,8 +26,9 @@ use strict;
 use warnings;
 use Getopt::Std;
 use File::Basename;
-getopts ('j:I:ORSALlDhb:B:m:p:P:a:g:t:M:s:T:Vk:FfC:Q:N:Xr:W:G:e:i:');
-our ($opt_j,$opt_I,$opt_O,$opt_S,$opt_A,$opt_L,$opt_l,$opt_D,$opt_h,$opt_b,$opt_m,$opt_p,$opt_P,$opt_a,$opt_g,$opt_t,$opt_M,$opt_r,$opt_R,$opt_B,$opt_s,$opt_T,$opt_V,$opt_k,$opt_F,$opt_f,$opt_C,$opt_Q,$opt_N,$opt_X,$opt_W,$opt_G,$opt_e,$opt_i);
+use POSIX;
+getopts ('j:I:ORSALlDhb:B:m:p:P:a:g:t:M:s:T:Vk:FfC:Q:N:Xxr:W:G:e:i:');
+our ($opt_j,$opt_I,$opt_O,$opt_S,$opt_A,$opt_L,$opt_l,$opt_D,$opt_h,$opt_b,$opt_m,$opt_p,$opt_P,$opt_a,$opt_g,$opt_t,$opt_M,$opt_r,$opt_R,$opt_B,$opt_s,$opt_T,$opt_V,$opt_k,$opt_F,$opt_f,$opt_C,$opt_Q,$opt_N,$opt_X,$opt_x,$opt_W,$opt_G,$opt_e,$opt_i);
 
 ## use boolean logic:  TRUE = 1, FALSE = 0
 
@@ -45,6 +46,7 @@ my $multifastadir;
 my $use_multifasta = 0;
 my $write_multifasta = 0;
 my $no_stats = 0;
+my $update_multifasta_only = 0;
 my $matchtable_file;
 my $att_file;
 my $pgg_file;
@@ -96,6 +98,7 @@ if ($opt_Q) {$qsub_queue = $opt_Q;} else {$qsub_queue = "himem";}
 if ($opt_M) {$medoids_path = $opt_M;} else {$medoids_path = "";}
 if ($opt_s) {$single_cores = $opt_s;} else {$single_cores = "";}
 if ($opt_X) {$no_stats = 1;} else {$no_stats = 0;}
+if ($opt_x) {$update_multifasta_only = 1;} else {$update_multifasta_only = 0;}
 if ($opt_F) {$use_multifasta = 1;} else {$use_multifasta = 0;}
 if ($opt_f) {$write_multifasta = 1;$use_multifasta = 1;} else {$write_multifasta = 0;}
 if ($opt_O) {$codon_opt = 1;} else {$codon_opt = 0;}
@@ -261,7 +264,97 @@ my %uniq_edge_alle_25_75 = (); # key = genome ID, value = number of unique allel
 my %uniq_edge_alle_0_25 = ();  # key = genome ID, value = number of unique alleles for edges in 0-25% of genomes
 my @renumber = ();             # maps old cluster numbers to new cluster numbers
 my @mf_files = ();             # a list of multifasta files which are created can can be aligned (not zero length and not singleton)
- 
+
+######################################################################################################################################################################
+sub convert_flat_to_hierarchical {
+    
+    unless (open (TABLEFILE, "<", "$matchtable_file") )  {
+	die ("ERROR: cannot open file $matchtable_file.\n");
+    }
+    while (my $line = <TABLEFILE>) {
+	chomp $line;
+	my @feat_names = split(/\t/, $line);  # split the scalar $line on tab
+	my $cluster_id = shift @feat_names;
+	my $dir_name = $multifastadir . "/" . ceil($cluster_id / 1000);
+	if ((-e $dir_name) && !(-d $dir_name)) {
+	    die("Error: multifasta directory issue: $dir_name - file exists but is not a directory\n");
+	} elsif (!(-e $dir_name)) {
+	    mkdir($dir_name) or die "Could not create multifasta directory $dir_name\n";
+	}
+	my $cmd = "mv ";
+	if (-e "$multifastadir/cluster_full_$cluster_id.fasta") {
+	    $cmd .= "$multifastadir/cluster_full_$cluster_id.fasta ";
+	}
+	if (-e "$multifastadir/cluster_$cluster_id.fasta") {
+	    $cmd .= "$multifastadir/cluster_$cluster_id.fasta ";
+	}
+	if (-e "$multifastadir/cluster_$cluster_id.afa") {
+	    $cmd .= "$multifastadir/cluster_$cluster_id.afa ";
+	}
+	if (-e "$multifastadir/cluster_$cluster_id.stats") {
+	    $cmd .= "$multifastadir/cluster_$cluster_id.stats ";
+	}
+	if (-e "$multifastadir/cluster_$cluster_id.empty") {
+	    $cmd .= "$multifastadir/cluster_$cluster_id.empty ";
+	}
+	if ($cmd ne "mv ") {
+	    $cmd .= $dir_name;
+	    `$cmd`;
+	}
+    }
+    close(TABLEFILE);
+    
+    unless (open (PGGFILE, "<", "$pgg_file") )  {
+	die ("ERROR: cannot open file $pgg_file.\n");
+    }
+    while (my $line = <PGGFILE>) {
+	chomp $line;
+	my $cluster1;
+	my $cluster2;
+	my @edge_values = split(/\t/, $line);  # split the scalar $line on tab
+	my $edge_id = shift @edge_values;
+	if ($edge_id =~ /\((\d+)_([35]),(\d+)_([35])\)/) {
+	    $edge_id = "edge".$1."_".$2."to".$3."_".$4;
+	    $cluster1 = $1;
+	    $cluster2 = $3;
+	} else {
+	    die ("ERROR: Bad edge formatting $edge_id in file $pgg_file.\n");
+	}
+	if ($cluster1 > $cluster2) {
+	    next;
+	}
+	my $dir_name = $multifastadir . "/" . ceil($cluster1 / 1000);
+	if ((-e $dir_name) && !(-d $dir_name)) {
+	    die("Error: multifasta directory issue: $dir_name - file exists but is not a directory\n");
+	} elsif (!(-e $dir_name)) {
+	    mkdir($dir_name) or die "Could not create multifasta directory $dir_name\n";
+	}
+	my $cmd = "mv ";
+	if (-e "$multifastadir/full_$edge_id.fasta") {
+	    $cmd .= "$multifastadir/full_$edge_id.fasta ";
+	}
+	if (-e "$multifastadir/$edge_id.fasta") {
+	    $cmd .= "$multifastadir/$edge_id.fasta ";
+	}
+	if (-e "$multifastadir/$edge_id.afa") {
+	    $cmd .= "$multifastadir/$edge_id.afa ";
+	}
+	if (-e "$multifastadir/$edge_id.stats") {
+	    $cmd .= "$multifastadir/$edge_id.stats ";
+	}
+	if (-e "$multifastadir/$edge_id.empty") {
+	    $cmd .= "$multifastadir/$edge_id.empty ";
+	}
+	if ($cmd ne "mv ") {
+	    $cmd .= $dir_name;
+	    `$cmd`;
+	}
+    }
+    close(PGGFILE);
+	    
+    return;
+}
+
 ######################################################################################################################################################################
 sub read_topology_less {
 
@@ -619,6 +712,7 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 	}
 	my ($save_input_separator) = $/;
 	$/="\n>";
+	my $first_genome = 1;
 	while (my $line2 = <$contigfile>) {
 	    (my $title, my $sequence) = split(/\n/, $line2, 2); # split the header line and sequence (very cool)
 	    my @fields = split(/\s+/, $title);  # split the scalar $line on space or tab (to separate the identifier from the header and store in array @line
@@ -654,10 +748,22 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 		die ("ERROR: clusters are not sequentially ordered starting from 1: expecting $cluster_num but got $cluster_id\n");
 	    }
 	    $cluster_num++;
+	    my $dir_name = $multifastadir . "/" . ceil($cluster_id / 1000);
+	    if ((-e $dir_name) && !(-d $dir_name)) {
+		die("Error: multifasta directory issue: $dir_name - file exists but is not a directory\n");
+	    } elsif (!(-e $dir_name)) {
+		mkdir($dir_name) or die "Could not create multifasta directory $dir_name\n";
+	    }
 	    my $genome_tag = $name;
 	    my $index = $genome_number - 1;
 	    my $feat_name = $feat_names[$index];
 	    if (($feat_name eq "----------") || ($feat_name eq "")) { #this is a placeholder and can be skipped
+		if ($first_genome) {
+		    unless (open (OUTFILE, ">$dir_name/cluster_full_$cluster_id.fasta") )  {
+			die ("ERROR: cannot open file $dir_name/cluster_full_$cluster_id.fasta\n");
+		    }
+		    close (OUTFILE);
+		}
 		next;
 	    }
 	    my $seq_len;
@@ -727,8 +833,14 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 	    if ($bad_count > 0) {
 		die ("ERROR: Unexpected character not in [AGCTYRWSKMDVHBNagctyrwskmdvhbn] found in genome fasta sequence!\n$sequence\n");
 	    }
-	    unless (open (OUTFILE, ">>$multifastadir/cluster_full_$cluster_id.fasta") )  {
-		die ("ERROR: cannot open file $multifastadir/cluster_full_$cluster_id.fasta\n");
+	    if ($first_genome) {
+		unless (open (OUTFILE, ">$dir_name/cluster_full_$cluster_id.fasta") )  {
+		    die ("ERROR: cannot open file $dir_name/cluster_full_$cluster_id.fasta\n");
+		}
+	    } else {
+		unless (open (OUTFILE, ">>$dir_name/cluster_full_$cluster_id.fasta") )  {
+		    die ("ERROR: cannot open file $dir_name/cluster_full_$cluster_id.fasta\n");
+		}
 	    }
 	    print OUTFILE ">$genome_tag\t$feat_name\t$feat_hash{$feat_name}->{'contig'}\t$fivep\t$threep\n";
 	    my $pos;
@@ -767,6 +879,13 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 	    my $edge_value = $edge_values[$index];
 	    my $genome_tag = $name;
 	    if ($edge_value == 0) { #this is a placeholder and can be skipped
+		if ($first_genome) {
+		    my $dir_name = ($cluster1 < $cluster2) ? $multifastadir . "/" . ceil($cluster1 / 1000) : $multifastadir . "/" . ceil($cluster2 / 1000);
+		    unless (open (OUTFILE, ">$dir_name/full_$edge_id.fasta") )  {
+			die ("ERROR: cannot open file $dir_name/full_$edge_id.fasta\n");
+		    }
+		    close (OUTFILE);
+		}
 		next;
 	    }
 	    my $feat_name1 = $cluster_to_feat_hash{$genome_tag}->{$cluster1};
@@ -958,6 +1077,12 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 		}
 	    }
 	    if ($cluster1 <= $cluster2) { # only need to do this for one orientation of the edge - not sure if the clusters can be equal or if there are two edges in this case - do a 3' 5' test?
+		my $dir_name = $multifastadir . "/" . ceil($cluster1 / 1000);
+		if ((-e $dir_name) && !(-d $dir_name)) {
+		    die("Error: multifasta directory issue: $dir_name - file exists but is not a directory\n");
+		} elsif (!(-e $dir_name)) {
+		    mkdir($dir_name) or die "Could not create multifasta directory $dir_name\n";
+		}
 		if ($seq_len < 0) { #should not happen
 		    die ("ERROR: coordinates on contig sequence reulted in negative seq_len $seq_len for $edge_value $feat_name1 $start1 $end1 $feat_name2 $start2 $end2!\n");
 		}
@@ -969,8 +1094,14 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 		    $sequence = "EMPTY";
 		    $seq_len = 5;
 		}
-		unless (open (OUTFILE, ">>$multifastadir/full_$edge_id.fasta") )  {
-		    die ("ERROR: cannot open file $multifastadir/full_$edge_id.fasta\n");
+		if ($first_genome) {
+		    unless (open (OUTFILE, ">$dir_name/full_$edge_id.fasta") )  {
+			die ("ERROR: cannot open file $dir_name/full_$edge_id.fasta\n");
+		    }
+		} else {
+		    unless (open (OUTFILE, ">>$dir_name/full_$edge_id.fasta") )  {
+			die ("ERROR: cannot open file $dir_name/full_$edge_id.fasta\n");
+		    }
 		}
 		print OUTFILE ">$genome_tag\t$contig1\t$edge_5p\t$edge_3p\n";
 		my $pos;
@@ -984,6 +1115,7 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 	    }
 	}
 	close (PGGFILE);
+	$first_genome = 0;
 	`rm $single_topology_file $single_attributes_file`;
 	$genseq_hash{$name} = (); #free up memory
 	$genseq_hash{$name}->{"Placeholder"} = "EMPTY"; #this is just here to allow checking for duplicate genome names
@@ -1122,7 +1254,13 @@ sub process_matchtable {
 	my @feat_names = split(/\t/, $line);  # split the scalar $line on tab
 	my @tmp_feat_names = ();  # when using multifasta files need these to delete out of %feat_hash
 	my $cluster_id = shift @feat_names;
-	my $cluster_file = "$multifastadir/cluster_$cluster_id.fasta";
+	my $dir_name = $multifastadir . "/" . ceil($cluster_id / 1000);
+	if ((-e $dir_name) && !(-d $dir_name)) {
+	    die("Error: multifasta directory issue: $dir_name - file exists but is not a directory\n");
+	} elsif (!(-e $dir_name)) {
+	    mkdir($dir_name) or die "Could not create multifasta directory $dir_name\n";
+	}
+	my $cluster_file = "$dir_name/cluster_$cluster_id.fasta";
 	my $out_line = join("\t", @feat_names);
 	if ($cluster_num != $cluster_id) {
 	    die ("ERROR: clusters are not sequentially ordered starting from 1: expecting $cluster_num but got $cluster_id\n");
@@ -1144,7 +1282,7 @@ sub process_matchtable {
 	my $seen = 0;
 	#print  STDERR "genome_array[0]=$genome_array[0] tmp_array[0]=$tmp_array[0]\n" if ($DEBUG);
 	if ($use_multifasta && !$no_stats) {
-	    if (open (CLUSTERFILE, "<$multifastadir/cluster_full_$cluster_id.fasta") )  { #if the file isn't there it's because the cluster was empty and going away on the next iteration
+	    if (open (CLUSTERFILE, "<$dir_name/cluster_full_$cluster_id.fasta") )  { #if the file isn't there it's because the cluster was empty and going away on the next iteration
 		my ($save_input_separator) = $/;
 		$/="\n>";
 		while (my $line2 = <CLUSTERFILE>) {
@@ -1600,10 +1738,10 @@ sub process_matchtable {
 			    if (($align_new) && ($feat_hash{$feat_name}->{'mpid'} < $MIN_PGG_PID)) {
 				print STDERR "$target_id\t$cluster_id\t$seq_len\t$median_25\t$median\t$median_75\n" if ($DEBUG);
 				if (($seq_len >= ($median_25 - (0.1 * $median))) && ($seq_len <= ($median_75 + (0.1 * $median)))) {
-				    my $mf_file = "$multifastadir/cluster_$cluster_id.fasta";
-				    my $msa_file = "$multifastadir/cluster_$cluster_id.afa";
-				    my $stats_file = "$multifastadir/cluster_$cluster_id.stats";
-				    my $empty_file = "$multifastadir/cluster_$cluster_id.empty";
+				    my $mf_file = "$dir_name/cluster_$cluster_id.fasta";
+				    my $msa_file = "$dir_name/cluster_$cluster_id.afa";
+				    my $stats_file = "$dir_name/cluster_$cluster_id.stats";
+				    my $empty_file = "$dir_name/cluster_$cluster_id.empty";
 				    my $max_all;
 				    my $median_target;
 				    my $max_cols_all;
@@ -1623,9 +1761,9 @@ sub process_matchtable {
 					    }
 					}
 					close(STATSFILE);
-					my $seq_file = "$multifastadir/cluster_TMP_" . $$ . "_$target_id.$cluster_id.fasta";
-					my $combined_file = "$multifastadir/cluster_TMP_" . $$ . "_$target_id.$cluster_id.afa";
-					my $com_stats_file = "$multifastadir/cluster_TMP_" . $$ . "_$target_id.$cluster_id.stats";
+					my $seq_file = "$dir_name/cluster_TMP_" . $$ . "_$target_id.$cluster_id.fasta";
+					my $combined_file = "$dir_name/cluster_TMP_" . $$ . "_$target_id.$cluster_id.afa";
+					my $com_stats_file = "$dir_name/cluster_TMP_" . $$ . "_$target_id.$cluster_id.stats";
 					unless (open (OUTFILE, ">", $seq_file) )  {
 					    die ("ERROR: cannot open file $seq_file\n");
 					}
@@ -1839,9 +1977,15 @@ sub process_pgg {
 	my $sum = 0;
 	my $sumsquared = 0;
 	my $seen = 0;
-	my $edge_file = ($cluster1 < $cluster2) ? "$multifastadir/$edge_id.fasta" : "$multifastadir/$alt_edge_id.fasta";
+	my $dir_name = ($cluster1 < $cluster2) ? $multifastadir . "/" . ceil($cluster1 / 1000) : $multifastadir . "/" . ceil($cluster2 / 1000);
+	if ((-e $dir_name) && !(-d $dir_name)) {
+	    die("Error: multifasta directory issue: $dir_name - file exists but is not a directory\n");
+	} elsif (!(-e $dir_name)) {
+	    mkdir($dir_name) or die "Could not create multifasta directory $dir_name\n";
+	}
+	my $edge_file = ($cluster1 < $cluster2) ? "$dir_name/$edge_id.fasta" : "$dir_name/$alt_edge_id.fasta";
 	if ($use_multifasta && !$no_stats) {
-	    my $edge_full_file = ($cluster1 < $cluster2) ? "$multifastadir/full_$edge_id.fasta" : "$multifastadir/full_$alt_edge_id.fasta";
+	    my $edge_full_file = ($cluster1 < $cluster2) ? "$dir_name/full_$edge_id.fasta" : "$dir_name/full_$alt_edge_id.fasta";
 	    if (open (EDGEFILE, "<$edge_full_file") )  { #if the file isn't there it's because the edge was empty and going away on the next iteration
 		my ($save_input_separator) = $/;
 		$/="\n>";
@@ -2492,10 +2636,10 @@ sub process_pgg {
 				if (($align_new) && ($seq_len >= $MIN_ALIGN_EDGE)) {
 				    print STDERR "$target_id\t$edge_id\t$seq_len\t$median_25\t$median\t$median_75\n" if ($DEBUG);
 				    if (($seq_len >= ($median_25 - (0.1 * $median))) && ($seq_len <= ($median_75 + (0.1 * $median)))) {
-					my $mf_file = "$multifastadir/$edge_id.fasta";
-					my $msa_file = "$multifastadir/$edge_id.afa";
-					my $stats_file = "$multifastadir/$edge_id.stats";
-					my $empty_file = "$multifastadir/$edge_id.empty";
+					my $mf_file = "$dir_name/$edge_id.fasta";
+					my $msa_file = "$dir_name/$edge_id.afa";
+					my $stats_file = "$dir_name/$edge_id.stats";
+					my $empty_file = "$dir_name/$edge_id.empty";
 					my $max_all;
 					my $median_target;
 					my $max_cols_all;
@@ -2515,9 +2659,9 @@ sub process_pgg {
 						}
 					    }
 					    close(STATSFILE);
-					    my $seq_file = "$multifastadir/edge_TMP_" . $$ . "_$target_id.$edge_id.fasta";
-					    my $combined_file = "$multifastadir/edge_TMP_" . $$ . "_$target_id.$edge_id.afa";
-					    my $com_stats_file = "$multifastadir/edge_TMP_" . $$ . "_$target_id.$edge_id.stats";
+					    my $seq_file = "$dir_name/edge_TMP_" . $$ . "_$target_id.$edge_id.fasta";
+					    my $combined_file = "$dir_name/edge_TMP_" . $$ . "_$target_id.$edge_id.afa";
+					    my $com_stats_file = "$dir_name/edge_TMP_" . $$ . "_$target_id.$edge_id.stats";
 					    unless (open (OUTFILE, ">", $seq_file) )  {
 						die ("ERROR: cannot open file $seq_file\n");
 					    }
@@ -3138,6 +3282,7 @@ Version: $version
      -f: generate multifasta files with all alleles for clusters and edges also forces the -F flag to be set
      -F: use multifasta files with all alleles for clusters and edges instead of extracting them directly from genome fasta files
      -X: only renumbering clusters and edges in matchtable and pgg file during refinement iteration not generating alignments files or statistics
+     -x: only updating a flat clusters and edges multifasta file into a hierarchical one not generating alignments files or statistics
      -e: the file name of the attributes file for the target genome specified with -t when using -F
      -i: the file name of the topology file for the target genome specified with -t when using -F
      -C: path to the Muslce executable for multiple sequence alignments - default /usr/local/bin/muscle
@@ -3174,6 +3319,11 @@ _EOB_
 }
 
 ########################################  M A I N  #####################################################
+if ($update_multifasta_only) {
+    print STDERR "Only updating a flat clusters and edges multifasta file into a hierarchical one, not generating alignments files or statistics\n";
+    &convert_flat_to_hierarchical;
+    exit(0);
+}
 if ($no_stats) {
     print STDERR "No stats just remaking files so not reading genomes\n";
     &get_genome_names;
