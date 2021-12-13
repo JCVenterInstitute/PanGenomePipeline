@@ -359,11 +359,12 @@ sub convert_flat_to_hierarchical {
 sub read_topology_less {
 
     unless (open (CIRCFILE, "<", "$topology_file") )  {
-	die ("ERROR: can not open contig topology file $topology_file.\n");
+	die ("ERROR: cannot open contig topology file $topology_file.\n");
     }
     my $cur_tag = "";
     while (<CIRCFILE>) {
 	my $tag = "";
+	chomp;
 	my $asmbl_id = "";
 	my $type = "";
 
@@ -374,13 +375,14 @@ sub read_topology_less {
 	$cur_tag = $tag;
 	
 	unless (open (TOPFILE, ">", $cur_tag . "_topology.txt") )  {
-	    die ("ERROR: can not open contig topology file $cur_tag" . "_topology.txt.\n");
+	    die ("ERROR: cannot open contig topology file $cur_tag" . "_topology.txt.\n");
 	}
-	print TOPFILE $_;
+	print TOPFILE "$_\n";
 	last;
     }
     while (<CIRCFILE>) {
 	my $tag = "";
+	chomp;
 	my $asmbl_id = "";
 	my $type = "";
 
@@ -392,10 +394,10 @@ sub read_topology_less {
 	    close (TOPFILE);
 	    $cur_tag = $tag;
 	    unless (open (TOPFILE, ">>", $cur_tag . "_topology.txt") )  { # open for appending allows genome tags not to be consecutive but we expect them to be
-		die ("ERROR: can not open contig topology file $cur_tag" . "_topology.txt.\n");
+		die ("ERROR: cannot open contig topology file $cur_tag" . "_topology.txt.\n");
 	    }
 	}
-	print TOPFILE $_;
+	print TOPFILE "$_\n";
    }
     close (TOPFILE);
     close (CIRCFILE);
@@ -405,7 +407,7 @@ sub read_topology_less {
 sub read_topology {
 
     unless (open (CIRCFILE, "<", "$topology_file") )  {
-	die ("ERROR: can not open contig topology file $topology_file.\n");
+	die ("ERROR: cannot open contig topology file $topology_file.\n");
     }
     while (<CIRCFILE>) {
 	my $tag = "";
@@ -466,7 +468,7 @@ sub get_genomes {  # obtain list of genomes - must be in the same order as the m
 	if (!$use_multifasta || ($target_id eq $name)) { #only read in the target genome - will use multiple fasta files for edges and clusters instead
 	    if ($use_multifasta) {
 		unless (open (TOPFILE, "<", $target_single_topology_file) )  {
-		    die ("ERROR: can not open contig topology file $target_single_topology_file.\n");
+		    die ("ERROR: cannot open contig topology file $target_single_topology_file.\n");
 		}
 		while (<TOPFILE>) {
 		    my $tag = "";
@@ -492,7 +494,7 @@ sub get_genomes {  # obtain list of genomes - must be in the same order as the m
 		close (TOPFILE);
 		
 		unless (open (SINGATTFILE, "<", $target_single_attributes_file))  {
-		    die ("ERROR: can not open attributes file $target_single_attributes_file.\n");
+		    die ("ERROR: cannot open attributes file $target_single_attributes_file.\n");
 		}
 		my $failed = 0;
 		while (<SINGATTFILE>) {
@@ -638,7 +640,7 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 	}
 	my $single_topology_file = $name . "_topology.txt";
 	unless (open (TOPFILE, "<", $single_topology_file) )  {
-	    die ("ERROR: can not open contig topology file $single_topology_file.\n");
+	    die ("ERROR: cannot open contig topology file $single_topology_file.\n");
 	}
 	while (<TOPFILE>) {
 	    my $tag = "";
@@ -665,7 +667,7 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 
 	my $single_attributes_file = $name . "_attributes.txt";
 	unless (open (SINGATTFILE, "<", $single_attributes_file))  {
-	    die ("ERROR: can not open attributes file $single_attributes_file.\n");
+	    die ("ERROR: cannot open attributes file $single_attributes_file.\n");
 	}
 	my $failed = 0;
 	while (<SINGATTFILE>) {
@@ -1136,19 +1138,21 @@ sub get_attributes_less {
     }
     while (<ATTFILE>) {
 	my @att_line = ();
+	chomp;
 	my $tag = "";
 	@att_line = split(/\t/, $_);  # split the scalar $line on tab
 	$tag = $att_line[5];
 	$cur_tag = $tag;
 
 	unless (open (SINGATTFILE, ">", $cur_tag . "_attributes.txt") )  {
-	    die ("ERROR: can not open attributes file $cur_tag" . "_attributes.txt.\n");
+	    die ("ERROR: cannot open attributes file $cur_tag" . "_attributes.txt.\n");
 	}
-	print SINGATTFILE $_;
+	print SINGATTFILE "$_\n";
 	last;
     }
     while (<ATTFILE>) {
 	my @att_line = ();
+	chomp;
 	my $tag = "";
 	@att_line = split(/\t/, $_);  # split the scalar $line on tab
 	$tag = $att_line[5];
@@ -1156,10 +1160,10 @@ sub get_attributes_less {
 	    close (SINGATTFILE);
 	    $cur_tag = $tag;
 	    unless (open (SINGATTFILE, ">>", $cur_tag . "_attributes.txt") )  { # open for appending allows genome tags not to be consecutive but we expect them to be
-		die ("ERROR: can not open attributes file $cur_tag" . "_attributes.txt.\n");
+		die ("ERROR: cannot open attributes file $cur_tag" . "_attributes.txt.\n");
 	    }
 	}
-	print SINGATTFILE $_;
+	print SINGATTFILE "$_\n";
     }
     close (SINGATTFILE);
     close (ATTFILE);
