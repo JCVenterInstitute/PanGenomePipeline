@@ -881,7 +881,7 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 	    my $edge_value = $edge_values[$index];
 	    my $genome_tag = $name;
 	    if ($edge_value == 0) { #this is a placeholder and can be skipped
-		if ($first_genome) {
+		if (($first_genome) && ($cluster1 <= $cluster2)) { # only need to do this for one orientation of the edge
 		    my $dir_name = ($cluster1 < $cluster2) ? $multifastadir . "/" . ceil($cluster1 / 1000) : $multifastadir . "/" . ceil($cluster2 / 1000);
 		    unless (open (OUTFILE, ">$dir_name/full_$edge_id.fasta") )  {
 			die ("ERROR: cannot open file $dir_name/full_$edge_id.fasta\n");
