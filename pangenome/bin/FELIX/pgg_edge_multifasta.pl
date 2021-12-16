@@ -1572,12 +1572,14 @@ sub process_matchtable {
 	    }
 	}
 	if (!$suppress) {
-	    my $skip_output = 0;
+	    my $skip_output;
 	    if (!(-e $cluster_file) || !(-s $cluster_file)) {
 		# skip if file already exists and is not zero size
 		unless (open (OUTFILE, ">$cluster_file") )  {
 		    die ("ERROR: cannot open file $cluster_file\n");
 		}
+		$skip_output = 0;
+	    } else {
 		$skip_output = 1;
 	    }
 	    my $index = 0;
@@ -1987,7 +1989,6 @@ sub process_pgg {
 	} elsif (!(-e $dir_name)) {
 	    mkdir($dir_name) or die "Could not create multifasta directory $dir_name\n";
 	}
-	my $edge_file = ($cluster1 < $cluster2) ? "$dir_name/$edge_id.fasta" : "$dir_name/$alt_edge_id.fasta";
 	if ($use_multifasta && !$no_stats) {
 	    my $edge_full_file = ($cluster1 < $cluster2) ? "$dir_name/full_$edge_id.fasta" : "$dir_name/full_$alt_edge_id.fasta";
 	    if (open (EDGEFILE, "<$edge_full_file") )  { #if the file isn't there it's because the edge was empty and going away on the next iteration
@@ -2461,12 +2462,15 @@ sub process_pgg {
 	    }
 	}
 	if (!$suppress && ($cluster1 <= $cluster2)) { # only need to do this for one orientation of the edge - not sure if the clusters can be equal or if there are two edges in this case - do a 3' 5' test?
-	    my $skip_output = 0;
-	    if ((-e $edge_file) && (-s $edge_file)) {
+	    my $edge_file = "$dir_name/$edge_id.fasta";
+	    my $skip_output;
+	    if (!(-e $edge_file) || !(-s $edge_file)) {
 		# skip if file already exists and is not zero size
 		unless (open (OUTFILE, ">$edge_file") )  {
 		    die ("ERROR: cannot open file $edge_file\n");
 		}
+		$skip_output = 0;
+	    } else {
 		$skip_output = 1;
 	    }
 	    my $index = 0;
