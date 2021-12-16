@@ -627,6 +627,7 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 
     open (my $infile, "<", "$genomes_file_name") || die ("ERROR: cannot open file $genomes_file_name\n");
     print  STDERR "Order of genomes in $genomes_file_name with array index\n" if ($DEBUG);
+    my $first_genome = 1;
     while (my $line1 = <$infile>)  {
 	chomp $line1;
 	(my $name, my $contig_file) = split(/\t/, $line1);  # split the scalar $line on tab
@@ -714,7 +715,6 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 	}
 	my ($save_input_separator) = $/;
 	$/="\n>";
-	my $first_genome = 1;
 	while (my $line2 = <$contigfile>) {
 	    (my $title, my $sequence) = split(/\n/, $line2, 2); # split the header line and sequence (very cool)
 	    my @fields = split(/\s+/, $title);  # split the scalar $line on space or tab (to separate the identifier from the header and store in array @line
@@ -882,7 +882,7 @@ sub output_multifasta {  # obtain list of genomes - must be in the same order as
 	    my $genome_tag = $name;
 	    if ($edge_value == 0) { #this is a placeholder and can be skipped
 		if (($first_genome) && ($cluster1 <= $cluster2)) { # only need to do this for one orientation of the edge
-		    my $dir_name = ($cluster1 < $cluster2) ? $multifastadir . "/" . ceil($cluster1 / 1000) : $multifastadir . "/" . ceil($cluster2 / 1000);
+		    my $dir_name = $multifastadir . "/" . ceil($cluster1 / 1000);
 		    unless (open (OUTFILE, ">$dir_name/full_$edge_id.fasta") )  {
 			die ("ERROR: cannot open file $dir_name/full_$edge_id.fasta\n");
 		    }
