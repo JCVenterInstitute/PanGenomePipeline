@@ -43,6 +43,7 @@ my @core_clusters = ();    # index = cluster number, value = 1 if core 0 otherwi
 my $num_clusters = 0;      # this is the number of clusters in the pan-genome graph determined from the cluster_weights file
 my $num_genomes = 0;       # this is the number of genomes in the pan-genome graph determined from the cluster_weights file
 my @match_table = ();      # this is a column for the matchtable for this genome
+my @match_table_count = ();# this is a suffix for paralogs for the matchtable for this genome
 my @new_match_table = ();  # this is a column for the matchtable for this genome for new clusters not in the PGG
 my %column_scores = ();    # this is a parallele data structure to %columns which records the scores of matches in each column
 my @best_scores = ();      # array of best scores to calcuate median and quartile
@@ -2053,7 +2054,7 @@ sub refine_alignments
     foreach my $contig (keys %columns) {
 	my $col_index = 0;
 	foreach my $column (@{ $columns{$contig} }) {
-	    if ($columns_status{$contig}->[$col_index] == 1) {
+	    if ($columns_status{$contig}->[$col_index] >= 1) {
 		my $beg_align = -1;
 		my $end_align = -1;
 		my $ignore = -1;
@@ -2179,6 +2180,7 @@ sub output_files
 {
     foreach my $cluster (1 .. $num_clusters) {
 	$match_table[$cluster] = "----------"; # initialize for missing clusters
+	$match_table_count[$cluster] = 2; # initialize for columns with paralogs
     }
     my $wgsANIfile;
     unless (open ($wgsANIfile, ">", ($rootname . "_wgsANI.txt")) )  {
@@ -2267,7 +2269,7 @@ sub output_files
 		#print STDERR "COL$col_index:$column:$columns_status{$contig}->[$col_index]:$reduced_by_region[$index]->{'sinv'}:$beg_align:$end_align\n";
 		#print STDERR "or: $clus_orient por: $prev_clus_orient for: $first_clus_orient nor: $next_clus_orient cor: $core_orient cpor: $prev_core_orient cnor: $next_core_orient es: $edge_start ee: $edge_end ces: $core_edge_start cee: $core_edge_end fee: $first_edge_end cs: $core_start ce: $core_end\n";
 		#print STDERR "BLAST($column_scores{$contig}[$col_index]->{'best_score'}) $column:$reduced_by_region[$index]->{'clus'}($cluster_size[$reduced_by_region[$index]->{'clus'}]):$reduced_by_region[$index]->{'ctg'}:$reduced_by_region[$index]->{'pid'}:$reduced_by_region[$index]->{'qbeg'}:$reduced_by_region[$index]->{'qend'}:$reduced_by_region[$index]->{'qlen'}:$reduced_by_region[$index]->{'sbeg'}:$reduced_by_region[$index]->{'send'}:$reduced_by_region[$index]->{'sinv'}:$reduced_by_region[$index]->{'ctglen'}:$reduced_by_region[$index]->{'bits'}:$reduced_by_region[$index]->{'keepclus'}:$reduced_by_region[$index]->{'keepctg'}:$reduced_by_region[$index]->{'weak'}\n";
-		if ($columns_status{$contig}->[$col_index] == 1) {
+		if (($columns_status{$contig}->[$col_index] == 1) || (($columns_status{$contig}->[$col_index] == 2) && (!$reannotate))) {
 		    $clus_orient = $clus . '_' . ($reduced_by_region[$index]->{'sinv'} ? '3' : '5');
 		    $edge_end = $beg_align - 1;
 		    $next_clus_orient = $clus . '_' . ($reduced_by_region[$index]->{'sinv'} ? '5' : '3');
@@ -2330,7 +2332,16 @@ sub output_files
 			$core_region_clusters = $clus;
 		    }
 		    my $ortholog = $target . "CL_" . $clus;
-		    $match_table[$clus] = $ortholog;
+		    if ($match_table[$clus] eq "----------") {
+			$match_table[$clus] = $ortholog;
+		    } else {
+			if ($reannotate) {
+			    die ("ERROR: For reannotating genomes, an orthologous gene cluster should not have more than one attribute assigned\n");
+			}
+			$ortholog .= "_" . $match_table_count[$clus];
+			$match_table_count[$clus] += 1;
+			$match_table[$clus] .= "," . $ortholog;
+		    }
 		    my $tmp_len = ($end_align - $beg_align) + 1;
 		    print $attributefile "$contig\t$ortholog\t";
 		    if ($reduced_by_region[$index]->{'sinv'}) {
@@ -2585,8 +2596,11 @@ sub assign_paralogs
 	    if ($columns_status{$contig}->[$col_index] == 1) {
 		#print STDERR "$contig $col_index != $cluster_colindex[$clus]\n";
 		if (($contig . "_" . $col_index) ne $cluster_colindex[$clus]) {
-		    #$columns_status{$contig}->[$col_index] = 2; #return to this if we start doing paralogs again
-		    $columns_status{$contig}->[$col_index] = -1;
+		    if (!$reannotate) {
+			$columns_status{$contig}->[$col_index] = 2; #return to this if we start doing paralogs again
+		    } else {
+			$columns_status{$contig}->[$col_index] = -1;
+		    }
 		}
 	    } else {
 		    $columns_status{$contig}->[$col_index] = -1; #label every column that is not a presumptive ortholog to be removed
