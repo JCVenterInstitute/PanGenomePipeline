@@ -2167,7 +2167,7 @@ sub process_pgg {
 			@multiple_feat_names = split(/,/, $cluster_to_feat_hash{$genome_tag}->{$cluster1});  # split feat_name on , to allow for multiple featnames per cluster in the target genome
 		    }
 		    $feat_name1 = shift @multiple_feat_names;
-		    my $feat_name1_key = $feat_name . "_" . $whichend1;
+		    my $feat_name1_key = $feat_name1 . "_" . $whichend1;
 		    if (!defined $cluster_adj{$feat_name1_key}) {
 			die ("ERROR: cluster adjacency hash not defined for $feat_name1_key for edge $edge_name\n");
 		    }
