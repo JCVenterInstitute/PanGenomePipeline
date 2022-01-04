@@ -27,8 +27,8 @@ use warnings;
 use Getopt::Std;
 use File::Basename;
 use POSIX;
-getopts ('j:I:ORSALlDhb:B:m:p:P:a:g:t:M:s:T:Vk:FfC:Q:N:Xxr:W:G:e:i:');
-our ($opt_j,$opt_I,$opt_O,$opt_S,$opt_A,$opt_L,$opt_l,$opt_D,$opt_h,$opt_b,$opt_m,$opt_p,$opt_P,$opt_a,$opt_g,$opt_t,$opt_M,$opt_r,$opt_R,$opt_B,$opt_s,$opt_T,$opt_V,$opt_k,$opt_F,$opt_f,$opt_C,$opt_Q,$opt_N,$opt_X,$opt_x,$opt_W,$opt_G,$opt_e,$opt_i);
+getopts ('j:I:Oo:RSALlDhb:B:m:p:P:a:g:t:M:s:T:Vk:FfC:Q:N:Xxr:W:G:e:i:');
+our ($opt_j,$opt_I,$opt_O,$opt_o,$opt_S,$opt_A,$opt_L,$opt_l,$opt_D,$opt_h,$opt_b,$opt_m,$opt_p,$opt_P,$opt_a,$opt_g,$opt_t,$opt_M,$opt_r,$opt_R,$opt_B,$opt_s,$opt_T,$opt_V,$opt_k,$opt_F,$opt_f,$opt_C,$opt_Q,$opt_N,$opt_X,$opt_x,$opt_W,$opt_G,$opt_e,$opt_i);
 
 ## use boolean logic:  TRUE = 1, FALSE = 0
 
@@ -78,6 +78,8 @@ my $MIN_ALIGN_EDGE = 5; #minimum length of an edge that we are willing to multip
 my $MIN_PGG_PID = 101; #minimum threshold to perform multiple sequence alignment of genomes - must be below this threshold to align (set to 98 if fewer alignments desired)
 my $target_single_attributes_file = "";
 my $target_single_topology_file = "";
+my $medoid_orf_file = "";
+my $stop_codon_file;
 
 if ($opt_W) { # should really check time format
     $wall_time_limit = $opt_W;
@@ -197,6 +199,20 @@ if ($codon_opt) {
 	die ("ERROR: cannot open codon optimization insertion multifasta file $codon_opt_file_insertion\n");
     }
 }
+if ($opt_o) {
+    if (!(-s $opt_o)) {
+	print STDERR "Error with -o $opt_o file doesn't exist or is empty\n";
+	&option_help;
+    }
+    if ($target_id eq "") {
+	die "Cannot specify medoids open reading frames file (-o) without providing a target genome (-t)\n";
+    }
+    $medoid_orf_file = $opt_o;
+    $stop_codon_file = "$basedir/$target_id" . "_stop_codon.txt";
+    unless (open (STOPCODONFILE, ">", $stop_codon_file) )  {
+	die ("ERROR: cannot open stop codon file $stop_codon_file\n");
+    }
+}
 if ($opt_e) {
     if (!$use_multifasta || ($target_id eq "")) {
 	die ("ERROR: cannot specify a target attribute file $opt_e without specifying -F and -t\n");
@@ -265,6 +281,7 @@ my %uniq_edge_alle_25_75 = (); # key = genome ID, value = number of unique allel
 my %uniq_edge_alle_0_25 = ();  # key = genome ID, value = number of unique alleles for edges in 0-25% of genomes
 my @renumber = ();             # maps old cluster numbers to new cluster numbers
 my @mf_files = ();             # a list of multifasta files which are created can can be aligned (not zero length and not singleton)
+my @medoid_orfs = ();          # the open reading frames for each cluster medoid (tab delimited string)
 
 ######################################################################################################################################################################
 sub convert_flat_to_hierarchical {
@@ -1783,7 +1800,8 @@ sub process_matchtable {
 				    $uniq_clus_alle_25_75{$target_id}++;
 				}
 				print STDERR "$target_id\t$cluster_id\t$seq_len\t$feat_hash{$feat_name}->{'mpid'}\n" if ($DEBUG);
-				if (($align_new) && ($feat_hash{$feat_name}->{'mpid'} < $MIN_PGG_PID)) {
+				#if (($align_new) && ($feat_hash{$feat_name}->{'mpid'} < $MIN_PGG_PID)) { # use this if not interested in mutations above this cutoff
+				if ($align_new) {
 				    print STDERR "$target_id\t$cluster_id\t$seq_len\t$median_25\t$median\t$median_75\n" if ($DEBUG);
 				    if (($seq_len >= ($median_25 - (0.1 * $median))) && ($seq_len <= ($median_75 + (0.1 * $median)))) {
 					my $mf_file = "$dir_name/cluster_$cluster_id.fasta";
@@ -1883,6 +1901,46 @@ sub process_matchtable {
 					    }
 					    if (!$diverged_alignment_flag) {
 						print DIFFFILE "$target_id\t$feat_hash{$feat_name}->{'contig'}\tconserved_clus_allele\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\n";
+					    }
+					    if ($cols_target > 0) { # check for introduced stop codon
+						my @frames = split(/\t/, $medoid_orfs[$cluster_id]);
+						if ((scalar @frames) != 6) {
+						    die ("ERROR: ORFS line for cluster $cluster_id\n$medoid_orfs[$cluster_id]\ndoes not have six values\n");
+						}
+						my $sequence = uc($target_sequence); # convert to uppercase
+						my $revcomp = reverse($sequence); # reverse
+						$revcomp =~ tr/AGCTYRWSKMDVHB/TCGARYWSMKHBDV/; # complement
+						my $last_index = length($sequence) - 4; # don't want a terminating stop codon
+						my $frame;
+						foreach $frame (0, 1, 2) {
+						    if ($frames[$frame]) { #only check frames without existing stop codons
+							my $index = $frame;
+							while ($index <= $last_index) {
+							    my $codon = substr($sequence, $index, 3);
+							    $index += 3;
+							    if (($codon eq "TAA") || ($codon eq "TAG") || ($codon eq "TGA")) {
+								# output possible stop codon
+								print STOPCODONFILE "$target_id\t$feat_hash{$feat_name}->{'contig'}\tpossible_stop_codon\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\t$frame\n";
+								last;
+							    }
+							}
+						    }
+						}
+						foreach $frame (0, 1, 2) {
+						    if ($frames[$frame + 3]) { #only check frames without existing stop codons
+							my $index = $frame;
+							while ($index <= $last_index) {
+							    my $codon = substr($revcomp, $index, 3);
+							    $index += 3;
+							    if (($codon eq "TAA") || ($codon eq "TAG") || ($codon eq "TGA")) {
+								# output possible stop codon
+								$frame += 3;
+								print STOPCODONFILE "$target_id\t$feat_hash{$feat_name}->{'contig'}\tpossible_stop_codon\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\t$frame\n";
+								last;
+							    }
+							}
+						    }
+						}
 					    }
 					    if ($codon_opt && $diverged_alignment_flag) {
 						print CODONOPTMUTFILE ">$target_id" . "_$cluster_id\n";
@@ -2919,6 +2977,18 @@ sub process_medoids {  # read in the medoids for the PGG
     return;
 }
 
+sub read_medoid_orfs                                               # Read in the set of ORFs for each cluster medoid
+{
+    unless (open(MEDOID_ORFS, "<", $medoid_orf_file)) {
+	die ("cannot open medoid ORFs file: $medoid_orf_file!\n");
+    }
+    while (my $line = <MEDOID_ORFS>) {
+	chomp $line;
+	push (@medoid_orfs, $line);
+    }
+    close(MEDOID_ORFS);
+}
+
 sub read_single_cores                                               # Read in the set of clusters which are single copy core, renumber and output
 {
     unless (open(CLUSTER_CORES, "<", $single_cores)) {
@@ -3365,6 +3435,7 @@ Version: $version
      -i: the file name of the topology file for the target genome specified with -t when using -F
      -C: path to the Muslce executable for multiple sequence alignments - default /usr/local/bin/muscle
      -O: flag indicating two multifasta files of node/cluster/gene sequences which are significantly diverged or inserted should be output for codon optimization
+     -o: file of open reading frame information for all cluster medoids (6 frames, tab delimited, 1 no stop codons, 0 some stop codons)
      -r: path to the Rscript executable for Rscript scripts - default /usr/local/bin/Rscript
      -Q: name of qsub queue to use for Muscle jobs - default himem
      -G: minimum memory requirement for grid jobs in format (integer)gb where 2gb is the default
@@ -3397,6 +3468,10 @@ _EOB_
 }
 
 ########################################  M A I N  #####################################################
+if ($medoid_orf_file ne "") {
+    print STDERR "Reading medoid ORFs file $medoid_orf_file\n";
+    &read_medoid_orfs;
+}
 if ($update_multifasta_only) {
     print STDERR "Only updating a flat clusters and edges multifasta file into a hierarchical one, not generating alignments files or statistics\n";
     &convert_flat_to_hierarchical;
@@ -3517,6 +3592,9 @@ if ((!$suppress) && ($align_all)) {
 if ($codon_opt) {
     close (CODONOPTMUTFILE);
     close (CODONOPTINSFILE);
+}
+if ($medoid_orf_file ne "") {
+    close (STOPCODONFILE);
 }
 print STDERR "Finished processing - exiting\n";
 exit(0);
