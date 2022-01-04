@@ -51,12 +51,14 @@ my $codon_opt = 0;
 my $soft_mask_id = "";
 my $pggdb_topology_file = "";
 my $use_local_disk;
+my $orf_cluster_medoids = "";
 
 GetOptions('genome=s' => \ $genome_path,
 	   'weights=s' => \ $weights,
 	   'name=s' => \ $genome_name,
 	   'pgg=s' => \ $pgg,
 	   'medoids=s' => \ $medoids,
+	   'orf_cluster_medoids=s' => \ $orf_cluster_medoids,
 	   'PGGdb_topology=s' => \ $pggdb_topology_file,
 	   'pggdb=s' => \ $pggdb,
 	   'engdb=s' => \ $engdb,
@@ -150,6 +152,7 @@ GetOptions('genome=s' => \ genome_path,
 	   'name=s' => \ genome_name,
 	   'pgg=s' => \ pgg,
 	   'medoids=s' => \ medoids,
+	   'orf_cluster_medoids=s' => \ orf_cluster_medoids,
 	   'PGGdb_topology=s' => \ pggdb_topology_file,
 	   'pggdb=s' => \ pggdb,
 	   'engdb=s' => \ engdb,
@@ -246,6 +249,9 @@ sub compute
     if ($debug) {print STDERR "Starting compute ...\n\n";}
     if ($debug) {print STDERR "\ngenome_name: $genome_name \t path: $genome_path\n\n";}
     $pgg_multifasta_path .= " -N $bin_directory ";
+    if ($orf_cluster_medoids ne "") {
+	$pgg_multifasta_path .= " -o $orf_cluster_medoids ";
+    }
     if (!$no_MSA) {
 	$pgg_multifasta_path .= " -l ";
     }

@@ -66,6 +66,7 @@ my $codon_opt = 0;
 my $soft_mask_id = "";
 my $pggdb_topology_file = "";
 my $use_local_disk;
+my $orf_cluster_medoids = "";
 
 GetOptions('genomes=s' => \ $genome_list_path,
 	   'new_genomes=s' => \ $new_genomes,
@@ -90,6 +91,7 @@ GetOptions('genomes=s' => \ $genome_list_path,
 	   'paralogs=s' => \ $paralogs,
 	   'pgg=s' => \ $pgg,                                                               # [pangenome_dir]/0_core_adjacency_vector.txt
 	   'medoids=s' => \ $medoids,
+	   'orf_cluster_medoids=s' => \ $orf_cluster_medoids,
 	   'match=s' => \ $matchtable,                                                      # [pangenome_dir]/matchtable.txt
 	   'pggdb=s' => \ $pggdb,
 	   'engdb=s' => \ $engdb,
@@ -166,6 +168,7 @@ GetOptions('genomes=s' => \ genome_list_path,
 	   'paralogs=s' => \ paralogs,
 	   'pgg=s' => \ pgg,                                                               # [pangenome_dir]/0_core_adjacency_vector.txt
 	   'medoids=s' => \ medoids,
+	   'orf_cluster_medoids=s' => \ orf_cluster_medoids,
 	   'match=s' => \ matchtable,                                                      # [pangenome_dir]/matchtable.txt
 	   'pggdb=s' => \ pggdb,
 	   'engdb=s' => \ engdb,
@@ -240,6 +243,9 @@ if (substr($weights, 0, 1) ne "/") {
 }
 if (substr($medoids, 0, 1) ne "/") {
     $medoids = $cwd . "/$medoids";
+}
+if (substr($orf_cluster_medoids, 0, 1) ne "/") {
+    $orf_cluster_medoids = $cwd . "/$orf_cluster_medoids";
 }
 if (substr($pgg, 0, 1) ne "/") {
     $pgg = $cwd . "/$pgg";
@@ -593,6 +599,9 @@ sub compute
 	if ($strip_version) {
 	    $shell_script .= " -strip_version";
 	}
+	if ($orf_cluster_medoids ne "") {
+	    $shell_script .= " -orf_cluster_medoids $orf_cluster_medoids";
+	}
 	if ($keep_divergent_alignments) {
 	    $shell_script .= " -alignments $keep_divergent_alignments";
 	}
@@ -685,6 +694,9 @@ sub compute
 		    my $shell_script = "/usr/bin/time -o $cpu_name -v $compute_path -bin_directory $bin_directory -multifastadir $multifastadir -duplicate $duplicate -name $identifier -genome $genome_path -weights $weights -medoids $medoids -pgg $pgg -debug -engdb $engdb -nrdb $nrdb -pggdb $pggdb";
 		    if ($strip_version) {
 			$shell_script .= " -strip_version";
+		    }
+		    if ($orf_cluster_medoids ne "") {
+			$shell_script .= " -orf_cluster_medoids $orf_cluster_medoids";
 		    }
 		    if ($keep_divergent_alignments) {
 			$shell_script .= " -alignments $keep_divergent_alignments";
