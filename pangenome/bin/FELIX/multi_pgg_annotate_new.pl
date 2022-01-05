@@ -287,7 +287,7 @@ sub single_grid_job {
     print STDERR "single_grid_job $qsub_queue $project $job_name $shell_script\n";
     $single_job_ids{&launch_grid_job($job_name, $project, $working_dir, $shell_script, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
     &wait_for_grid_jobs($qsub_queue, $job_name, 0, \%single_job_ids);
-    #`rm TMP_*single*`;
+    `rm TMP_single_qsub*`;
 
     return;
 }
@@ -891,6 +891,10 @@ sub compute
     if ($codon_opt) {
 	`mkdir Codon_Opt`;
 	`mv *_codon_opt_*.txt Codon_Opt`;
+    }
+    if ($orf_cluster_medoids ne "") {
+	`mkdir Stop_Codon`;
+	`mv *_stop_codon.txt Stop_Codon`;
     }
     `mkdir Novel_Plasmids`;
     `mv *_novel_plasmids.txt Novel_Plasmids`;
