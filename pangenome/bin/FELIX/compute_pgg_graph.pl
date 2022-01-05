@@ -414,6 +414,11 @@ sub compute
 	    $codon_opt_name_genome = "$genome_name" . "_codon_opt_insertion.txt";
 	    `mv $codon_opt_name $codon_opt_name_genome`;
 	}
+	if ($orf_cluster_medoids ne "") {
+	    my $stop_codon_name = "output/$genome_name" . "_stop_codon.txt";
+	    my $stop_codon_name_genome = "$genome_name" . "_stop_codon.txt";
+	    `mv $stop_codon_name $stop_codon_name_genome`;
+	}
 	`rm -r output multifasta`;
     }
     `rm $blast_name`;
