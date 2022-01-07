@@ -285,7 +285,7 @@ sub mod_blast { # eliminate blast matches to the added regions but keep one copy
 		next; # skip matches entirely in the added regions
 	    }
 	}
-	if (($pid >= 90.0) && ($score > $maxq_bit_thresh)) {
+	if (($filter_anomalies) || (($pid >= 90.0) && ($score > $maxq_bit_thresh))) {
 	    $blast_matches_raw[$blast_match_num++] = {'clus' => $qid,      # cluster number
 						      'ctg' => $sid,       # contig identifier
 						      'pid' => $pid,       # percent identity
@@ -430,7 +430,11 @@ sub mod_blast { # eliminate blast matches to the added regions but keep one copy
     my $makeblastdb = $blast_directory . "makeblastdb";
     `$makeblastdb -in $tmp_blast_dir/temp_fasta.ftmp -dbtype nucl -out $tmp_blast_dir/temp_fasta.ftmp`;
     my $blastn = $blast_directory . "blastn";
-    `$blastn -query $medoids -db $tmp_blast_dir/temp_fasta.ftmp -out $tmp_blast_out -task $blast_task -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\"`;
+    if ($filter_anomalies) {
+	`$blastn -query $medoids -db $tmp_blast_dir/temp_fasta.ftmp -out $tmp_blast_out -task $blast_task -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\" -culling_limit 10`;
+    } else {
+	`$blastn -query $medoids -db $tmp_blast_dir/temp_fasta.ftmp -out $tmp_blast_out -task $blast_task -evalue 0.000001 -outfmt \"6 qseqid sseqid pident qstart qend qlen sstart send slen evalue bitscore stitle\"`;
+    }
     &mod_blast("$tmp_blast_out");
     `rm -f -r $tmp_blast_dir $tmp_blast_out`;
 }
