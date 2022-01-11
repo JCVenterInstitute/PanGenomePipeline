@@ -3237,7 +3237,8 @@ sub compute_alignments
 	if ((-e $msa_file) && (-s $msa_file)) {
 	    push (@msa_files, $msa_file);
 	    if (-e $stderrfile) {
-		my $qsub_exec = "TMP_qsub_" . $identifier;
+		#my $qsub_exec = "TMP_qsub_" . $identifier; # not using this because we need to minimize the number of files in a directory
+		my $qsub_exec = $identifier . "_TMP_qsub";
 		`rm $stderrfile $stdoutfile $qsub_exec`;
 	    }
 	    next; # skip if file already exists and is not zero size
