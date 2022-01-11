@@ -3195,14 +3195,19 @@ sub compute_alignments
 	    close(OUT_STATS);
 	    next; #nothing to align
 	}
-	my $identifier = basename($mf_file);
+	#my $identifier = basename($mf_file); # not using this because we need to minimize the number of files in a directory
+	my $identifier = $mf_file;
 	$identifier =~ s/\.fasta$//;
 	my $muscle_args = " -in $mf_file -out $msa_file -diags -quiet -verbose";
 	my $muscle_exec = $muscle_path . $muscle_args;
-	my $stdoutfile = $cwd . "/" . $identifier . "_stdout";
-	my $stderrfile = $cwd . "/" . $identifier . "_stderr";
-	my $working_dir = $cwd;
-	my $qsub_exec = "TMP_qsub_" . $identifier;
+	#my $stdoutfile = $cwd . "/" . $identifier . "_stdout"; # not using this because we need to minimize the number of files in a directory
+	#my $stderrfile = $cwd . "/" . $identifier . "_stderr"; # not using this because we need to minimize the number of files in a directory
+	my $stdoutfile = $identifier . "_stdout";
+	my $stderrfile = $identifier . "_stderr";
+	#my $working_dir = $cwd; # not using this because we need to minimize the number of files in a directory
+	my $working_dir = dirname($identifier);
+	#my $qsub_exec = "TMP_qsub_" . $identifier; # not using this because we need to minimize the number of files in a directory
+	my $qsub_exec = $identifier . "_TMP_qsub";
 	print STDERR "Launched $muscle_exec\n" if ($DEBUG);
 	$job_ids{&launch_grid_job($qsub_exec, $job_name, $project, $working_dir, $muscle_exec, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
 	$num_jobs++;
@@ -3217,10 +3222,13 @@ sub compute_alignments
     foreach my $line (@mf_files) {
 	(my $mf_file, my $num_alleles, my $empty) = split(/\t/, $line);  # split the scalar $line on tab
 	my $msa_file = $mf_file;
-	my $identifier = basename($mf_file);
+	#my $identifier = basename($mf_file); # not using this because we need to minimize the number of files in a directory
+	my $identifier = $mf_file;
 	$identifier =~ s/\.fasta$//;
-	my $stdoutfile = $cwd . "/" . $identifier . "_stdout";
-	my $stderrfile = $cwd . "/" . $identifier . "_stderr";
+	#my $stdoutfile = $cwd . "/" . $identifier . "_stdout"; # not using this because we need to minimize the number of files in a directory
+	#my $stderrfile = $cwd . "/" . $identifier . "_stderr"; # not using this because we need to minimize the number of files in a directory
+	my $stdoutfile = $identifier . "_stdout";
+	my $stderrfile = $identifier . "_stderr";
 	$msa_file =~ s/\.fasta$//;
 	$msa_file .= ".afa";
 	if ($num_alleles <= 1) {
@@ -3251,11 +3259,15 @@ sub compute_alignments
 	    foreach my $line (@mf_files) {
 		(my $mf_file, my $num_alleles, my $empty) = split(/\t/, $line);  # split the scalar $line on tab
 		my $msa_file = $mf_file;
-		my $identifier = basename($mf_file);
+		#my $identifier = basename($mf_file); # not using this because we need to minimize the number of files in a directory
+		my $identifier = $mf_file;
 		$identifier =~ s/\.fasta$//;
-		my $qsub_exec = "TMP_qsub_" . $identifier;
-		my $stdoutfile = $cwd . "/" . $identifier . "_stdout";
-		my $stderrfile = $cwd . "/" . $identifier . "_stderr";
+		#my $qsub_exec = "TMP_qsub_" . $identifier; # not using this because we need to minimize the number of files in a directory
+		my $qsub_exec = $identifier . "_TMP_qsub";
+		#my $stdoutfile = $cwd . "/" . $identifier . "_stdout"; # not using this because we need to minimize the number of files in a directory
+		#my $stderrfile = $cwd . "/" . $identifier . "_stderr"; # not using this because we need to minimize the number of files in a directory
+		my $stdoutfile = $identifier . "_stdout";
+		my $stderrfile = $identifier . "_stderr";
 		$msa_file =~ s/\.fasta$//;
 		$msa_file .= ".afa";
 		if ($num_alleles <= 1) {
@@ -3270,7 +3282,8 @@ sub compute_alignments
 		}
 		my $muscle_args = " -in $mf_file -out $msa_file -diags -quiet -verbose";
 		my $muscle_exec = $muscle_path . $muscle_args;
-		my $working_dir = $cwd;
+		#my $working_dir = $cwd; # not using this because we need to minimize the number of files in a directory
+		my $working_dir = dirname($identifier);
 		print STDERR "Relaunched $muscle_exec\n" if ($DEBUG);
 		$job_ids{&launch_grid_job($qsub_exec, $job_name, $project, $working_dir, $muscle_exec, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
 		$num_jobs++;
@@ -3299,14 +3312,18 @@ sub compute_alignments
 	if ((-e $stats_file) && (-s $stats_file)) {
 	    next; # skip if file already exists and is not zero size
 	}
-	my $identifier = basename($msa_file);
+	#my $identifier = basename($msa_file); # not using this because we need to minimize the number of files in a directory
+	my $identifier = $msa_file;
 	$identifier =~ s/\.afa$//;
 	my $stats_args = " $msa_file";
 	my $stats_exec = $rscript_path . " " . $stats_path . $stats_args;
 	my $stdoutfile = $stats_file;
-	my $stderrfile = $cwd . "/" . $identifier . "_stderr";
-	my $working_dir = $cwd;
-	my $qsub_exec = "TMP_qsub_" . $identifier;
+	#my $stderrfile = $cwd . "/" . $identifier . "_stderr"; # not using this because we need to minimize the number of files in a directory
+	my $stderrfile = $identifier . "_stderr";
+	#my $working_dir = $cwd; # not using this because we need to minimize the number of files in a directory
+	my $working_dir = dirname($identifier);
+	#my $qsub_exec = "TMP_qsub_" . $identifier; # not using this because we need to minimize the number of files in a directory
+	my $qsub_exec = $identifier . "_TMP_qsub";
 	print STDERR "Launched $stats_exec\n" if ($DEBUG);
 	$job_ids{&launch_grid_job($qsub_exec, $job_name, $project, $working_dir, $stats_exec, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
 	$num_jobs++;
@@ -3320,14 +3337,17 @@ sub compute_alignments
     $failed_jobs = 0;
     foreach my $msa_file (@msa_files) {
 	my $stats_file = $msa_file;
-	my $identifier = basename($msa_file);
+	#my $identifier = basename($msa_file); # not using this because we need to minimize the number of files in a directory
+	my $identifier = $msa_file;
 	$identifier =~ s/\.fasta$//;
-	my $stderrfile = $cwd . "/" . $identifier . "_stderr";
+	#my $stderrfile = $cwd . "/" . $identifier . "_stderr"; # not using this because we need to minimize the number of files in a directory
+	my $stderrfile = $identifier . "_stderr";
 	$stats_file =~ s/\.afa$//;
 	$stats_file .= ".stats";
 	if ((-e $stats_file) && (-s $stats_file)) {
 	    if (-e $stderrfile) {
-		my $qsub_exec = "TMP_qsub_" . $identifier;
+		#my $qsub_exec = "TMP_qsub_" . $identifier; # not using this because we need to minimize the number of files in a directory
+		my $qsub_exec = $identifier . "_TMP_qsub";
 		`rm $stderrfile $qsub_exec`;
 	    }
 	    next; # skip if file already exists and is not zero size
@@ -3347,10 +3367,13 @@ sub compute_alignments
 	    $num_jobs = 0;
 	    foreach my $msa_file (@msa_files) {
 		my $stats_file = $msa_file;
-		my $identifier = basename($msa_file);
+		#my $identifier = basename($msa_file); # not using this because we need to minimize the number of files in a directory
+		my $identifier = $msa_file;
 		$identifier =~ s/\.afa$//;
-		my $stderrfile = $cwd . "/" . $identifier . "_stderr";
-		my $qsub_exec = "TMP_qsub_" . $identifier;
+		#my $stderrfile = $cwd . "/" . $identifier . "_stderr"; # not using this because we need to minimize the number of files in a directory
+		my $stderrfile = $identifier . "_stderr";
+		#my $qsub_exec = "TMP_qsub_" . $identifier; # not using this because we need to minimize the number of files in a directory
+		my $qsub_exec = $identifier . "_TMP_qsub";
 		$stats_file =~ s/\.afa$//;
 		$stats_file .= ".stats";
 		if ((-e $stats_file) && (-s $stats_file)) {
@@ -3362,7 +3385,8 @@ sub compute_alignments
 		my $stats_args = " $msa_file";
 		my $stats_exec = $rscript_path . " " . $stats_path . $stats_args;
 		my $stdoutfile = $stats_file;
-		my $working_dir = $cwd;
+		#my $working_dir = $cwd; # not using this because we need to minimize the number of files in a directory
+		my $working_dir = dirname($identifier);
 		print STDERR "Relaunched $stats_exec\n";
 		$job_ids{&launch_grid_job($qsub_exec, $job_name, $project, $working_dir, $stats_exec, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
 		$num_jobs++;
