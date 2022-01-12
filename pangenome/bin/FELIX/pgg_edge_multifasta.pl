@@ -1919,14 +1919,14 @@ sub process_matchtable {
 							    my $codon = substr($sequence, $index, 3);
 							    if (($codon eq "TAA") || ($codon eq "TAG") || ($codon eq "TGA")) {
 								# output possible stop codon
-								$frame++;
+								my $out_frame = $frame + 1;
 								my $stop_codon_coord;
 								if ($feat_hash{$feat_name}->{'5p'} < $feat_hash{$feat_name}->{'3p'}) {
 								    $stop_codon_coord = $feat_hash{$feat_name}->{'5p'} + $index;
 								} else {
 								    $stop_codon_coord = $feat_hash{$feat_name}->{'5p'} - $index;
 								}
-								print STOPCODONFILE "$target_id\t$feat_hash{$feat_name}->{'contig'}\tpossible_stop_codon\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\t$frame\t$stop_codon_coord\t$sequence\n";
+								print STOPCODONFILE "$target_id\t$feat_hash{$feat_name}->{'contig'}\tpossible_stop_codon\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\t$out_frame\t$stop_codon_coord\t$sequence\n";
 								last;
 							    }
 							    $index += 3;
@@ -1940,15 +1940,15 @@ sub process_matchtable {
 							    my $codon = substr($revcomp, $index, 3);
 							    if (($codon eq "TAA") || ($codon eq "TAG") || ($codon eq "TGA")) {
 								# output possible stop codon
-								$frame++;
-								$frame = - $frame;
+								my $out_frame = $frame + 1;
+								$out_frame = - $out_frame;
 								my $stop_codon_coord;
 								if ($feat_hash{$feat_name}->{'5p'} < $feat_hash{$feat_name}->{'3p'}) {
 								    $stop_codon_coord = $feat_hash{$feat_name}->{'3p'} - $index;
 								} else {
 								    $stop_codon_coord = $feat_hash{$feat_name}->{'3p'} + $index;
 								}
-								print STOPCODONFILE "$target_id\t$feat_hash{$feat_name}->{'contig'}\tpossible_stop_codon\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\t$frame\t$stop_codon_coord\t$sequence\n";
+								print STOPCODONFILE "$target_id\t$feat_hash{$feat_name}->{'contig'}\tpossible_stop_codon\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\t$out_frame\t$stop_codon_coord\t$sequence\n";
 								last;
 							    }
 							    $index += 3;
