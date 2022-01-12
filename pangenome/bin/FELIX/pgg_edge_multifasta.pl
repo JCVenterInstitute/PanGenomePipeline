@@ -1917,12 +1917,19 @@ sub process_matchtable {
 							my $index = $frame;
 							while ($index <= $last_index) {
 							    my $codon = substr($sequence, $index, 3);
-							    $index += 3;
 							    if (($codon eq "TAA") || ($codon eq "TAG") || ($codon eq "TGA")) {
 								# output possible stop codon
-								print STOPCODONFILE "$target_id\t$feat_hash{$feat_name}->{'contig'}\tpossible_stop_codon\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\t$frame\n";
+								$frame++;
+								my $stop_codon_coord;
+								if ($feat_hash{$feat_name}->{'5p'} < $feat_hash{$feat_name}->{'3p'}) {
+								    $stop_codon_coord = $feat_hash{$feat_name}->{'5p'} + $index;
+								} else {
+								    $stop_codon_coord = $feat_hash{$feat_name}->{'5p'} - $index;
+								}
+								print STOPCODONFILE "$target_id\t$feat_hash{$feat_name}->{'contig'}\tpossible_stop_codon\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\t$frame\t$stop_codon_coord\t$sequence\n";
 								last;
 							    }
+							    $index += 3;
 							}
 						    }
 						}
@@ -1931,13 +1938,20 @@ sub process_matchtable {
 							my $index = $frame;
 							while ($index <= $last_index) {
 							    my $codon = substr($revcomp, $index, 3);
-							    $index += 3;
 							    if (($codon eq "TAA") || ($codon eq "TAG") || ($codon eq "TGA")) {
 								# output possible stop codon
-								$frame += 3;
-								print STOPCODONFILE "$target_id\t$feat_hash{$feat_name}->{'contig'}\tpossible_stop_codon\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\t$frame\n";
+								$frame++;
+								$frame = - $frame;
+								my $stop_codon_coord;
+								if ($feat_hash{$feat_name}->{'5p'} < $feat_hash{$feat_name}->{'3p'}) {
+								    $stop_codon_coord = $feat_hash{$feat_name}->{'3p'} - $index;
+								} else {
+								    $stop_codon_coord = $feat_hash{$feat_name}->{'3p'} + $index;
+								}
+								print STOPCODONFILE "$target_id\t$feat_hash{$feat_name}->{'contig'}\tpossible_stop_codon\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\t$frame\t$stop_codon_coord\t$sequence\n";
 								last;
 							    }
+							    $index += 3;
 							}
 						    }
 						}
@@ -3388,7 +3402,7 @@ sub compute_alignments
 		my $stdoutfile = $stats_file;
 		#my $working_dir = $cwd; # not using this because we need to minimize the number of files in a directory
 		my $working_dir = dirname($identifier);
-		print STDERR "Relaunched $stats_exec\n";
+		print STDERR "Relaunched $stats_exec\n" if ($DEBUG);
 		$job_ids{&launch_grid_job($qsub_exec, $job_name, $project, $working_dir, $stats_exec, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
 		$num_jobs++;
 	    }
