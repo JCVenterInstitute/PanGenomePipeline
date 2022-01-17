@@ -1701,14 +1701,14 @@ sub process_matchtable {
 		$total_clus_alle_pgg += $gene_count;
 	    }
 	    if ($no_stats) {
-		if ($gene_count > 0) {
-		    $renumber[$cluster_num] = $reduced_cluster_num;
-		    $reduced_cluster_num++;
-		} else {
-		    $renumber[$cluster_num] = 0;
-		}
-		$cluster_num++;
-		next; # do not generate the anomalies file or multiple sequence alignments
+		#if ($gene_count > 0) {
+		#    $renumber[$cluster_num] = $reduced_cluster_num;
+		#    $reduced_cluster_num++;
+		#} else {
+		#    $renumber[$cluster_num] = 0;
+		#}
+		#$cluster_num++; this is handled at the end of the loop now
+		last; # do not generate the anomalies file or multiple sequence alignments (get out of more than one loop)
 	    }
 	    if ($compute_all || ($target_id ne "")) {
 		if ($compute_all && ($gene_count > 0)) {
