@@ -2680,7 +2680,7 @@ sub process_pgg {
 			$total_edge_alle_pgg += $gene_count;
 		    }
 		}
-		next; # do not generate the anomalies file or multiple sequence alignments
+		last; # do not generate the anomalies file or multiple sequence alignments (get out of more than one loop)
 	    }
 	    if ($cluster1 <= $cluster2) { # only need to do this for one orientation of the edge - not sure if the clusters can be equal or if there are two edges in this case - do a 3' 5' test?
 		if ($gene_count > 1) {
