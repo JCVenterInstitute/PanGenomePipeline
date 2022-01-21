@@ -3245,15 +3245,21 @@ sub compute_alignments
 	my $stderrfile = $identifier . "_stderr";
 	$msa_file =~ s/\.fasta$//;
 	$msa_file .= ".afa";
+	#my $qsub_exec = "TMP_qsub_" . $identifier; # not using this because we need to minimize the number of files in a directory
+	my $qsub_exec = $identifier . "_TMP_qsub";
 	if ($num_alleles <= 1) {
 	    next; #nothing to align
 	}
 	if ((-e $msa_file) && (-s $msa_file)) {
 	    push (@msa_files, $msa_file);
 	    if (-e $stderrfile) {
-		#my $qsub_exec = "TMP_qsub_" . $identifier; # not using this because we need to minimize the number of files in a directory
-		my $qsub_exec = $identifier . "_TMP_qsub";
-		`rm $stderrfile $stdoutfile $qsub_exec`;
+		unlink $stderrfile;
+	    }
+	    if (-e $stdoutfile) {
+		unlink $stdoutfile;
+	    }
+	    if (-e $qsub_exec) {
+		unlink $qsub_exec;
 	    }
 	    next; # skip if file already exists and is not zero size
 	} else {
@@ -3288,11 +3294,17 @@ sub compute_alignments
 		if ($num_alleles <= 1) {
 		    next; #nothing to align
 		}
+		if (-e $stderrfile) {
+		    unlink $stderrfile;
+		}
+		if (-e $stdoutfile) {
+		    unlink $stdoutfile;
+		}
+		if (-e $qsub_exec) {
+		    unlink $qsub_exec;
+		}
 		if ((-e $msa_file) && (-s $msa_file)) {
 		    push (@msa_files, $msa_file);
-		    if (-e $stderrfile) {
-			`rm $stderrfile $stdoutfile $qsub_exec`;
-		    }
 		    next; # skip if file already exists and is not zero size
 		}
 		my $muscle_args = " -in $mf_file -out $msa_file -diags -quiet -verbose";
@@ -3359,11 +3371,14 @@ sub compute_alignments
 	my $stderrfile = $identifier . "_stderr";
 	$stats_file =~ s/\.afa$//;
 	$stats_file .= ".stats";
+	#my $qsub_exec = "TMP_qsub_" . $identifier; # not using this because we need to minimize the number of files in a directory
+	my $qsub_exec = $identifier . "_TMP_qsub";
 	if ((-e $stats_file) && (-s $stats_file)) {
 	    if (-e $stderrfile) {
-		#my $qsub_exec = "TMP_qsub_" . $identifier; # not using this because we need to minimize the number of files in a directory
-		my $qsub_exec = $identifier . "_TMP_qsub";
-		`rm $stderrfile $qsub_exec`;
+		unlink $stderrfile;
+	    }
+	    if (-e $qsub_exec) {
+		unlink $qsub_exec;
 	    }
 	    next; # skip if file already exists and is not zero size
 	} else {
@@ -3391,10 +3406,13 @@ sub compute_alignments
 		my $qsub_exec = $identifier . "_TMP_qsub";
 		$stats_file =~ s/\.afa$//;
 		$stats_file .= ".stats";
+		if (-e $stderrfile) {
+		    unlink $stderrfile;
+		}
+		if (-e $qsub_exec) {
+		    unlink $qsub_exec;
+		}
 		if ((-e $stats_file) && (-s $stats_file)) {
-		    if (-e $stderrfile) {
-			`rm $stderrfile $qsub_exec`;
-		    }
 		    next; # skip if file already exists and is not zero size
 		}
 		my $stats_args = " $msa_file";
