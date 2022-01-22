@@ -3080,12 +3080,24 @@ sub launch_grid_job {
     `chmod +x $qsub_exec`;
     $qsub_command .= " $qsub_exec";
 
-    my $job_id = `$qsub_command`;
-    $job_id =~ s/\s*//g; # remove all whitespace characters
-    $job_id =~ s/\..*//; # remove all characters after the first .
-
+    my $iteration = 0;
+    my $job_id;
+    while ($iteration < 10) {
+	$job_id = `$qsub_command`;
+	$job_id =~ s/\s*//g; # remove all whitespace characters
+	$job_id =~ s/\..*//; # remove all characters after the first .
+	
+	if (&bash_error_check($qsub_command, $?, $!)) {
+	    #die "Problem submitting the job!: $job_id\n$qsub_command\n$shell_script\n$qsub_exec\n";
+	    #try multiple qsubs if they fail
+	    sleep 30; # need to wait to make sure qsub recovers from whatever funk it is in
+	} else {
+	    last;
+	}
+	$iteration++;
+    }
     if (&bash_error_check($qsub_command, $?, $!)) {
-        die "Problem submitting the job!: $job_id\n$qsub_command\n$shell_script\n$qsub_exec\n";
+	die "Problem submitting the job!: $job_id\n$qsub_command\n$shell_script\n$qsub_exec\n";
     }
 
     return $job_id;
@@ -3196,17 +3208,21 @@ sub compute_alignments
 	    next; # skip if file already exists and is not zero size
 	}
 	if ($empty) {
-	    unless (open(OUT_EMPTY, ">", "$empty_file")) {
-		die ("cannot open empty indicator file: $empty_file!\n");
+	    if (!(-e $empty_file)) {
+		unless (open(OUT_EMPTY, ">", "$empty_file")) {
+		    die ("cannot open empty indicator file: $empty_file!\n");
+		}
+		close(OUT_EMPTY); # creating a zero length indicator file that this edge contained a zero length entry
 	    }
-	    close(OUT_EMPTY); # creating a zero length indicator file that this edge contained a zero length entry
 	}
 	if ($num_alleles <= 1) {
-	    unless (open(OUT_STATS, ">", "$stats_file")) {
-		die ("cannot open alignment stats file: $stats_file!\n");
+	    if (!(-e $stats_file)) {
+		unless (open(OUT_STATS, ">", "$stats_file")) {
+		    die ("cannot open alignment stats file: $stats_file!\n");
+		}
+		print OUT_STATS "\tMean\tMedian\tMin\tMax\tSD\t0%\t5%\t10%\t15%\t20%\t25%\t30%\t35%\t40%\t45%\t50%\t55%\t60%\t65%\t70%\t75%\t80%\t85%\t90%\t95%\t100%\nAll\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\nUniqueAlleleCount\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\n"; #print baseline stats when no alignment is available (mean, median, maximmum, std. dev. of the normalized edit distance - percent identity difference)
+		close(OUT_STATS);
 	    }
-	    print OUT_STATS "\tMean\tMedian\tMin\tMax\tSD\t0%\t5%\t10%\t15%\t20%\t25%\t30%\t35%\t40%\t45%\t50%\t55%\t60%\t65%\t70%\t75%\t80%\t85%\t90%\t95%\t100%\nAll\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\nUniqueAlleleCount\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\n"; #print baseline stats when no alignment is available (mean, median, maximmum, std. dev. of the normalized edit distance - percent identity difference)
-	    close(OUT_STATS);
 	    next; #nothing to align
 	}
 	#my $identifier = basename($mf_file); # not using this because we need to minimize the number of files in a directory
