@@ -2241,9 +2241,23 @@ sub process_pgg {
 		    $feat_name1 = shift @multiple_feat_names;
 		    my $feat_name1_key = $feat_name1 . "_" . $whichend1;
 		    if (!defined $cluster_adj{$feat_name1_key}) {
-			die ("ERROR: cluster adjacency hash not defined for $feat_name1_key for edge $edge_name\n");
+			#die ("ERROR: cluster adjacency hash not defined for $feat_name1_key for edge $edge_name\n");
+			print STDERR "WARNING: cluster adjacency hash not defined for $feat_name1_key for edge $edge_name\n";
+			next; #this is not the right edge
 		    }
 		    $feat_name2 = substr($cluster_adj{$feat_name1_key}, 0, -2);
+		    my @multiple_feat_names_2 = split(/,/, $cluster_to_feat_hash{$genome_tag}->{$cluster2});  # split feat_name on , to allow for multiple featnames per cluster in the target genome
+		    my $last_feat_name;
+		    while ((scalar @multiple_feat_names_2) != 0) {
+			$last_feat_name = shift @multiple_feat_names_2;
+			if ($last_feat_name eq $feat_name2) {
+			    last;
+			}
+		    }
+		    if ($last_feat_name ne $feat_name2) {
+			print STDERR "WARNING: for edge $edge_name (genome $genome_tag) cluster features $feat_name1:$feat_name2 are not the right edge";
+			next; #this is not the right edge
+		    }
 		} else {
 		    $feat_name1 = $cluster_to_feat_hash{$genome_tag}->{$cluster1};
 		    $feat_name2 = $cluster_to_feat_hash{$genome_tag}->{$cluster2};
@@ -2258,7 +2272,7 @@ sub process_pgg {
 		    die ("ERROR: process_pgg:pgg cluster to feat_name mapping is in conflict $genome_tag $cluster1 $cluster2!\n");
 		}
 		if ($contig1 ne $contig2) { # should not happen
-		    die ("ERROR: for edge $edge_value cluster features $feat_name1:$feat_name2 are not on the same contig $contig1:$contig2");
+		    die ("ERROR: for edge $edge_name (genome $genome_tag) cluster features $feat_name1:$feat_name2 are not on the same contig $contig1:$contig2");
 		}
 		if (($genome_tag ne $feat_hash{$feat_name1}->{'gtag'}) || ($genome_tag ne $feat_hash{$feat_name2}->{'gtag'})) { # should not happen
 		    die ("ERROR: Inconsistency in genome tag between $att_file, $matchtable_file, and $pgg_file for $feat_name1 and $feat_name2");
