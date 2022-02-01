@@ -520,6 +520,7 @@ sub get_genomes {  # obtain list of genomes - must be in the same order as the m
 		my $cur_att = "";
 		my $tag = "";
 		my $asmbl_id = "";
+		my $prev_asmbl_id = "";
 		while (<SINGATTFILE>) {
 		    my @att_line = ();
 		    my $med_pid = "";
@@ -553,9 +554,16 @@ sub get_genomes {  # obtain list of genomes - must be in the same order as the m
 		    $feat_hash{$feat_name}->{'gtag'} = $tag;
 		    $feat_hash{$feat_name}->{'contig'} = $asmbl_id;
 		    $feat_hash{$feat_name}->{'mpid'} = $med_pid; #this is the percentage identity of the medoid blast hit from the PGG annotation of the target genome
+		    if (($prev_att ne "") && ($prev_asmbl_id ne $asmbl_id)) {
+			if ($is_circular{$tag}->{$asmbl_id} && ($first_att ne "") && ($prev_att ne "")) {
+			    $cluster_adj{$first_att} = $prev_att;
+			    $cluster_adj{$prev_att} = $first_att;
+			}
+			$first_att = "";
+		    }
 		    if ($end5 < $end3) {
 			$cur_att = $feat_name . "_5";
-			if ($prev_att ne "") {
+			if (($prev_att ne "") && ($prev_asmbl_id eq $asmbl_id)) {
 			    $cluster_adj{$cur_att} = $prev_att;
 			    $cluster_adj{$prev_att} = $cur_att;
 			}
@@ -565,7 +573,7 @@ sub get_genomes {  # obtain list of genomes - must be in the same order as the m
 			$prev_att = $feat_name . "_3";
 		    } else {
 			$cur_att = $feat_name . "_3";
-			if ($prev_att ne "") {
+			if (($prev_att ne "") && ($prev_asmbl_id eq $asmbl_id)) {
 			    $cluster_adj{$cur_att} = $prev_att;
 			    $cluster_adj{$prev_att} = $cur_att;
 			}
@@ -574,6 +582,7 @@ sub get_genomes {  # obtain list of genomes - must be in the same order as the m
 			}
 			$prev_att = $feat_name . "_5";
 		    }
+		    $prev_asmbl_id = $asmbl_id;
 		}
 		close (SINGATTFILE);
 		if ($is_circular{$tag}->{$asmbl_id} && ($first_att ne "") && ($prev_att ne "")) {
@@ -2255,7 +2264,7 @@ sub process_pgg {
 			}
 		    }
 		    if ($last_feat_name ne $feat_name2) {
-			print STDERR "WARNING: for edge $edge_name (genome $genome_tag) cluster features $feat_name1:$feat_name2 are not the right edge";
+			print STDERR "WARNING: for edge $edge_name (genome $genome_tag) cluster features $feat_name1:$feat_name2 are not the right edge\n";
 			next; #this is not the right edge
 		    }
 		} else {
