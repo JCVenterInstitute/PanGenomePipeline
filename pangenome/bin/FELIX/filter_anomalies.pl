@@ -985,8 +985,11 @@ while (my $line = <$infile>)  {
 	`$cmd`;
     } else {
 	$cmd = "$medoid_blast_path -blastout $out_PGG_blast -genome $PGGdb -topology $pggdb_topology_file -blast_directory $blast_directory -ld_load_directory $ld_load_directory -medoids $out_fasta_seqs -blast_task $blast_task -filter_anomalies";
+	if ($strip_version) {
+	    $cmd .= " -strip_version ";
+	}
 	if ($combine_topology_ids) {
-	    $cmd .= " -combine_topology_ids";
+	    $cmd .= " -combine_topology_ids ";
 	}
 	if ($use_local_disk) {
 	    $cmd .= " -use_local_disk ";
