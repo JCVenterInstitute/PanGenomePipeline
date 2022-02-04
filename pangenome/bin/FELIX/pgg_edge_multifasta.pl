@@ -2257,8 +2257,10 @@ sub process_pgg {
 		    $feat_name2 = substr($cluster_adj{$feat_name1_key}, 0, -2);
 		    my @multiple_feat_names_2 = split(/,/, $cluster_to_feat_hash{$genome_tag}->{$cluster2});  # split feat_name on , to allow for multiple featnames per cluster in the target genome
 		    my $last_feat_name;
+		    print STDERR "ME: $feat_name1 $feat_name2\n";
 		    while ((scalar @multiple_feat_names_2) != 0) {
 			$last_feat_name = shift @multiple_feat_names_2;
+			print STDERR "ME: $last_feat_name\n";
 			if ($last_feat_name eq $feat_name2) {
 			    last;
 			}
