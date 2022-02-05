@@ -1315,6 +1315,7 @@ sub process_matchtable {
 	my @multiple_feat_names;
 	my $first_one = 1;
 	my $gene_count = 0;
+	my $complete_feat_name;
 	while ($more_than_one) {
 	    my @feat_names = split(/\t/, $line);  # split the scalar $line on tab
 	    my @tmp_feat_names = ();  # when using multifasta files need these to delete out of %feat_hash
@@ -1458,6 +1459,7 @@ sub process_matchtable {
 		}
 		my $seq_len;
 		my $sequence;
+		$complete_feat_name = $feat_name;
 		if ($genome_tag eq $target_id) {
 		    if ($first_one) {
 			$first_one = 0;
@@ -2039,6 +2041,9 @@ sub process_matchtable {
 	    if ((scalar @multiple_feat_names) == 0) {
 		$more_than_one = 0;
 	    }
+	    if ($target_id ne "") {
+		$cluster_to_feat_hash{$target_id}->{$cluster_id} = $complete_feat_name;
+	    }
 	}
 	if ($gene_count > 0) {
 	    $renumber[$cluster_num] = $reduced_cluster_num;
@@ -2245,9 +2250,10 @@ sub process_pgg {
 		if ($genome_tag eq $target_id) {
 		    if ($first_one) {
 			$first_one = 0;
-			print STDERR "ME: $cluster_to_feat_hash{$genome_tag}->{$cluster1}\n";
+			print STDERR "ME1: $cluster_to_feat_hash{$genome_tag}->{$cluster1}\n";
 			@multiple_feat_names = split(/,/, $cluster_to_feat_hash{$genome_tag}->{$cluster1});  # split feat_name on , to allow for multiple featnames per cluster in the target genome
-			print STDERR "ME: $multiple_feat_names[0] : (scalar @multiple_feat_names)\n";
+			my $tmp_scalar = (scalar @multiple_feat_names);
+			print STDERR "ME2: $multiple_feat_names[0] : $tmp_scalar\n";
 		    }
 		    $feat_name1 = shift @multiple_feat_names;
 		    my $feat_name1_key = $feat_name1 . "_" . $whichend1;
@@ -2257,14 +2263,15 @@ sub process_pgg {
 			next; #this is not the right edge
 		    }
 		    $feat_name2 = substr($cluster_adj{$feat_name1_key}, 0, -2);
-		    print STDERR "ME: $cluster_to_feat_hash{$genome_tag}->{$cluster2}\n";
+		    print STDERR "ME3: $cluster_to_feat_hash{$genome_tag}->{$cluster2}\n";
 		    my @multiple_feat_names_2 = split(/,/, $cluster_to_feat_hash{$genome_tag}->{$cluster2});  # split feat_name on , to allow for multiple featnames per cluster in the target genome
 		    my $last_feat_name;
-		    print STDERR "ME: $feat_name1 $feat_name2\n";
-		    print STDERR "ME: $multiple_feat_names_2[0] : (scalar @multiple_feat_names_2)\n";
+		    print STDERR "ME4: $feat_name1 $feat_name2\n";
+		    my $tmp_scalar_2 = (scalar @multiple_feat_names_2);
+		    print STDERR "ME5: $multiple_feat_names_2[0] : $tmp_scalar_2\n";
 		    while ((scalar @multiple_feat_names_2) != 0) {
 			$last_feat_name = shift @multiple_feat_names_2;
-			print STDERR "ME: $last_feat_name\n";
+			print STDERR "ME6: $last_feat_name\n";
 			if ($last_feat_name eq $feat_name2) {
 			    last;
 			}
