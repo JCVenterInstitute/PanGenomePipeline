@@ -2245,7 +2245,9 @@ sub process_pgg {
 		if ($genome_tag eq $target_id) {
 		    if ($first_one) {
 			$first_one = 0;
+			print STDERR "ME: $cluster_to_feat_hash{$genome_tag}->{$cluster1}\n";
 			@multiple_feat_names = split(/,/, $cluster_to_feat_hash{$genome_tag}->{$cluster1});  # split feat_name on , to allow for multiple featnames per cluster in the target genome
+			print STDERR "ME: $multiple_feat_names[0] : (scalar @multiple_feat_names)\n";
 		    }
 		    $feat_name1 = shift @multiple_feat_names;
 		    my $feat_name1_key = $feat_name1 . "_" . $whichend1;
@@ -2255,9 +2257,11 @@ sub process_pgg {
 			next; #this is not the right edge
 		    }
 		    $feat_name2 = substr($cluster_adj{$feat_name1_key}, 0, -2);
+		    print STDERR "ME: $cluster_to_feat_hash{$genome_tag}->{$cluster2}\n";
 		    my @multiple_feat_names_2 = split(/,/, $cluster_to_feat_hash{$genome_tag}->{$cluster2});  # split feat_name on , to allow for multiple featnames per cluster in the target genome
 		    my $last_feat_name;
 		    print STDERR "ME: $feat_name1 $feat_name2\n";
+		    print STDERR "ME: $multiple_feat_names_2[0] : (scalar @multiple_feat_names_2)\n";
 		    while ((scalar @multiple_feat_names_2) != 0) {
 			$last_feat_name = shift @multiple_feat_names_2;
 			print STDERR "ME: $last_feat_name\n";
