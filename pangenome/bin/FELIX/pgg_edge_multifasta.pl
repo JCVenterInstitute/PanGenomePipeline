@@ -1459,10 +1459,10 @@ sub process_matchtable {
 		}
 		my $seq_len;
 		my $sequence;
-		$complete_feat_name = $feat_name;
 		if ($genome_tag eq $target_id) {
 		    if ($first_one) {
 			$first_one = 0;
+			$complete_feat_name = $feat_name;
 			@multiple_feat_names = split(/,/, $feat_name);  # split feat_name on , to allow for multiple featnames per cluster in the target genome
 		    }
 		    $feat_name = shift @multiple_feat_names;
