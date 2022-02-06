@@ -813,7 +813,7 @@ sub compute
 	`wc -l < $rearrange_name >> rearrange`;
 	`wc -l < $split_gene_name >> SplitGene`;
 	`cat $wgs_ani_name >> wgs_ANI`;                                                    # we don't need to do a line-count here, we just copy over the entire one-line file
-	#`rm $match_name $pgg_name $wgs_ani_name $new_match_name $new_pgg_name $new_att_name $new_clus_name`;
+	`rm $match_name $pgg_name $wgs_ani_name $new_match_name $new_pgg_name $new_att_name $new_clus_name`;
 	#`rm $match_name $pgg_name $wgs_ani_name $att_name $new_match_name $new_pgg_name $new_att_name $new_clus_name`;
 	#`rm $pgg_name $wgs_ani_name $new_match_name $new_pgg_name $new_att_name $new_clus_name`;
 	`rm $gene_ani_name $rearrange_name $split_gene_name $uniq_clus_name $uniq_edge_name`;
