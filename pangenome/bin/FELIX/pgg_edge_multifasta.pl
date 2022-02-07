@@ -1914,9 +1914,9 @@ sub process_matchtable {
 						print DIFFFILE "$target_id\t$feat_hash{$feat_name}->{'contig'}\tconserved_clus_allele\t$feat_hash{$feat_name}->{'5p'}\t$feat_hash{$feat_name}->{'3p'}\t$feat_hash{$feat_name}->{'len'}\t$feat_name\n";
 					    }
 					    if ($cols_target > 0) { # check for introduced stop codon
-						my @frames = split(/\t/, $medoid_orfs[$cluster_id]);
+						my @frames = split(/\t/, $medoid_orfs[($cluster_id - 1)]); #need the -1 since array indices start at 0
 						if ((scalar @frames) != 6) {
-						    die ("ERROR: ORFS line for cluster $cluster_id\n$medoid_orfs[$cluster_id]\ndoes not have six values\n");
+						    die ("ERROR: ORFS line for cluster $cluster_id\n$medoid_orfs[($cluster_id - 1)]\ndoes not have six values\n");
 						}
 						my $sequence = uc($target_sequence); # convert to uppercase
 						my $revcomp = reverse($sequence); # reverse
