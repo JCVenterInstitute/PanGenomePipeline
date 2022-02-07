@@ -744,6 +744,7 @@ while (my $line = <$infile>)  {
 		my $tmp_seq = substr($contigs{$cur_contig}, 0, ($cur_beg - 1));
 		if ($tmp_seq !~ /NNNNN/) { # do not use sequences with gaps in them - perhaps should split on gaps instead
 		    $beg_diverged = 1; # include context around the diverged region
+		    $end_diverged = (($contig_len{$cur_contig} - ($cur_beg - 1)) > CONTEXTLEN) ? (($cur_beg - 1) + CONTEXTLEN) : $contig_len{$cur_contig}; #instead of #cur_end to include context around the diverged region
 		    $diverged_type = "Unannotated_" . $cur_locus . "_" . $beg_diverged . "_" . ($cur_beg - 1);
 		}
 	    }
