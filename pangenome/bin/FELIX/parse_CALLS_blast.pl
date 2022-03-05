@@ -19,6 +19,7 @@ my $cwd = getcwd;
 my $commandline = join (" ", @ARGV);
 print STDERR "$commandline\n";
 my %plasmids = (); # key = plasmid name, value = plasmid sequence
+my %foreign_plasmids = (); # key = plasmid name, value = 1 to indicate this plasmid was deemed a foreign plasmid
 my %insertion_events = (); # key = insertion event name, value = CALLs line for the insertion event
 
 # CONSTANTS #
@@ -53,21 +54,19 @@ use constant CQEND => 14;
 
 my $help;
 my $debug;
-my $use_local_disk;
+my $engineering_found;
 my $files;
 
 GetOptions('files=s' => \ $files,
 	   'help' => \ $help,
-	   'debug' => \ $debug,
-	   'use_local_disk' => \ $use_local_disk);
+	   'debug' => \ $debug);
 
 if ($help) {
    system("clear");
    print STDERR <<_EOB_;
 GetOptions('files=s' => files,
 	   'help' => help,
-	   'debug' => debug,
-	   'use_local_disk' => use_local_disk);
+	   'debug' => debug);
 _EOB_
     exit(0);
 }
@@ -77,11 +76,13 @@ open (my $infile, "<", $files) || die ("ERROR: cannot open input file $files\n")
 while (my $line = <$infile>)  {
     # clear data structures for the next genome
     %plasmids = (); # key = plasmid name, value = plasmid sequence
+    %foreign_plasmids = (); # key = plasmid name, value = 1 to indicate this plasmid was deemed a foreign plasmid
     %insertion_events = (); # key = insertion event name, value = CALLs line for the insertion event
     
     chomp $line;
     (my $sample_name, my $species_name, my $calls_file_name, my $calls_btab_file_name, my $plasmids_fasta_file_name, my $plasmids_btab_file_name) = split(/\t/, $line);  # split the scalar $line on tab
-
+    $engineering_found = 0;
+    
     # read in plasmids from plasmids fasta file
     my $plasmids_fasta_file;
     unless (open ($plasmids_fasta_file, "<", $plasmids_fasta_file_name) )  {
@@ -129,7 +130,8 @@ while (my $line = <$infile>)  {
 	    $insertion_events{$calls_line[CQID]} = $line;
 	} elsif ($category =~ /DELETION/) {
 	    # Handle a deletion event
-	    print "$sample_name\tY\t$calls_line[CSID]\tY\tdeleted sequence : $calls_line[CDELETED]\t\tcomparison to PGG\t$species_name\tNA\tContig $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]:5' flank $calls_line[CFIVEP]:3' flank $calls_line[CTHREEP]: Reference $calls_line[CSID]:coordinates $calls_line[CSSTART],$calls_line[CSEND]\t$calls_line[CDLEN]\t$contig_id : $calls_line[CSID]\t\t\t\n";
+	    $engineering_found = 1;
+	    print "$sample_name\tyes\t$calls_line[CSID]\tyes\tdeleted sequence : $calls_line[CDELETED]\t\tcomparison to PGG\t$species_name\tNA\tContig $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]:5' flank $calls_line[CFIVEP]:3' flank $calls_line[CTHREEP]: Reference $calls_line[CSID]:coordinates $calls_line[CSSTART],$calls_line[CSEND]\t$calls_line[CDLEN]\t$contig_id : $calls_line[CSID]\t\t\t\n";
 	} else {
 	    next; # ignore other types
 	}
@@ -172,7 +174,9 @@ while (my $line = <$infile>)  {
 	}
 	if (($prev_qid ne $qid) && ($prev_qid ne "")) {
 	    if ($found) {
-		print "$sample_name\tY\t$max_sid $max_title\tY\tforeign plasmid : $plasmids{$prev_qid}\t\tcomparison to PGG: BLAST: $results\t$species_name\t$max_title\tContig $prev_qid\t$max_length\tplasmid\t\t\t\n";
+		$engineering_found = 1;
+		$foreign_plasmids{$prev_qid} = 1;
+		print "$sample_name\tyes\t$max_sid $max_title\tyes\tforeign plasmid : $plasmids{$prev_qid}\t\tcomparison to PGG: BLAST: $results\t$species_name\t$max_title\tContig $prev_qid\t$max_length\tplasmid\t\t\t\n";
 	    }
 	    $max_bitscore = 0;
 	    $max_title = "";
@@ -197,7 +201,9 @@ while (my $line = <$infile>)  {
 	}
     }
     if ($found) {
-	print "$sample_name\tY\t$max_sid $max_title\tY\tforeign plasmid : $plasmids{$prev_qid}\t\tcomparison to PGG: BLAST: $results\t$species_name\t$max_title\tContig $prev_qid\t$max_length\tplasmid\t\t\t\n";
+	$engineering_found = 1;
+	$foreign_plasmids{$prev_qid} = 1;
+	print "$sample_name\tyes\t$max_sid $max_title\tyes\tforeign plasmid : $plasmids{$prev_qid}\t\tcomparison to PGG: BLAST: $results\t$species_name\t$max_title\tContig $prev_qid\t$max_length\tplasmid\t\t\t\n";
     }
     close($plasmids_btab_file);
 
@@ -239,7 +245,11 @@ while (my $line = <$infile>)  {
 	    if ($found) {
 		my @calls_line = split(/\t/,$insertion_events{$prev_qid});
 		(my $contig_id, my $details) = split(/_DIV/, $calls_line[CQID]);
-		print "$sample_name\tY\t$calls_line[CSID]\tY\tinserted sequence : $calls_line[CINSERTED] : deleted sequence : $calls_line[CDELETED]\t\tcomparison to PGG: BLAST: $results\t$species_name\t$max_title\tContig $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]:5' flank $calls_line[CFIVEP]:3' flank $calls_line[CTHREEP]: Reference $calls_line[CSID]:coordinates $calls_line[CSSTART],$calls_line[CSEND]\tinsertion : $calls_line[CILEN] : deletion : $calls_line[CDLEN]\t$contig_id : $calls_line[CSID]\t\t\t\n";
+		if (!defined $foreign_plasmids{$contig_id}) {
+		    # only do this if this was not already called a foreign plasmid
+		    $engineering_found = 1;
+		    print "$sample_name\tyes\t$calls_line[CSID]\tyes\tinserted sequence : $calls_line[CINSERTED] : deleted sequence : $calls_line[CDELETED]\t\tcomparison to PGG: BLAST: $results\t$species_name\t$max_title\tContig $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]:5' flank $calls_line[CFIVEP]:3' flank $calls_line[CTHREEP]: Reference $calls_line[CSID]:coordinates $calls_line[CSSTART],$calls_line[CSEND]\tinsertion : $calls_line[CILEN] : deletion : $calls_line[CDLEN]\t$contig_id : $calls_line[CSID]\t\t\t\n";
+		}
 	    }
 	    $max_bitscore = 0;
 	    $max_title = "";
@@ -266,7 +276,14 @@ while (my $line = <$infile>)  {
     if ($found) {
 	my @calls_line = split(/\t/,$insertion_events{$prev_qid});
 	(my $contig_id, my $details) = split(/_DIV/, $calls_line[CQID]);
-	print "$sample_name\tY\t$calls_line[CSID]\tY\tinserted sequence : $calls_line[CINSERTED] : deleted sequence : $calls_line[CDELETED]\t\tcomparison to PGG: BLAST: $results\t$species_name\t$max_title\tContig $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]:5' flank $calls_line[CFIVEP]:3' flank $calls_line[CTHREEP]: Reference $calls_line[CSID]:coordinates $calls_line[CSSTART],$calls_line[CSEND]\tinsertion : $calls_line[CILEN] : deletion : $calls_line[CDLEN]\t$contig_id : $calls_line[CSID]\t\t\t\n";
+	if (!defined $foreign_plasmids{$contig_id}) {
+	    # only do this if this was not already called a foreign plasmid
+	    $engineering_found = 1;
+	    print "$sample_name\tyes\t$calls_line[CSID]\tyes\tinserted sequence : $calls_line[CINSERTED] : deleted sequence : $calls_line[CDELETED]\t\tcomparison to PGG: BLAST: $results\t$species_name\t$max_title\tContig $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]:5' flank $calls_line[CFIVEP]:3' flank $calls_line[CTHREEP]: Reference $calls_line[CSID]:coordinates $calls_line[CSSTART],$calls_line[CSEND]\tinsertion : $calls_line[CILEN] : deletion : $calls_line[CDLEN]\t$contig_id : $calls_line[CSID]\t\t\t\n";
+	}
+    }
+    if (!$engineering_found) {
+	print "$sample_name\tyes\tPGG\tno\tNA\t\tcomparison to PGG\t$species_name\tNA\tNA\tNA\tNA\tNA\tNA\t\n";
     }
     close($calls_btab_file);
 }
