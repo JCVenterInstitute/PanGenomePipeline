@@ -143,7 +143,7 @@ while (my $line = <$infile>)  {
     my $prev_qid = "";
     my $max_bitscore = 0;
     my $max_title = "";
-    my $max_sid;
+    my $max_sid = "";
     my $max_length = 0;
     my $found = 0;
     my $results = "";
@@ -165,6 +165,10 @@ while (my $line = <$infile>)  {
 	my $evalue = $split_line[9];      # evalue
 	my $bitscore = $split_line[10]; # bitscore
 	my $stitle = $split_line[11];     # subject title
+	if (scalar(@split_line) != 12) {
+	    print STDERR "WARNING: malformed btab line:\n$line\n";
+	    next;
+	}
 	if ($qid =~ /recover/) {
 	    next; # ignore recovered read contigs
 	}
@@ -212,7 +216,7 @@ while (my $line = <$infile>)  {
     $prev_qid = "";
     $max_bitscore = 0;
     $max_title = "";
-    $max_sid;
+    $max_sid = "";
     $max_length = 0;
     $found = 0;
     $results = "";
@@ -234,6 +238,10 @@ while (my $line = <$infile>)  {
 	my $evalue = $split_line[9];      # evalue
 	my $bitscore = $split_line[10]; # bitscore
 	my $stitle = $split_line[11];     # subject title
+	if (scalar(@split_line) != 12) {
+	    print STDERR "WARNING: malformed btab line:\n$line\n";
+	    next;
+	}
 	if ($qid =~ /recover/) {
 	    next; # ignore recovered read contigs
 	}
@@ -289,7 +297,7 @@ while (my $line = <$infile>)  {
 
     my $stop_codons_file;
     open($stop_codons_file, "<", $stop_codons_file_name) || die ("Couldn't open stop codons file $stop_codons_file_name for reading\n");
-    while (my $line = <$calls_btab_file>) {
+    while (my $line = <$stop_codons_file>) {
 	chomp($line);
 	my @split_line = split(/\t/,$line);
 	my $target_id = $split_line[0];         # target genome id
