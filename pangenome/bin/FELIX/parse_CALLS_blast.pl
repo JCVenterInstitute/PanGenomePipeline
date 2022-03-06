@@ -80,13 +80,13 @@ while (my $line = <$infile>)  {
     %insertion_events = (); # key = insertion event name, value = CALLs line for the insertion event
     
     chomp $line;
-    (my $sample_name, my $species_name, my $calls_file_name, my $calls_btab_file_name, my $plasmids_fasta_file_name, my $plasmids_btab_file_name) = split(/\t/, $line);  # split the scalar $line on tab
+    (my $sample_name, my $species_name, my $calls_file_name, my $calls_btab_file_name, my $plasmids_fasta_file_name, my $plasmids_btab_file_name, my $stop_codons_file_name) = split(/\t/, $line);  # split the scalar $line on tab
     $engineering_found = 0;
     
     # read in plasmids from plasmids fasta file
     my $plasmids_fasta_file;
     unless (open ($plasmids_fasta_file, "<", $plasmids_fasta_file_name) )  {
-	die ("cannot open plasmids fasta file file: $plasmids_fasta_file_name!\n");
+	die ("cannot open plasmids fasta file: $plasmids_fasta_file_name!\n");
     }
     my $save_input_separator = $/;
     my $line;
@@ -139,7 +139,7 @@ while (my $line = <$infile>)  {
     close($calls_file);
 
     my $plasmids_btab_file;
-    open($plasmids_btab_file, "<", $plasmids_btab_file_name) || die ("Couldn't open plasmids btab file $plasmids_btab_file for reading\n");
+    open($plasmids_btab_file, "<", $plasmids_btab_file_name) || die ("Couldn't open plasmids btab file $plasmids_btab_file_name for reading\n");
     my $prev_qid = "";
     my $max_bitscore = 0;
     my $max_title = "";
@@ -208,7 +208,7 @@ while (my $line = <$infile>)  {
     close($plasmids_btab_file);
 
     my $calls_btab_file;
-    open($calls_btab_file, "<", $calls_btab_file_name) || die ("Couldn't open CALLs btab file $calls_btab_file for reading\n");
+    open($calls_btab_file, "<", $calls_btab_file_name) || die ("Couldn't open CALLs btab file $calls_btab_file_name for reading\n");
     $prev_qid = "";
     $max_bitscore = 0;
     $max_title = "";
@@ -286,6 +286,28 @@ while (my $line = <$infile>)  {
 	print "$sample_name\tyes\tPGG\tno\tNA\t\tcomparison to PGG\t$species_name\tNA\tNA\tNA\tNA\tNA\tNA\t\n";
     }
     close($calls_btab_file);
+
+    my $stop_codons_file;
+    open($stop_codons_file, "<", $stop_codons_file_name) || die ("Couldn't open stop codons file $stop_codons_file_name for reading\n");
+    while (my $line = <$calls_btab_file>) {
+	chomp($line);
+	my @split_line = split(/\t/,$line);
+	my $target_id = $split_line[0];         # target genome id
+	my $contig_id = $split_line[1];         # contig id
+	my $type_stop_codon = $split_line[2];         # currently always possible_stop_codon
+	my $qstart = $split_line[3];      # query start
+	my $qend = $split_line[4];          # query end
+	my $qlen = $split_line[5];          # query length
+	my $feat_name = $split_line[6];          # feature name
+	my $frame = $split_line[7];      # which reading frame
+	my $stop_codon_coord = $split_line[8];      # stop codon coordinate on contig
+	my $feat_seq = $split_line[9]; # feature sequence
+	if ($contig_id =~ /recover/) {
+	    next; # ignore recovered read contigs
+	}
+	print "$sample_name\tyes\tPGG feature medoids\tyes\t$type_stop_codon in $feat_name : sequence : $feat_seq\t\tcomparison to PGG feature medoids\t$species_name\tNA\tContig $contig_id: feature $feat_name coordinates $qstart,$qend: stop codon contig coordinate $stop_codon_coord\tfeature length $qlen : stop codon length 1-3bp\t\t\t\t\n";
+    }
+    close($stop_codons_file);
 }
 
 exit(0);
