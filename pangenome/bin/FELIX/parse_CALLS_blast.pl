@@ -74,9 +74,9 @@ _EOB_
     exit(0);
 }
 
-my $out_clear_file = $out_prefix . "_clear.txt";
-my $out_stop_file = $out_prefix . "_stop_codons.txt";
-my $out_maybe_file = $out_prefix . "_maybe.txt";
+my $out_clear_file = $output_prefix . "_clear.txt";
+my $out_stop_file = $output_prefix . "_stop_codons.txt";
+my $out_maybe_file = $output_prefix . "_maybe.txt";
 
 # open output files
 open (my $out_clear, ">", $out_clear_file) || die ("ERROR: cannot open output file $out_clear_file\n");
@@ -270,9 +270,9 @@ while (my $line = <$infile>)  {
 	    next; # ignore contigs not in the CALLs file
 	}
 	if (($prev_qid ne $qid) && ($prev_qid ne "")) {
+	    my @calls_line = split(/\t/,$insertion_events{$prev_qid});
+	    (my $contig_id, my $details) = split(/_DIV/, $calls_line[CQID]);
 	    if ($found) {
-		my @calls_line = split(/\t/,$insertion_events{$prev_qid});
-		(my $contig_id, my $details) = split(/_DIV/, $calls_line[CQID]);
 		if (!defined $foreign_plasmids{$contig_id}) {
 		    # only do this if this was not already called a foreign plasmid
 		    $engineering_found = 1;
@@ -303,16 +303,18 @@ while (my $line = <$infile>)  {
 	    $max_length = $qlen;
 	}
     }
-    if ($found) {
+    if ($prev_qid ne "") {
 	my @calls_line = split(/\t/,$insertion_events{$prev_qid});
 	(my $contig_id, my $details) = split(/_DIV/, $calls_line[CQID]);
-	if (!defined $foreign_plasmids{$contig_id}) {
-	    # only do this if this was not already called a foreign plasmid
-	    $engineering_found = 1;
-	    print $out_clear "$sample_name\tyes\t$calls_line[CSID]\tyes\tinserted sequence : $calls_line[CINSERTED] : deleted sequence : $calls_line[CDELETED]\t\tcomparison to PGG: BLAST: $results\t$species_name\t$max_title\tContig $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]:5' flank $calls_line[CFIVEP]:3' flank $calls_line[CTHREEP]: Reference $calls_line[CSID]:coordinates $calls_line[CSSTART],$calls_line[CSEND]\tinsertion : $calls_line[CILEN] : deletion : $calls_line[CDLEN]\t$contig_id : $calls_line[CSID]\t\t\t\n";
+	if ($found) {
+	    if (!defined $foreign_plasmids{$contig_id}) {
+		# only do this if this was not already called a foreign plasmid
+		$engineering_found = 1;
+		print $out_clear "$sample_name\tyes\t$calls_line[CSID]\tyes\tinserted sequence : $calls_line[CINSERTED] : deleted sequence : $calls_line[CDELETED]\t\tcomparison to PGG: BLAST: $results\t$species_name\t$max_title\tContig $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]:5' flank $calls_line[CFIVEP]:3' flank $calls_line[CTHREEP]: Reference $calls_line[CSID]:coordinates $calls_line[CSSTART],$calls_line[CSEND]\tinsertion : $calls_line[CILEN] : deletion : $calls_line[CDLEN]\t$contig_id : $calls_line[CSID]\t\t\t\n";
+	    }
+	} elsif (!defined $foreign_plasmids{$contig_id}) {
+	    print $out_maybe "$sample_name\tyes\t$calls_line[CSID]\tyes\tinserted sequence : $calls_line[CINSERTED] : deleted sequence : $calls_line[CDELETED]\t\tcomparison to PGG: BLAST: $results\t$species_name\t$max_title\tContig $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]:5' flank $calls_line[CFIVEP]:3' flank $calls_line[CTHREEP]: Reference $calls_line[CSID]:coordinates $calls_line[CSSTART],$calls_line[CSEND]\tinsertion : $calls_line[CILEN] : deletion : $calls_line[CDLEN]\t$contig_id : $calls_line[CSID]\t\t\t\n";
 	}
-    } elsif ((!defined $foreign_plasmids{$contig_id} && ($prev_qid ne "")) {
-	print $out_maybe "$sample_name\tyes\t$calls_line[CSID]\tyes\tinserted sequence : $calls_line[CINSERTED] : deleted sequence : $calls_line[CDELETED]\t\tcomparison to PGG: BLAST: $results\t$species_name\t$max_title\tContig $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]:5' flank $calls_line[CFIVEP]:3' flank $calls_line[CTHREEP]: Reference $calls_line[CSID]:coordinates $calls_line[CSSTART],$calls_line[CSEND]\tinsertion : $calls_line[CILEN] : deletion : $calls_line[CDLEN]\t$contig_id : $calls_line[CSID]\t\t\t\n";
     }
     if (!$engineering_found) {
 	print $out_clear "$sample_name\tyes\tPGG\tno\tNA\t\tcomparison to PGG\t$species_name\tNA\tNA\tNA\tNA\tNA\tNA\t\n";
