@@ -140,6 +140,7 @@ while (my $line = <$infile>)  {
 	if (($category =~ /INSERTION/) || ($category =~ /PARTIAL INSERTION/)) {
 	    # Handle an insertion event
 	    $insertion_events{$calls_line[CQID]} = $line;
+	    print STDERR "SAW: $line\n";
 	} elsif ($category =~ /DELETION/) {
 	    # Handle a deletion event
 	    $engineering_found = 1;
@@ -149,6 +150,7 @@ while (my $line = <$infile>)  {
 	} elsif ($category =~ /TANDEM_DUPLICATION/) {
 	    print $out_maybe "$sample_name\tyes\t$calls_line[CSID]\tyes\ttandem duplication : inserted sequence : $calls_line[CINSERTED] : deleted sequence : $calls_line[CDELETED]\t\tcomparison to PGG\t$species_name\t\tContig $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]:5' flank $calls_line[CFIVEP]:3' flank $calls_line[CTHREEP]: Reference $calls_line[CSID]:coordinates $calls_line[CSSTART],$calls_line[CSEND]\tinsertion : $calls_line[CILEN] : deletion : $calls_line[CDLEN]\t$contig_id : $calls_line[CSID]\t\t\t\n";
 	} else {
+	    print STDERR "UNEXPECTED CALL TYPE: $category $line\n";
 	    next; # ignore other types
 	}
     }
@@ -198,8 +200,10 @@ while (my $line = <$infile>)  {
 		$foreign_plasmids{$prev_qid} = 1;
 		print $out_clear "$sample_name\tyes\t$max_sid $max_title\tyes\tforeign plasmid : $plasmids{$prev_qid}\t\tcomparison to PGG: BLAST: $results\t$species_name\t$max_title\tContig $prev_qid\t$max_length\tplasmid\t\t\t\n";
 	    } else {
+		$foreign_plasmids{$prev_qid} = 1;
 		print $out_maybe "$sample_name\tyes\t$max_sid $max_title\tyes\tforeign plasmid : $plasmids{$prev_qid}\t\tcomparison to PGG: BLAST: $results\t$species_name\t$max_title\tContig $prev_qid\t$max_length\tplasmid\t\t\t\n";
 	    }
+	    delete $plasmids{$prev_qid};
 	    $max_bitscore = 0;
 	    $max_title = "";
 	    $max_sid = "";
@@ -212,7 +216,7 @@ while (my $line = <$infile>)  {
 	    $results .= ":";
 	}
 	$results .= join(',', @split_line);
-	if (($stitle =~ /vector/i) || ($stitle =~ /construct/i) || ($stitle =~ /synthetic/i)) {
+	if (($stitle =~ /vector/i) || ($stitle =~ /construct/i) || ($stitle =~ /synthetic/i) || ($stitle =~ /marker plasmid/i)) {
 	    $found = 1;
 	}
 	if ($bitscore > $max_bitscore) {
@@ -222,14 +226,22 @@ while (my $line = <$infile>)  {
 	    $max_length = $qlen;
 	}
     }
-    if ($found) {
-	$engineering_found = 1;
-	$foreign_plasmids{$prev_qid} = 1;
-	print $out_clear "$sample_name\tyes\t$max_sid $max_title\tyes\tforeign plasmid : $plasmids{$prev_qid}\t\tcomparison to PGG: BLAST: $results\t$species_name\t$max_title\tContig $prev_qid\t$max_length\tplasmid\t\t\t\n";
-    } elsif ($prev_qid ne "") {
-	print $out_maybe "$sample_name\tyes\t$max_sid $max_title\tyes\tforeign plasmid : $plasmids{$prev_qid}\t\tcomparison to PGG: BLAST: $results\t$species_name\t$max_title\tContig $prev_qid\t$max_length\tplasmid\t\t\t\n";
+    if ($prev_qid ne "") {
+	if ($found) {
+	    $engineering_found = 1;
+	    $foreign_plasmids{$prev_qid} = 1;
+	    print $out_clear "$sample_name\tyes\t$max_sid $max_title\tyes\tforeign plasmid : $plasmids{$prev_qid}\t\tcomparison to PGG: BLAST: $results\t$species_name\t$max_title\tContig $prev_qid\t$max_length\tplasmid\t\t\t\n";
+	} else {
+	    $foreign_plasmids{$prev_qid} = 1;
+	    print $out_maybe "$sample_name\tyes\t$max_sid $max_title\tyes\tforeign plasmid : $plasmids{$prev_qid}\t\tcomparison to PGG: BLAST: $results\t$species_name\t$max_title\tContig $prev_qid\t$max_length\tplasmid\t\t\t\n";
+	}
+	delete $plasmids{$prev_qid};
     }
     close($plasmids_btab_file);
+    foreach my $key (keys %plasmids) {
+	$max_length = length($plasmids{$key});
+	print $out_maybe "$sample_name\tyes\tunknown plasmid\tyes\tforeign plasmid : $plasmids{$key}\t\tcomparison to PGG\t$species_name\tunknown plasmid\tContig $key\t$max_length\tplasmid\t\t\t\n";
+    }
 
     my $calls_btab_file;
     open($calls_btab_file, "<", $calls_btab_file_name) || die ("Couldn't open CALLs btab file $calls_btab_file_name for reading\n");
@@ -263,6 +275,7 @@ while (my $line = <$infile>)  {
 	    next;
 	}
 	if ($qid =~ /recover/) {
+	    print STDERR "SKIPPING recovered reads contig: $line\n";
 	    next; # ignore recovered read contigs
 	}
 	if (!defined $insertion_events{$qid}) {
@@ -280,7 +293,10 @@ while (my $line = <$infile>)  {
 		}
 	    } elsif (!defined $foreign_plasmids{$contig_id}) {
 		print $out_maybe "$sample_name\tyes\t$calls_line[CSID]\tyes\tinserted sequence : $calls_line[CINSERTED] : deleted sequence : $calls_line[CDELETED]\t\tcomparison to PGG: BLAST: $results\t$species_name\t$max_title\tContig $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]:5' flank $calls_line[CFIVEP]:3' flank $calls_line[CTHREEP]: Reference $calls_line[CSID]:coordinates $calls_line[CSSTART],$calls_line[CSEND]\tinsertion : $calls_line[CILEN] : deletion : $calls_line[CDLEN]\t$contig_id : $calls_line[CSID]\t\t\t\n";
+	    } else {
+		print STDERR "Not outputting previoulsy output as a foreign plasmid: $calls_line[CQID]\n"
 	    }
+	    delete $insertion_events{$prev_qid};
 	    $max_bitscore = 0;
 	    $max_title = "";
 	    $max_sid = "";
@@ -293,7 +309,7 @@ while (my $line = <$infile>)  {
 	    $results .= ":";
 	}
 	$results .= join(',', @split_line);
-	if (($stitle =~ /vector/i) || ($stitle =~ /construct/i) || ($stitle =~ /synthetic/i)) {
+	if (($stitle =~ /vector/i) || ($stitle =~ /construct/i) || ($stitle =~ /synthetic/i) || ($stitle =~ /marker plasmid/i)) {
 	    $found = 1;
 	}
 	if ($bitscore > $max_bitscore) {
@@ -314,13 +330,21 @@ while (my $line = <$infile>)  {
 	    }
 	} elsif (!defined $foreign_plasmids{$contig_id}) {
 	    print $out_maybe "$sample_name\tyes\t$calls_line[CSID]\tyes\tinserted sequence : $calls_line[CINSERTED] : deleted sequence : $calls_line[CDELETED]\t\tcomparison to PGG: BLAST: $results\t$species_name\t$max_title\tContig $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]:5' flank $calls_line[CFIVEP]:3' flank $calls_line[CTHREEP]: Reference $calls_line[CSID]:coordinates $calls_line[CSSTART],$calls_line[CSEND]\tinsertion : $calls_line[CILEN] : deletion : $calls_line[CDLEN]\t$contig_id : $calls_line[CSID]\t\t\t\n";
+	} else {
+	    print STDERR "Not outputting previoulsy output as a foreign plasmid: $calls_line[CQID]\n"
 	}
+	delete $insertion_events{$prev_qid};
+    }
+    close($calls_btab_file);
+    foreach my $key (keys %insertion_events) {
+	my @calls_line = split(/\t/,$insertion_events{$prev_qid});
+	(my $contig_id, my $details) = split(/_DIV/, $calls_line[CQID]);
+	print $out_maybe "$sample_name\tyes\t$calls_line[CSID]\tyes\tinserted sequence : $calls_line[CINSERTED] : deleted sequence : $calls_line[CDELETED]\t\tcomparison to PGG\t$species_name\tunknown insertion\tContig $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]:5' flank $calls_line[CFIVEP]:3' flank $calls_line[CTHREEP]: Reference $calls_line[CSID]:coordinates $calls_line[CSSTART],$calls_line[CSEND]\tinsertion : $calls_line[CILEN] : deletion : $calls_line[CDLEN]\t$contig_id : $calls_line[CSID]\t\t\t\n";
     }
     if (!$engineering_found) {
 	print $out_clear "$sample_name\tyes\tPGG\tno\tNA\t\tcomparison to PGG\t$species_name\tNA\tNA\tNA\tNA\tNA\tNA\t\n";
     }
-    close($calls_btab_file);
-
+    
     my $stop_codons_file;
     open($stop_codons_file, "<", $stop_codons_file_name) || die ("Couldn't open stop codons file $stop_codons_file_name for reading\n");
     while (my $line = <$stop_codons_file>) {
