@@ -337,7 +337,7 @@ while (my $line = <$infile>)  {
     }
     close($calls_btab_file);
     foreach my $key (keys %insertion_events) {
-	my @calls_line = split(/\t/,$insertion_events{$prev_qid});
+	my @calls_line = split(/\t/,$insertion_events{$key});
 	(my $contig_id, my $details) = split(/_DIV/, $calls_line[CQID]);
 	print $out_maybe "$sample_name\tyes\t$calls_line[CSID]\tyes\tinserted sequence : $calls_line[CINSERTED] : deleted sequence : $calls_line[CDELETED]\t\tcomparison to PGG\t$species_name\tunknown insertion\tContig $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]:5' flank $calls_line[CFIVEP]:3' flank $calls_line[CTHREEP]: Reference $calls_line[CSID]:coordinates $calls_line[CSSTART],$calls_line[CSEND]\tinsertion : $calls_line[CILEN] : deletion : $calls_line[CDLEN]\t$contig_id : $calls_line[CSID]\t\t\t\n";
     }
