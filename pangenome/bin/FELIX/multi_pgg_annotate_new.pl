@@ -53,6 +53,7 @@ my $no_MSA = 0;
 my $no_filter_anomalies = 0;
 my $less_memory = 0;
 my $max_grid_jobs = 50;
+my $no_grid = 0; # boolean variable indicating not to use the grid/qsub
 my $engdb = "";
 my $nrdb = "";
 my $pggdb = "";
@@ -99,6 +100,7 @@ GetOptions('genomes=s' => \ $genome_list_path,
 	   'id=i' => \ $id,
 	   'qsub_queue=s' => \ $qsub_queue,
 	   'max_grid_jobs=i' => \ $max_grid_jobs,
+	   'no_grid' => \ $no_grid,
 	   'use_local_disk' => \ $use_local_disk,
 	   'strip_version' => \ $strip_version,
 	   'no_MSA' => \ $no_MSA,
@@ -176,6 +178,7 @@ GetOptions('genomes=s' => \ genome_list_path,
 	   'id=i' => \ id,
 	   'qsub_queue=s' => \ qsub_queue,
 	   'max_grid_jobs=i' => \ max_grid_jobs,
+	   'no_grid' => \ no_grid,
 	   'use_local_disk' => \ use_local_disk,
 	   'strip_version' => \ strip_version,
 	   'no_MSA' => \ no_MSA,
@@ -427,7 +430,11 @@ sub do_core_list
 {
     if (-e $paralogs) {
 	if ($debug) {print STDERR "\n$single_copy_path -s $weights -p $paralogs -c $id > $single_copy\n";}
-	&single_grid_job("/usr/bin/time -o cpustats -v $single_copy_path -s $weights -p $paralogs -c $id > $single_copy");
+	if ($no_grid) {
+	    `/usr/bin/time -o cpustats -v $single_copy_path -s $weights -p $paralogs -c $id > $single_copy`;
+	} else {
+	    &single_grid_job("/usr/bin/time -o cpustats -v $single_copy_path -s $weights -p $paralogs -c $id > $single_copy");
+	}
 	`echo "***$single_copy_path***" >> overhead_cpustats`;
 	`cat cpustats >> overhead_cpustats`;
 	`rm cpustats`;
@@ -443,7 +450,11 @@ sub do_neighbors
 # run core_neighbor_finder.pl to generate input for pgg_annotate.pl
 {
     if ($debug) {print STDERR "\n$core_neighbor_path -v $pgg -cl $single_copy\n";}
-    &single_grid_job("/usr/bin/time -o cpustats -v $core_neighbor_path -v $pgg -cl $single_copy >> $logfile 2>&1");
+    if ($no_grid) {
+	`/usr/bin/time -o cpustats -v $core_neighbor_path -v $pgg -cl $single_copy >> $logfile 2>&1`;
+    } else {
+	&single_grid_job("/usr/bin/time -o cpustats -v $core_neighbor_path -v $pgg -cl $single_copy >> $logfile 2>&1");
+    }
     `echo "***$core_neighbor_path***" >> overhead_cpustats`;
     `cat cpustats >> overhead_cpustats`;
     `rm cpustats`;
@@ -627,16 +638,23 @@ sub compute
 	`cp $matchtable  $working_dir/matchtable.col`; 
 	`cp $pgg $working_dir/pgg.col`; 
 	`cp $genome_list_path $working_dir/combined_genome_list`;
-	if ($debug) {print STDERR "\nidentifier: $identifier \t path: $genome_path\n\n";}
-	if ($debug) {print STDERR "qsub $shell_script\n";}
-	$job_ids{&launch_grid_job($job_name, $project, $working_dir, $shell_script, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
-	$num_jobs++;
+	if ($debug) {print STDERR "\nidentifier: $identifier \t path: $genome_path\n$shell_script\n";}
+	if ($no_grid) {
+	    chdir $working_dir;
+	    `$shell_script > $stdoutfile 2> $stderrfile`;
+	    chdir $cwd;
+	} else {
+	    $job_ids{&launch_grid_job($job_name, $project, $working_dir, $shell_script, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
+	    $num_jobs++;
+	}
 	$total_jobs++;
-	if ($num_jobs >= $max_grid_jobs) {
+	if (!$no_grid && ($num_jobs >= $max_grid_jobs)) {
 	    $num_jobs = &wait_for_grid_jobs($qsub_queue, $job_name, ((($max_grid_jobs - 10) > 0) ? ($max_grid_jobs - 10) : 0), \%job_ids);
 	}
     }
-    &wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
+    if (!$no_grid) {
+	&wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
+    }
     
     $num_jobs = 0;
     my $failed_jobs = 0;
@@ -712,12 +730,17 @@ sub compute
 		    `cp $matchtable  $working_dir/matchtable.col`; 
 		    `cp $pgg $working_dir/pgg.col`; 
 		    `cp $genome_list_path $working_dir/combined_genome_list`;
-		    if ($debug) {print STDERR "\nidentifier: $identifier \t path: $genome_path\n\n";}
-		    if ($debug) {print STDERR "resubmit qsub $shell_script\n";}
-		    $job_ids{&launch_grid_job($job_name, $project, $working_dir, $shell_script, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
-		    $num_jobs++;
+		    if ($debug) {print STDERR "\nidentifier: $identifier \t path: $genome_path\n$shell_script\n";}
+		    if ($no_grid) {
+			chdir $working_dir;
+			`$shell_script > $stdoutfile 2> $stderrfile`;
+			chdir $cwd;
+		    } else {
+			$job_ids{&launch_grid_job($job_name, $project, $working_dir, $shell_script, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
+			$num_jobs++;
+		    }
 		    $resub_jobs++;
-		    if ($num_jobs >= $max_grid_jobs) {
+		    if (!$no_grid && ($num_jobs >= $max_grid_jobs)) {
 			$num_jobs = &wait_for_grid_jobs($qsub_queue, $job_name, ((($max_grid_jobs - 10) > 0) ? ($max_grid_jobs - 10) : 0), \%job_ids);
 		    }
 		}
@@ -728,7 +751,9 @@ sub compute
 		last; # no failed jobs
 	    }
 	    if ($debug) {print STDERR "$resub_jobs relaunched\n";}
-	    &wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
+	    if (!$no_grid) {
+		&wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
+	    }
 	}
 	if ($resub_jobs > 0) {
 	    $num_jobs = 0;

@@ -43,6 +43,7 @@ my $from_medoids = 0;
 my $strip_version = 0;
 my $less_memory = 0;
 my $max_grid_jobs = 50;
+my $no_grid = 0; # boolean variable indicating not to use the grid/qsub
 my $logfile = "iterate_ppg_graph.logfile";
 my $topology_file = "topology.txt";
 my $cwd = getcwd;
@@ -71,6 +72,7 @@ GetOptions('genomes=s' => \ $genome_list_path,
 	   'iterations=i' => \ $max_iterate,
 	   'id=i' => \ $id,
 	   'max_grid_jobs=i' => \ $max_grid_jobs,
+	   'no_grid' => \ $no_grid,
 	   'use_local_disk' => \ $use_local_disk,
 	   'strip_version' => \ $strip_version,
 	   'from_medoids' => \ $from_medoids,
@@ -133,6 +135,7 @@ GetOptions('genomes=s' => \ genome_list_path,
 	   'iterations=i' => \ max_iterate,
 	   'id=i' => \ id,
 	   'max_grid_jobs=i' => \ max_grid_jobs,
+	   'no_grid' => \ no_grid,
 	   'use_local_disk' => \ use_local_disk,
 	   'strip_version' => \ strip_version,
 	   'from_medoids' => \ from_medoids,
@@ -355,7 +358,11 @@ sub do_core_list
 {
     if (-e $paralogs) {
 	if ($debug) {print STDERR "\n$single_copy_path -s $weights -p $paralogs -c $id > $single_copy\n";}
-	&single_grid_job("$single_copy_path -s $weights -p $paralogs -c $id > $single_copy 2>> $logfile");
+	if ($no_grid) {
+	    `$single_copy_path -s $weights -p $paralogs -c $id > $single_copy 2>> $logfile`;
+	} else {
+	    &single_grid_job("$single_copy_path -s $weights -p $paralogs -c $id > $single_copy 2>> $logfile");
+	}
 	# need to check this completed successfully
 	die ("$single_copy does not exist or is zero size \n") unless ((-e $single_copy) && (-s $single_copy));    
     } else {
@@ -367,7 +374,11 @@ sub do_neighbors
 # run core_neighbor_finder.pl to generate input for pgg_annotate.pl
 {
     if ($debug) {print STDERR "\n$core_neighbor_path -v $pgg -cl $single_copy\n";}
-    &single_grid_job("$core_neighbor_path -v $pgg -cl $single_copy >> $logfile 2>&1");
+    if ($no_grid) {
+	`$core_neighbor_path -v $pgg -cl $single_copy >> $logfile 2>&1`;
+    } else {
+	&single_grid_job("$core_neighbor_path -v $pgg -cl $single_copy >> $logfile 2>&1");
+    }
     # need to check this completed successfully
     die ("$core_neighbors does not exist or is zero size \n") unless ((-e $core_neighbors) && (-s $core_neighbors));    
 }
@@ -506,16 +517,23 @@ sub compute
 	    }
 	    `mkdir $working_dir`;
 	    `ln $topology_name $single_copy $core_neighbors TMP_$identifier`;
-	    if ($debug) {print STDERR "\nidentifier: $identifier \t path: $genome_path\n\n";}
-	    if ($debug) {print STDERR "qsub $shell_script\n";}
-	    $job_ids{&launch_grid_job($job_name, $project, $working_dir, $shell_script, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
-	    $num_jobs++;
+	    if ($debug) {print STDERR "\nidentifier: $identifier \t path: $genome_path\n$shell_script\n";}
+	    if ($no_grid) {
+		chdir $working_dir;
+		`$shell_script > $stdoutfile 2> $stderrfile`;
+		chdir $cwd;
+	    } else {
+		$job_ids{&launch_grid_job($job_name, $project, $working_dir, $shell_script, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
+		$num_jobs++;
+	    }
 	    $total_jobs++;
-	    if ($num_jobs >= $max_grid_jobs) {
+	    if (!$no_grid && ($num_jobs >= $max_grid_jobs)) {
 		$num_jobs = &wait_for_grid_jobs($qsub_queue, $job_name, ((($max_grid_jobs - 10) > 0) ? ($max_grid_jobs - 10) : 0), \%job_ids);
 	    }
 	}
-	&wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
+	if (!$no_grid) {
+	    &wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
+	}
 	    
 	$num_jobs = 0;
 	my $failed_jobs = 0;
@@ -570,12 +588,17 @@ sub compute
 			my $topology_name = ("$identifier" . "_topology.txt");
 			`mkdir $working_dir`;
 			`ln $topology_name $single_copy $core_neighbors TMP_$identifier`;
-			if ($debug) {print STDERR "\nidentifier: $identifier \t path: $genome_path\n\n";}
-			if ($debug) {print STDERR "resubmit qsub $shell_script\n";}
-			$job_ids{&launch_grid_job($job_name, $project, $working_dir, $shell_script, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
-			$num_jobs++;
+			if ($debug) {print STDERR "\nidentifier: $identifier \t path: $genome_path\n$shell_script\n";}
+			if ($no_grid) {
+			    chdir $working_dir;
+			    `$shell_script > $stdoutfile 2> $stderrfile`;
+			    chdir $cwd;
+			} else {
+			    $job_ids{&launch_grid_job($job_name, $project, $working_dir, $shell_script, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
+			    $num_jobs++;
+			}
 			$resub_jobs++;
-			if ($num_jobs >= $max_grid_jobs) {
+			if (!$no_grid && ($num_jobs >= $max_grid_jobs)) {
 			    $num_jobs = &wait_for_grid_jobs($qsub_queue, $job_name, ((($max_grid_jobs - 10) > 0) ? ($max_grid_jobs - 10) : 0), \%job_ids);
 			}
 		    }
@@ -585,8 +608,10 @@ sub compute
 		    if ($debug) {print STDERR "no failed resubmit jobs, removed resubmitted TMP directories\n";}
 		    last; # no failed jobs
 		}
-		if ($debug) {print STDERR "$num_jobs relaunched\n";}
-		&wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
+		if ($debug) {print STDERR "$resub_jobs relaunched\n";}
+		if (!$no_grid) {
+		    &wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
+		}
 	    }
 	    if ($resub_jobs > 0) {
 		$num_jobs = 0;
@@ -702,20 +727,32 @@ sub compute
 	my $start_new_cluster_num = `wc -l < matchtable.col` + 1;
 	if ((-s "new_clusters.txt") && (-s "new_gene_seqs.fasta")){
 	    if ($debug) {print STDERR "\n$compute_new_clusters_path -c new_clusters.txt -g Genomes.List -s new_gene_seqs.fasta -n $start_new_cluster_num -i IndexNewClusters -M NewMatches -m NewMedoids\n";}
-	    &single_grid_job("$compute_new_clusters_path -c new_clusters.txt -g Genomes.List -s new_gene_seqs.fasta -n $start_new_cluster_num -i IndexNewClusters -M NewMatches -m NewMedoids >> $logfile 2>&1"); # run compute_new_clusters
+	    if ($no_grid) {
+		`$compute_new_clusters_path -c new_clusters.txt -g Genomes.List -s new_gene_seqs.fasta -n $start_new_cluster_num -i IndexNewClusters -M NewMatches -m NewMedoids >> $logfile 2>&1`; # run compute_new_clusters
+	    } else {
+		&single_grid_job("$compute_new_clusters_path -c new_clusters.txt -g Genomes.List -s new_gene_seqs.fasta -n $start_new_cluster_num -i IndexNewClusters -M NewMatches -m NewMedoids >> $logfile 2>&1"); # run compute_new_clusters
+	    }
 	    die ("IndexNewClusters is zero size \n") unless (-s "IndexNewClusters");
 	    `cat NewMatches >> matchtable.col`;
 	    `rm NewMatches`;
 	    `cat NewMedoids >> $medoids`;
 	    `rm NewMedoids`;
 	    if ($debug) {print STDERR "\n$pgg_combine_edges_path -i IndexNewClusters < AllEdges > pgg.combined\n";}
-	    &single_grid_job("$pgg_combine_edges_path -i IndexNewClusters < AllEdges > pgg.combined 2>> $logfile"); # run pgg_combine_edges
+	    if (!$no_grid) {
+		`$pgg_combine_edges_path -i IndexNewClusters < AllEdges > pgg.combined 2>> $logfile`; # run pgg_combine_edges
+	    } else {
+		&single_grid_job("$pgg_combine_edges_path -i IndexNewClusters < AllEdges > pgg.combined 2>> $logfile"); # run pgg_combine_edges
+	    }
 	    die ("pgg.combined is zero size \n") unless (-s "pgg.combined");
 	    `rm *_alledges.txt`; # can remove these files now
 	    `rm IndexNewClusters`;
 	} else {
 	    if ($debug) {print STDERR "\n$pgg_combine_edges_path < AllEdges > pgg.combined\n";}
-	    &single_grid_job("$pgg_combine_edges_path < AllEdges > pgg.combined 2>> $logfile"); # run pgg_combine_edges
+	    if (!$no_grid) {
+		`$pgg_combine_edges_path < AllEdges > pgg.combined 2>> $logfile`; # run pgg_combine_edges
+	    } else {
+		&single_grid_job("$pgg_combine_edges_path < AllEdges > pgg.combined 2>> $logfile"); # run pgg_combine_edges
+	    }
 	    die ("pgg.combined is zero size \n") unless (-s "pgg.combined");
 	    `rm *_alledges.txt`; # can remove these files now
 	}
@@ -723,10 +760,18 @@ sub compute
 	`rm output/* multifasta/*`; # clean up any multifasta files from previous iteration
 	if ($strip_version) {
 	    if ($debug) {print STDERR "\n$pgg_multifasta_path -X -Q $qsub_queue -V -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R\n";}    # run pgg edge multi_fasta
-	    &single_grid_job("$pgg_multifasta_path -X -Q $qsub_queue -V -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1");    # run pgg edge multi_fasta
+	    if (!$no_grid) {
+		`$pgg_multifasta_path -X -Q $qsub_queue -V -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1`;    # run pgg edge multi_fasta
+	    } else {
+		&single_grid_job("$pgg_multifasta_path -X -Q $qsub_queue -V -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1");    # run pgg edge multi_fasta
+	    }
 	} else {
 	    if ($debug) {print STDERR "\n$pgg_multifasta_path -X -Q $qsub_queue -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R\n";}    # run pgg edge multi_fasta
-	    &single_grid_job("$pgg_multifasta_path -X -Q $qsub_queue -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1");    # run pgg edge multi_fasta
+	    if (!$no_grid) {
+		`$pgg_multifasta_path -X -Q $qsub_queue -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1`;    # run pgg edge multi_fasta
+	    } else {
+		&single_grid_job("$pgg_multifasta_path -X -Q $qsub_queue -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1");    # run pgg edge multi_fasta
+	    }
 	}
 	die ("output/pgg.txt is zero size \n") unless (-s "output/pgg.txt");
 	
