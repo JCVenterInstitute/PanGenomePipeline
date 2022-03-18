@@ -738,7 +738,7 @@ sub compute
 	    `cat NewMedoids >> $medoids`;
 	    `rm NewMedoids`;
 	    if ($debug) {print STDERR "\n$pgg_combine_edges_path -i IndexNewClusters < AllEdges > pgg.combined\n";}
-	    if (!$no_grid) {
+	    if ($no_grid) {
 		`$pgg_combine_edges_path -i IndexNewClusters < AllEdges > pgg.combined 2>> $logfile`; # run pgg_combine_edges
 	    } else {
 		&single_grid_job("$pgg_combine_edges_path -i IndexNewClusters < AllEdges > pgg.combined 2>> $logfile"); # run pgg_combine_edges
@@ -748,7 +748,7 @@ sub compute
 	    `rm IndexNewClusters`;
 	} else {
 	    if ($debug) {print STDERR "\n$pgg_combine_edges_path < AllEdges > pgg.combined\n";}
-	    if (!$no_grid) {
+	    if ($no_grid) {
 		`$pgg_combine_edges_path < AllEdges > pgg.combined 2>> $logfile`; # run pgg_combine_edges
 	    } else {
 		&single_grid_job("$pgg_combine_edges_path < AllEdges > pgg.combined 2>> $logfile"); # run pgg_combine_edges
@@ -760,14 +760,14 @@ sub compute
 	`rm output/* multifasta/*`; # clean up any multifasta files from previous iteration
 	if ($strip_version) {
 	    if ($debug) {print STDERR "\n$pgg_multifasta_path -X -Q $qsub_queue -V -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R\n";}    # run pgg edge multi_fasta
-	    if (!$no_grid) {
+	    if ($no_grid) {
 		`$pgg_multifasta_path -X -Q $qsub_queue -V -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1`;    # run pgg edge multi_fasta
 	    } else {
 		&single_grid_job("$pgg_multifasta_path -X -Q $qsub_queue -V -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1");    # run pgg edge multi_fasta
 	    }
 	} else {
 	    if ($debug) {print STDERR "\n$pgg_multifasta_path -X -Q $qsub_queue -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R\n";}    # run pgg edge multi_fasta
-	    if (!$no_grid) {
+	    if ($no_grid) {
 		`$pgg_multifasta_path -X -Q $qsub_queue -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1`;    # run pgg edge multi_fasta
 	    } else {
 		&single_grid_job("$pgg_multifasta_path -X -Q $qsub_queue -s $single_copy -B output -b multifasta -g $genome_list_path -m matchtable.col -a combined.att -p pgg.combined -M $medoids -T $topology_file -A -S -R >> $logfile 2>&1");    # run pgg edge multi_fasta
