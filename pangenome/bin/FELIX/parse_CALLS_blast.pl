@@ -140,7 +140,7 @@ while (my $line = <$infile>)  {
 	if (($category =~ /INSERTION/) || ($category =~ /PARTIAL INSERTION/)) {
 	    # Handle an insertion event
 	    $insertion_events{$calls_line[CQID]} = $line;
-	    print STDERR "SAW: $line\n";
+	    #print STDERR "SAW: $line\n";
 	} elsif ($category =~ /DELETION/) {
 	    # Handle a deletion event
 	    $engineering_found = 1;
