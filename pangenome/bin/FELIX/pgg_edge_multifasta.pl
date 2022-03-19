@@ -27,8 +27,8 @@ use warnings;
 use Getopt::Std;
 use File::Basename;
 use POSIX;
-getopts ('j:I:Oo:RSALlDhb:B:m:p:P:a:g:t:M:s:T:Vk:FfC:Q:N:Xxr:W:G:e:i:');
-our ($opt_j,$opt_I,$opt_O,$opt_o,$opt_S,$opt_A,$opt_L,$opt_l,$opt_D,$opt_h,$opt_b,$opt_m,$opt_p,$opt_P,$opt_a,$opt_g,$opt_t,$opt_M,$opt_r,$opt_R,$opt_B,$opt_s,$opt_T,$opt_V,$opt_k,$opt_F,$opt_f,$opt_C,$opt_Q,$opt_N,$opt_X,$opt_x,$opt_W,$opt_G,$opt_e,$opt_i);
+getopts ('j:I:Oo:RSALlDhb:B:m:p:P:a:g:t:M:s:T:Vk:FfC:Q:nN:Xxr:W:G:e:i:');
+our ($opt_j,$opt_I,$opt_O,$opt_o,$opt_S,$opt_A,$opt_L,$opt_l,$opt_D,$opt_h,$opt_b,$opt_m,$opt_p,$opt_P,$opt_a,$opt_g,$opt_t,$opt_M,$opt_r,$opt_R,$opt_B,$opt_s,$opt_T,$opt_V,$opt_k,$opt_F,$opt_f,$opt_C,$opt_Q,$opt_n,$opt_N,$opt_X,$opt_x,$opt_W,$opt_G,$opt_e,$opt_i);
 
 ## use boolean logic:  TRUE = 1, FALSE = 0
 
@@ -55,6 +55,7 @@ my $genomes_file_name;
 my @genome_array = ();
 my $genome_number;
 my $max_grid_jobs = 50;
+my $no_grid = 0; # boolean variable indicating not to use the grid/qsub
 my $compute_all = 0;
 my $align_all = 0;
 my $align_new = 0;
@@ -94,6 +95,11 @@ if ($opt_j) { # should really check that this a positive integer
 	print STDERR "Error $opt_j for maximum number of grid jobs is not a positive integer\n";
 	&option_help;
     }
+}
+if ($opt_n) {
+    $no_grid = 1; # do not use the grid/qsub for multiple sequence alignments
+} else {
+    $no_grid = 0;
 }
 if ($opt_P) {$project = $opt_P;} else {$project = "8520";}
 if ($opt_Q) {$qsub_queue = $opt_Q;} else {$qsub_queue = "himem";}
@@ -3275,14 +3281,22 @@ sub compute_alignments
 	#my $qsub_exec = "TMP_qsub_" . $identifier; # not using this because we need to minimize the number of files in a directory
 	my $qsub_exec = $identifier . "_TMP_qsub";
 	print STDERR "Launched $muscle_exec\n" if ($DEBUG);
-	$job_ids{&launch_grid_job($qsub_exec, $job_name, $project, $working_dir, $muscle_exec, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
-	$num_jobs++;
+	if ($no_grid) {
+	    chdir $working_dir;
+	    `$muscle_exec > $stdoutfile 2> $stderrfile`;
+	    chdir $cwd;
+	} else {
+	    $job_ids{&launch_grid_job($qsub_exec, $job_name, $project, $working_dir, $muscle_exec, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
+	    $num_jobs++;
+	}
 	$total_jobs++;
-	if ($num_jobs >= $max_grid_jobs) {
+	if (!$no_grid && ($num_jobs >= $max_grid_jobs)) {
 	    $num_jobs = &wait_for_grid_jobs($qsub_queue, $job_name, ((($max_grid_jobs - 10) > 0) ? ($max_grid_jobs - 10) : 0), \%job_ids);
 	}
     }
-    &wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
+    if (!$no_grid) {
+	&wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
+    }
     $num_jobs = 0;
     my $failed_jobs = 0;
     foreach my $line (@mf_files) {
@@ -3364,14 +3378,22 @@ sub compute_alignments
 		#my $working_dir = $cwd; # not using this because we need to minimize the number of files in a directory
 		my $working_dir = dirname($identifier);
 		print STDERR "Relaunched $muscle_exec\n" if ($DEBUG);
-		$job_ids{&launch_grid_job($qsub_exec, $job_name, $project, $working_dir, $muscle_exec, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
-		$num_jobs++;
+		if ($no_grid) {
+		    chdir $working_dir;
+		    `$muscle_exec > $stdoutfile 2> $stderrfile`;
+		    chdir $cwd;
+		} else {
+		    $job_ids{&launch_grid_job($qsub_exec, $job_name, $project, $working_dir, $muscle_exec, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
+		    $num_jobs++;
+		}
 	    }
 	    if ($num_jobs == 0) {
 		last; # no failed jobs
 	    }
 	    print STDERR "Iteration $k: $num_jobs Muscle jobs relaunched\n" if ($DEBUG);
-	    &wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
+	    if (!$no_grid) {
+		&wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
+	    }
 	}
     }
     if ($num_jobs > 0) {
@@ -3404,14 +3426,22 @@ sub compute_alignments
 	#my $qsub_exec = "TMP_qsub_" . $identifier; # not using this because we need to minimize the number of files in a directory
 	my $qsub_exec = $identifier . "_TMP_qsub";
 	print STDERR "Launched $stats_exec\n" if ($DEBUG);
-	$job_ids{&launch_grid_job($qsub_exec, $job_name, $project, $working_dir, $stats_exec, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
-	$num_jobs++;
+	if ($no_grid) {
+	    chdir $working_dir;
+	    `$stats_exec > $stdoutfile 2> $stderrfile`;
+	    chdir $cwd;
+	} else {
+	    $job_ids{&launch_grid_job($qsub_exec, $job_name, $project, $working_dir, $stats_exec, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
+	    $num_jobs++;
+	}
 	$total_jobs++;
-	if ($num_jobs >= $max_grid_jobs) {
+	if (!$no_grid && ($num_jobs >= $max_grid_jobs)) {
 	    $num_jobs = &wait_for_grid_jobs($qsub_queue, $job_name, ((($max_grid_jobs - 10) > 0) ? ($max_grid_jobs - 10) : 0), \%job_ids);
 	}
     }
-    &wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
+    if (!$no_grid) {
+	&wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
+    }
     $num_jobs = 0;
     $failed_jobs = 0;
     foreach my $msa_file (@msa_files) {
@@ -3473,14 +3503,22 @@ sub compute_alignments
 		#my $working_dir = $cwd; # not using this because we need to minimize the number of files in a directory
 		my $working_dir = dirname($identifier);
 		print STDERR "Relaunched $stats_exec\n" if ($DEBUG);
-		$job_ids{&launch_grid_job($qsub_exec, $job_name, $project, $working_dir, $stats_exec, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
-		$num_jobs++;
+		if ($no_grid) {
+		    chdir $working_dir;
+		    `$stats_exec > $stdoutfile 2> $stderrfile`;
+		    chdir $cwd;
+		} else {
+		    $job_ids{&launch_grid_job($qsub_exec, $job_name, $project, $working_dir, $stats_exec, $stdoutfile, $stderrfile, $qsub_queue)} = 1;
+		    $num_jobs++;
+		}
 	    }
 	    if ($num_jobs == 0) {
 		last; # no failed jobs
 	    }
 	    print STDERR "Iteration $k: $num_jobs Alignment Stats jobs relaunched\n" if ($DEBUG);
-	    &wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
+	    if (!$no_grid) {
+		&wait_for_grid_jobs($qsub_queue, $job_name, 0, \%job_ids);
+	    }
 	}
     }
     if ($num_jobs > 0) {
@@ -3536,6 +3574,7 @@ Version: $version
      -c: output size files in -B directory computed cluster sizes(program  adds cluster_sizes.txt) and edge sizes(program  adds edge_sizes.txt) files
      -P: project code for qsub jobs
      -j: the maximum number of grid jobs to run for multiple sequence alignments
+     -n: flag to not run multiple sequence alignments on the grid but only on the local machine
      -f: generate multifasta files with all alleles for clusters and edges also forces the -F flag to be set
      -F: use multifasta files with all alleles for clusters and edges instead of extracting them directly from genome fasta files
      -X: only renumbering clusters and edges in matchtable and pgg file during refinement iteration not generating alignments files or statistics
