@@ -78,7 +78,7 @@ _EOB_
 sub print_fasta {
 
     my ($file_handle, $seq_name, $seq) = @_;
-    print STDERR "$seq_name\n";
+    #print STDERR "$seq_name\n";
     print $file_handle ">$seq_name\n";
     my $tmp_pos;
     my $tmp_seq_len = length($seq);
@@ -276,7 +276,7 @@ while (my $line = <$infile>)  {
     foreach my $key (keys %plasmids) {
 	$max_length = length($plasmids{$key});
 	print $out_maybe "$sample_name\tyes\tunknown plasmid\tyes\tforeign plasmid : $plasmids{$key}\t\tcomparison to PGG\t$species_name\tunknown plasmid\tContig $key\t$max_length\tplasmid\t\t\t\n";
-	print_fasta($out_fasta, "$sample_name" . "_$prev_qid maybe foreign plasmid no match", $plasmids{$prev_qid});
+	print_fasta($out_fasta, "$sample_name" . "_$prev_qid maybe foreign plasmid no match", $plasmids{$key});
     }
 
     my $calls_btab_file;
