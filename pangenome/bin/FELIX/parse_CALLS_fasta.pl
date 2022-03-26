@@ -78,6 +78,7 @@ _EOB_
 sub print_fasta {
 
     my ($file_handle, $seq_name, $seq) = @_;
+    print STDERR "$seq_name\n";
     print $file_handle ">$seq_name\n";
     my $tmp_pos;
     my $tmp_seq_len = length($seq);
@@ -150,7 +151,7 @@ while (my $line = <$infile>)  {
 	chomp($line);
 	my @calls_line = split(/\t/,$line);
 	my $category = $calls_line[CTYPE];
-	$calls_line[CTYPE] =~ tr/ /_/;
+	$calls_line[CTYPE] =~ s/\s+/_/g;
 	(my $contig_id, my $details) = split(/_DIV/, $calls_line[CQID]);
 	if ($contig_id =~ /recover/) {
 	    next; # ignore recovered read contigs
@@ -319,6 +320,7 @@ while (my $line = <$infile>)  {
 	}
 	if (($prev_qid ne $qid) && ($prev_qid ne "")) {
 	    my @calls_line = split(/\t/,$insertion_events{$prev_qid});
+	    $calls_line[CTYPE] =~ s/\s+/_/g;
 	    (my $contig_id, my $details) = split(/_DIV/, $calls_line[CQID]);
 	    if ($found) {
 		if (!defined $foreign_plasmids{$contig_id}) {
@@ -380,6 +382,7 @@ while (my $line = <$infile>)  {
     }
     if ($prev_qid ne "") {
 	my @calls_line = split(/\t/,$insertion_events{$prev_qid});
+	$calls_line[CTYPE] =~ s/\s+/_/g;
 	(my $contig_id, my $details) = split(/_DIV/, $calls_line[CQID]);
 	if ($found) {
 	    if (!defined $foreign_plasmids{$contig_id}) {
@@ -421,6 +424,7 @@ while (my $line = <$infile>)  {
     close($calls_btab_file);
     foreach my $key (keys %insertion_events) {
 	my @calls_line = split(/\t/,$insertion_events{$key});
+	$calls_line[CTYPE] =~ s/\s+/_/g;
 	(my $contig_id, my $details) = split(/_DIV/, $calls_line[CQID]);
 	print $out_maybe "$sample_name\tyes\t$calls_line[CSID]\tyes\tinserted sequence : $calls_line[CINSERTED] : deleted sequence : $calls_line[CDELETED]\t\tcomparison to PGG\t$species_name\tunknown insertion\tContig $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]:5' flank $calls_line[CFIVEP]:3' flank $calls_line[CTHREEP]: Reference $calls_line[CSID]:coordinates $calls_line[CSSTART],$calls_line[CSEND]\tinsertion : $calls_line[CILEN] : deletion : $calls_line[CDLEN]\t$contig_id : $calls_line[CSID]\t\t\t\n";
 	if ($calls_line[CILEN] >= 20) {
