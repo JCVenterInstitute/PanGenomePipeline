@@ -82,7 +82,7 @@ sub print_fasta {
     my $tmp_pos;
     my $tmp_seq_len = length($seq);
     for ( $tmp_pos = 0 ; $tmp_seq_len > 60 ; $tmp_pos += 60 ) {
-	print OUTFILE substr($seq, $tmp_pos, 60), "\n";
+	print $file_handle substr($seq, $tmp_pos, 60), "\n";
 	$tmp_seq_len -= 60;
     }
     print $file_handle substr($seq, $tmp_pos, $tmp_seq_len), "\n";
@@ -150,6 +150,7 @@ while (my $line = <$infile>)  {
 	chomp($line);
 	my @calls_line = split(/\t/,$line);
 	my $category = $calls_line[CTYPE];
+	$calls_line[CTYPE] =~ tr/ /_/;
 	(my $contig_id, my $details) = split(/_DIV/, $calls_line[CQID]);
 	if ($contig_id =~ /recover/) {
 	    next; # ignore recovered read contigs
@@ -330,8 +331,12 @@ while (my $line = <$infile>)  {
 		    if ($calls_line[CDLEN] >= 20) {
 			print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] clear deleted sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CDELETED]);
 		    }
-		    print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] clear 5 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CFIVEP]);
-		    print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] clear 3 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CTHREEP]);
+		    if (length($calls_line[CFIVEP]) >= 20) {
+			print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] clear 5 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CFIVEP]);
+		    }
+		    if (length($calls_line[CTHREEP]) >= 20) {
+			print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] clear 3 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CTHREEP]);
+		    }
 		}
 	    } elsif (!defined $foreign_plasmids{$contig_id}) {
 		print $out_maybe "$sample_name\tyes\t$calls_line[CSID]\tyes\tinserted sequence : $calls_line[CINSERTED] : deleted sequence : $calls_line[CDELETED]\t\tcomparison to PGG: BLAST: $results\t$species_name\t$max_title\tContig $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]:5' flank $calls_line[CFIVEP]:3' flank $calls_line[CTHREEP]: Reference $calls_line[CSID]:coordinates $calls_line[CSSTART],$calls_line[CSEND]\tinsertion : $calls_line[CILEN] : deletion : $calls_line[CDLEN]\t$contig_id : $calls_line[CSID]\t\t\t\n";
@@ -341,8 +346,12 @@ while (my $line = <$infile>)  {
 		    if ($calls_line[CDLEN] >= 20) {
 			print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe deleted sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CDELETED]);
 		    }
-		    print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe 5 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CFIVEP]);
-		    print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe 3 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CTHREEP]);
+		    if (length($calls_line[CFIVEP]) >= 20) {
+			print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe 5 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CFIVEP]);
+		    }
+		    if (length($calls_line[CTHREEP]) >= 20) {
+			print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe 3 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CTHREEP]);
+		    }
 	    } else {
 		print STDERR "Not outputting previoulsy output as a foreign plasmid: $calls_line[CQID]\n"
 	    }
@@ -383,8 +392,12 @@ while (my $line = <$infile>)  {
 		if ($calls_line[CDLEN] >= 20) {
 		    print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] clear deleted sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CDELETED]);
 		}
-		print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] clear 5 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CFIVEP]);
-		print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] clear 3 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CTHREEP]);
+		if (length($calls_line[CFIVEP]) >= 20) {
+		    print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] clear 5 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CFIVEP]);
+		}
+		if (length($calls_line[CTHREEP]) >= 20) {
+		    print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] clear 3 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CTHREEP]);
+		}
 	    }
 	} elsif (!defined $foreign_plasmids{$contig_id}) {
 	    print $out_maybe "$sample_name\tyes\t$calls_line[CSID]\tyes\tinserted sequence : $calls_line[CINSERTED] : deleted sequence : $calls_line[CDELETED]\t\tcomparison to PGG: BLAST: $results\t$species_name\t$max_title\tContig $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]:5' flank $calls_line[CFIVEP]:3' flank $calls_line[CTHREEP]: Reference $calls_line[CSID]:coordinates $calls_line[CSSTART],$calls_line[CSEND]\tinsertion : $calls_line[CILEN] : deletion : $calls_line[CDLEN]\t$contig_id : $calls_line[CSID]\t\t\t\n";
@@ -394,8 +407,12 @@ while (my $line = <$infile>)  {
 	    if ($calls_line[CDLEN] >= 20) {
 		print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe deleted sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CDELETED]);
 	    }
-	    print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe 5 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CFIVEP]);
-	    print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe 3 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CTHREEP]);
+	    if (length($calls_line[CFIVEP]) >= 20) {
+		print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe 5 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CFIVEP]);
+	    }
+	    if (length($calls_line[CTHREEP]) >= 20) {
+		print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe 3 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CTHREEP]);
+	    }
 	} else {
 	    print STDERR "Not outputting previoulsy output as a foreign plasmid: $calls_line[CQID]\n"
 	}
@@ -412,8 +429,12 @@ while (my $line = <$infile>)  {
 	if ($calls_line[CDLEN] >= 20) {
 	    print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe deleted sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CDELETED]);
 	}
-	print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe 5 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CFIVEP]);
-	print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe 3 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CTHREEP]);
+	if (length($calls_line[CFIVEP]) >= 20) {
+	    print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe 5 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CFIVEP]);
+	}
+	if (length($calls_line[CTHREEP]) >= 20) {
+	    print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe 3 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CTHREEP]);
+	}
     }
     if (!$engineering_found) {
 	print $out_clear "$sample_name\tyes\tPGG\tno\tNA\t\tcomparison to PGG\t$species_name\tNA\tNA\tNA\tNA\tNA\tNA\t\n";
