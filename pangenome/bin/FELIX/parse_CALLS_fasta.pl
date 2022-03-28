@@ -21,8 +21,18 @@ print STDERR "$commandline\n";
 my %plasmids = (); # key = plasmid name, value = plasmid sequence
 my %foreign_plasmids = (); # key = plasmid name, value = 1 to indicate this plasmid was deemed a foreign plasmid
 my %insertion_events = (); # key = insertion event name, value = CALLs line for the insertion event
+my %event_counts = (); # key1 = species, key2 = sample name / total, value = array of counts
+my @event_counts_total = [0,0,0,0,0,0,0,0]; # array of total counts
 
 # CONSTANTS #
+use constant TINSC => 0;
+use constant TFPC => 1;
+use constant TDEL => 2;
+use constant TINSM => 3;
+use constant TFPM => 4;
+use constant TTD => 5;
+use constant TMUT => 6;
+use constant TSC => 7;
 use constant QSEQID => 0;
 use constant SSEQID => 1;
 use constant PIDENT => 2;
@@ -94,12 +104,16 @@ my $out_clear_file = $output_prefix . "_clear.txt";
 my $out_stop_file = $output_prefix . "_stop_codons.txt";
 my $out_maybe_file = $output_prefix . "_maybe.txt";
 my $out_fasta_file = $output_prefix . "_seqs.fasta";
+my $out_short_file = $output_prefix . "_all_summary.txt";
+my $out_summary_file = $output_prefix . "_counts_summary.txt";
 
 # open output files
 open (my $out_clear, ">", $out_clear_file) || die ("ERROR: cannot open output file $out_clear_file\n");
 open (my $out_stop, ">", $out_stop_file) || die ("ERROR: cannot open output file $out_stop_file\n");
 open (my $out_maybe, ">", $out_maybe_file) || die ("ERROR: cannot open output file $out_maybe_file\n");
 open (my $out_fasta, ">", $out_fasta_file) || die ("ERROR: cannot open output file $out_fasta_file\n");
+open (my $out_short, ">", $out_short_file) || die ("ERROR: cannot open output file $out_short_file\n");
+open (my $out_summary, ">", $out_summary_file) || die ("ERROR: cannot open output file $out_summary_file\n");
 
 # read file which specifies the Sample ID, CALLS file, CALLS INSERTIONS Blastn tabular results, Plasmids fasta file, Plasmids Blastn tabular results
 open (my $infile, "<", $files) || die ("ERROR: cannot open input file $files\n");
@@ -111,6 +125,8 @@ while (my $line = <$infile>)  {
     
     chomp $line;
     (my $sample_name, my $species_name, my $calls_file_name, my $calls_btab_file_name, my $plasmids_fasta_file_name, my $plasmids_btab_file_name, my $stop_codons_file_name) = split(/\t/, $line);  # split the scalar $line on tab
+    my $species_name_ns = $species_name;
+    $species_name_ns =~ s/\s+/_/g;
     $engineering_found = 0;
     
     # read in plasmids from plasmids fasta file
@@ -164,22 +180,55 @@ while (my $line = <$infile>)  {
 	    # Handle a deletion event
 	    $engineering_found = 1;
 	    print $out_clear "$sample_name\tyes\t$calls_line[CSID]\tyes\tdeleted sequence : $calls_line[CDELETED]\t\tcomparison to PGG\t$species_name\tNA\tContig $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]:5' flank $calls_line[CFIVEP]:3' flank $calls_line[CTHREEP]: Reference $calls_line[CSID]:coordinates $calls_line[CSSTART],$calls_line[CSEND]\t$calls_line[CDLEN]\t$contig_id : $calls_line[CSID]\t\t\t\n";
-	    if ($calls_line[CDLEN] >= 20) {
-		print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] clear deleted sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CDELETED]);
+	    print $out_short "$sample_name\t$species_name\tclear\t$category\t$contig_id\t$calls_line[CQSTART]\t$calls_line[CQEND]\n";
+	    if (!defined $event_counts{$species_name}) {
+		$event_counts{$species_name} = {};
+		$event_counts{$species_name}->{"Total"} = [0,0,0,0,0,0,0,0];
 	    }
-	    print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] clear 5 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CFIVEP]);
-	    print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] clear 3 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CTHREEP]);
+	    if (!defined $event_counts{$species_name}->{$sample_name}) {
+		$event_counts{$species_name}->{$sample_name} = [0,0,0,0,0,0,0,0];
+	    }
+	    $event_counts{$species_name}->{$sample_name}->[TDEL]++;
+	    $event_counts{$species_name}->{"Total"}->[TDEL]++;
+	    $event_counts_total[TDEL]++;
+	    if ($calls_line[CDLEN] >= 20) {
+		print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$calls_line[CQSTART]_$calls_line[CQEND]_del_$calls_line[CTYPE] clear deleted sequence $calls_line[CQID] $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CDELETED]);
+	    }
+	    print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$calls_line[CQSTART]_$calls_line[CQEND]_5p_$calls_line[CTYPE] clear 5 prime flank sequence $calls_line[CQID] $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CFIVEP]);
+	    print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$calls_line[CQSTART]_$calls_line[CQEND]_3p_$calls_line[CTYPE] clear 3 prime flank sequence $calls_line[CQID] $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CTHREEP]);
 	} elsif ($category =~ /MUTATION/) {
 	    print $out_maybe "$sample_name\tyes\t$calls_line[CSID]\tyes\tmutation : inserted sequence : $calls_line[CINSERTED] : deleted sequence : $calls_line[CDELETED]\t\tcomparison to PGG\t$species_name\t\tContig $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]: Reference $calls_line[CSID]:coordinates $calls_line[CSSTART],$calls_line[CSEND]\tinsertion : $calls_line[CILEN] : deletion : $calls_line[CDLEN]\t$contig_id : $calls_line[CSID]\t\t\t\n";
-	    print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe deleted sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CDELETED]);
-	    print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe inserted sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CINSERTED]);
+	    print $out_short "$sample_name\t$species_name\tmaybe\t$category\t$contig_id\t$calls_line[CQSTART]\t$calls_line[CQEND]\n";
+	    if (!defined $event_counts{$species_name}) {
+		$event_counts{$species_name} = {};
+		$event_counts{$species_name}->{"Total"} = [0,0,0,0,0,0,0,0];
+	    }
+	    if (!defined $event_counts{$species_name}->{$sample_name}) {
+		$event_counts{$species_name}->{$sample_name} = [0,0,0,0,0,0,0,0];
+	    }
+	    $event_counts{$species_name}->{$sample_name}->[TMUT]++;
+	    $event_counts{$species_name}->{"Total"}->[TMUT]++;
+	    $event_counts_total[TMUT]++;
+	    print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$calls_line[CQSTART]_$calls_line[CQEND]_del_$calls_line[CTYPE] maybe deleted sequence $calls_line[CQID] $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CDELETED]);
+	    print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$calls_line[CQSTART]_$calls_line[CQEND]_ins_$calls_line[CTYPE] maybe inserted sequence $calls_line[CQID]$contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CINSERTED]);
 	} elsif ($category =~ /TANDEM_DUPLICATION/) {
 	    print $out_maybe "$sample_name\tyes\t$calls_line[CSID]\tyes\ttandem duplication : inserted sequence : $calls_line[CINSERTED] : deleted sequence : $calls_line[CDELETED]\t\tcomparison to PGG\t$species_name\t\tContig $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]:5' flank $calls_line[CFIVEP]:3' flank $calls_line[CTHREEP]: Reference $calls_line[CSID]:coordinates $calls_line[CSSTART],$calls_line[CSEND]\tinsertion : $calls_line[CILEN] : deletion : $calls_line[CDLEN]\t$contig_id : $calls_line[CSID]\t\t\t\n";
-	    if ($calls_line[CILEN] >= 20) {
-		print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe tandem duplicated sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CINSERTED]);
+	    print $out_short "$sample_name\t$species_name\tmaybe\t$category\t$contig_id\t$calls_line[CQSTART]\t$calls_line[CQEND]\n";
+	    if (!defined $event_counts{$species_name}) {
+		$event_counts{$species_name} = {};
+		$event_counts{$species_name}->{"Total"} = [0,0,0,0,0,0,0,0];
 	    }
-	    print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe 5 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CFIVEP]);
-	    print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe 3 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CTHREEP]);
+	    if (!defined $event_counts{$species_name}->{$sample_name}) {
+		$event_counts{$species_name}->{$sample_name} = [0,0,0,0,0,0,0,0];
+	    }
+	    $event_counts{$species_name}->{$sample_name}->[TTD]++;
+	    $event_counts{$species_name}->{"Total"}->[TTD]++;
+	    $event_counts_total[TTD]++;
+	    if ($calls_line[CILEN] >= 20) {
+		print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$calls_line[CQSTART]_$calls_line[CQEND]_ins_$calls_line[CTYPE] maybe tandem duplicated sequence $calls_line[CQID] $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CINSERTED]);
+	    }
+	    print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$calls_line[CQSTART]_$calls_line[CQEND]_5p_$calls_line[CTYPE] maybe 5 prime flank sequence $calls_line[CQID] $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CFIVEP]);
+	    print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$calls_line[CQSTART]_$calls_line[CQEND]_3p_$calls_line[CTYPE] maybe 3 prime flank sequence $calls_line[CQID] $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CTHREEP]);
 	} else {
 	    print STDERR "UNEXPECTED CALL TYPE: $category $line\n";
 	    next; # ignore other types
@@ -230,11 +279,33 @@ while (my $line = <$infile>)  {
 		$engineering_found = 1;
 		$foreign_plasmids{$prev_qid} = 1;
 		print $out_clear "$sample_name\tyes\t$max_sid $max_title\tyes\tforeign plasmid : $plasmids{$prev_qid}\t\tcomparison to PGG: BLAST: $results\t$species_name\t$max_title\tContig $prev_qid\t$max_length\tplasmid\t\t\t\n";
-		print_fasta($out_fasta, "$sample_name" . "_$prev_qid clear foreign plasmid $max_title", $plasmids{$prev_qid});
+		print $out_short "$sample_name\t$species_name\tclear\tFOREIGN PLASMID\t$prev_qid\t1\t$max_length\n";
+		if (!defined $event_counts{$species_name}) {
+		    $event_counts{$species_name} = {};
+		    $event_counts{$species_name}->{"Total"} = [0,0,0,0,0,0,0,0];
+		}
+		if (!defined $event_counts{$species_name}->{$sample_name}) {
+		    $event_counts{$species_name}->{$sample_name} = [0,0,0,0,0,0,0,0];
+		}
+		$event_counts{$species_name}->{$sample_name}->[TFPC]++;
+		$event_counts{$species_name}->{"Total"}->[TFPC]++;
+		$event_counts_total[TFPC]++;
+		print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$prev_qid clear foreign plasmid $max_title", $plasmids{$prev_qid});
 	    } else {
 		$foreign_plasmids{$prev_qid} = 1;
 		print $out_maybe "$sample_name\tyes\t$max_sid $max_title\tyes\tforeign plasmid : $plasmids{$prev_qid}\t\tcomparison to PGG: BLAST: $results\t$species_name\t$max_title\tContig $prev_qid\t$max_length\tplasmid\t\t\t\n";
-		print_fasta($out_fasta, "$sample_name" . "_$prev_qid maybe foreign plasmid $max_title", $plasmids{$prev_qid});
+		print $out_short "$sample_name\t$species_name\tmaybe\tFOREIGN PLASMID\t$prev_qid\t1\t$max_length\n";
+		if (!defined $event_counts{$species_name}) {
+		    $event_counts{$species_name} = {};
+		    $event_counts{$species_name}->{"Total"} = [0,0,0,0,0,0,0,0];
+		}
+		if (!defined $event_counts{$species_name}->{$sample_name}) {
+		    $event_counts{$species_name}->{$sample_name} = [0,0,0,0,0,0,0,0];
+		}
+		$event_counts{$species_name}->{$sample_name}->[TFPM]++;
+		$event_counts{$species_name}->{"Total"}->[TFPM]++;
+		$event_counts_total[TFPM]++;
+		print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$prev_qid maybe foreign plasmid $max_title", $plasmids{$prev_qid});
 	    }
 	    delete $plasmids{$prev_qid};
 	    $max_bitscore = 0;
@@ -264,11 +335,33 @@ while (my $line = <$infile>)  {
 	    $engineering_found = 1;
 	    $foreign_plasmids{$prev_qid} = 1;
 	    print $out_clear "$sample_name\tyes\t$max_sid $max_title\tyes\tforeign plasmid : $plasmids{$prev_qid}\t\tcomparison to PGG: BLAST: $results\t$species_name\t$max_title\tContig $prev_qid\t$max_length\tplasmid\t\t\t\n";
-	    print_fasta($out_fasta, "$sample_name" . "_$prev_qid clear foreign plasmid $max_title", $plasmids{$prev_qid});
+	    print $out_short "$sample_name\t$species_name\tclear\tFOREIGN PLASMID\t$prev_qid\t1\t$max_length\n";
+	    if (!defined $event_counts{$species_name}) {
+		$event_counts{$species_name} = {};
+		$event_counts{$species_name}->{"Total"} = [0,0,0,0,0,0,0,0];
+	    }
+	    if (!defined $event_counts{$species_name}->{$sample_name}) {
+		$event_counts{$species_name}->{$sample_name} = [0,0,0,0,0,0,0,0];
+	    }
+	    $event_counts{$species_name}->{$sample_name}->[TFPC]++;
+	    $event_counts{$species_name}->{"Total"}->[TFPC]++;
+	    $event_counts_total[TFPC]++;
+	    print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$prev_qid clear foreign plasmid $max_title", $plasmids{$prev_qid});
 	} else {
 	    $foreign_plasmids{$prev_qid} = 1;
 	    print $out_maybe "$sample_name\tyes\t$max_sid $max_title\tyes\tforeign plasmid : $plasmids{$prev_qid}\t\tcomparison to PGG: BLAST: $results\t$species_name\t$max_title\tContig $prev_qid\t$max_length\tplasmid\t\t\t\n";
-	    print_fasta($out_fasta, "$sample_name" . "_$prev_qid maybe foreign plasmid $max_title", $plasmids{$prev_qid});
+	    print $out_short "$sample_name\t$species_name\tmaybe\tFOREIGN PLASMID\t$prev_qid\t1\t$max_length\n";
+	    if (!defined $event_counts{$species_name}) {
+		$event_counts{$species_name} = {};
+		$event_counts{$species_name}->{"Total"} = [0,0,0,0,0,0,0,0];
+	    }
+	    if (!defined $event_counts{$species_name}->{$sample_name}) {
+		$event_counts{$species_name}->{$sample_name} = [0,0,0,0,0,0,0,0];
+	    }
+	    $event_counts{$species_name}->{$sample_name}->[TFPM]++;
+	    $event_counts{$species_name}->{"Total"}->[TFPM]++;
+	    $event_counts_total[TFPM]++;
+	    print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$prev_qid maybe foreign plasmid $max_title", $plasmids{$prev_qid});
 	}
 	delete $plasmids{$prev_qid};
     }
@@ -276,7 +369,18 @@ while (my $line = <$infile>)  {
     foreach my $key (keys %plasmids) {
 	$max_length = length($plasmids{$key});
 	print $out_maybe "$sample_name\tyes\tunknown plasmid\tyes\tforeign plasmid : $plasmids{$key}\t\tcomparison to PGG\t$species_name\tunknown plasmid\tContig $key\t$max_length\tplasmid\t\t\t\n";
-	print_fasta($out_fasta, "$sample_name" . "_$prev_qid maybe foreign plasmid no match", $plasmids{$key});
+	print $out_short "$sample_name\t$species_name\tmaybe\tFOREIGN PLASMID\t$key\t1\t$max_length\n";
+	if (!defined $event_counts{$species_name}) {
+	    $event_counts{$species_name} = {};
+	    $event_counts{$species_name}->{"Total"} = [0,0,0,0,0,0,0,0];
+	}
+	if (!defined $event_counts{$species_name}->{$sample_name}) {
+	    $event_counts{$species_name}->{$sample_name} = [0,0,0,0,0,0,0,0];
+	}
+	$event_counts{$species_name}->{$sample_name}->[TFPM]++;
+	$event_counts{$species_name}->{"Total"}->[TFPM]++;
+	$event_counts_total[TFPM]++;
+	print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$key maybe foreign plasmid no match", $plasmids{$key});
     }
 
     my $calls_btab_file;
@@ -320,6 +424,7 @@ while (my $line = <$infile>)  {
 	}
 	if (($prev_qid ne $qid) && ($prev_qid ne "")) {
 	    my @calls_line = split(/\t/,$insertion_events{$prev_qid});
+	    my $category = $calls_line[CTYPE];
 	    $calls_line[CTYPE] =~ s/\s+/_/g;
 	    (my $contig_id, my $details) = split(/_DIV/, $calls_line[CQID]);
 	    if ($found) {
@@ -327,33 +432,55 @@ while (my $line = <$infile>)  {
 		    # only do this if this was not already called a foreign plasmid
 		    $engineering_found = 1;
 		    print $out_clear "$sample_name\tyes\t$calls_line[CSID]\tyes\tinserted sequence : $calls_line[CINSERTED] : deleted sequence : $calls_line[CDELETED]\t\tcomparison to PGG: BLAST: $results\t$species_name\t$max_title\tContig $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]:5' flank $calls_line[CFIVEP]:3' flank $calls_line[CTHREEP]: Reference $calls_line[CSID]:coordinates $calls_line[CSSTART],$calls_line[CSEND]\tinsertion : $calls_line[CILEN] : deletion : $calls_line[CDLEN]\t$contig_id : $calls_line[CSID]\t\t\t\n";
+		    print $out_short "$sample_name\t$species_name\tclear\t$category\t$contig_id\t$calls_line[CQSTART]\t$calls_line[CQEND]\n";
+		    if (!defined $event_counts{$species_name}) {
+			$event_counts{$species_name} = {};
+			$event_counts{$species_name}->{"Total"} = [0,0,0,0,0,0,0,0];
+		    }
+		    if (!defined $event_counts{$species_name}->{$sample_name}) {
+			$event_counts{$species_name}->{$sample_name} = [0,0,0,0,0,0,0,0];
+		    }
+		    $event_counts{$species_name}->{$sample_name}->[TINSC]++;
+		    $event_counts{$species_name}->{"Total"}->[TINSC]++;
+		    $event_counts_total[TINSC]++;
 		    if ($calls_line[CILEN] >= 20) {
-			print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] clear inserted sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CINSERTED]);
+			print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$calls_line[CQSTART]_$calls_line[CQEND]_ins_$calls_line[CTYPE] clear inserted sequence $calls_line[CQID] $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CINSERTED]);
 		    }
 		    if ($calls_line[CDLEN] >= 20) {
-			print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] clear deleted sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CDELETED]);
+			print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$calls_line[CQSTART]_$calls_line[CQEND]_del_$calls_line[CTYPE] clear deleted sequence $calls_line[CQID] $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CDELETED]);
 		    }
 		    if (length($calls_line[CFIVEP]) >= 20) {
-			print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] clear 5 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CFIVEP]);
+			print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$calls_line[CQSTART]_$calls_line[CQEND]_5p_$calls_line[CTYPE] clear 5 prime flank sequence $calls_line[CQID] $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CFIVEP]);
 		    }
 		    if (length($calls_line[CTHREEP]) >= 20) {
-			print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] clear 3 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CTHREEP]);
+			print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$calls_line[CQSTART]_$calls_line[CQEND]_3p_$calls_line[CTYPE] clear 3 prime flank sequence $calls_line[CQID] $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CTHREEP]);
 		    }
 		}
 	    } elsif (!defined $foreign_plasmids{$contig_id}) {
 		print $out_maybe "$sample_name\tyes\t$calls_line[CSID]\tyes\tinserted sequence : $calls_line[CINSERTED] : deleted sequence : $calls_line[CDELETED]\t\tcomparison to PGG: BLAST: $results\t$species_name\t$max_title\tContig $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]:5' flank $calls_line[CFIVEP]:3' flank $calls_line[CTHREEP]: Reference $calls_line[CSID]:coordinates $calls_line[CSSTART],$calls_line[CSEND]\tinsertion : $calls_line[CILEN] : deletion : $calls_line[CDLEN]\t$contig_id : $calls_line[CSID]\t\t\t\n";
-		    if ($calls_line[CILEN] >= 20) {
-			print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe inserted sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CINSERTED]);
-		    }
-		    if ($calls_line[CDLEN] >= 20) {
-			print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe deleted sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CDELETED]);
-		    }
-		    if (length($calls_line[CFIVEP]) >= 20) {
-			print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe 5 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CFIVEP]);
-		    }
-		    if (length($calls_line[CTHREEP]) >= 20) {
-			print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe 3 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CTHREEP]);
-		    }
+		print $out_short "$sample_name\t$species_name\tmaybe\t$category\t$contig_id\t$calls_line[CQSTART]\t$calls_line[CQEND]\n";
+		if (!defined $event_counts{$species_name}) {
+		    $event_counts{$species_name} = {};
+		    $event_counts{$species_name}->{"Total"} = [0,0,0,0,0,0,0,0];
+		}
+		if (!defined $event_counts{$species_name}->{$sample_name}) {
+		    $event_counts{$species_name}->{$sample_name} = [0,0,0,0,0,0,0,0];
+		}
+		$event_counts{$species_name}->{$sample_name}->[TINSM]++;
+		$event_counts{$species_name}->{"Total"}->[TINSM]++;
+		$event_counts_total[TINSM]++;
+		if ($calls_line[CILEN] >= 20) {
+		    print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$calls_line[CQSTART]_$calls_line[CQEND]_ins_$calls_line[CTYPE] maybe inserted sequence $calls_line[CQID] $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CINSERTED]);
+		}
+		if ($calls_line[CDLEN] >= 20) {
+		    print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$calls_line[CQSTART]_$calls_line[CQEND]_del_$calls_line[CTYPE] maybe deleted sequence $calls_line[CQID] $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CDELETED]);
+		}
+		if (length($calls_line[CFIVEP]) >= 20) {
+		    print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$calls_line[CQSTART]_$calls_line[CQEND]_5p_$calls_line[CTYPE] maybe 5 prime flank sequence $calls_line[CQID] $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CFIVEP]);
+		}
+		if (length($calls_line[CTHREEP]) >= 20) {
+		    print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$calls_line[CQSTART]_$calls_line[CQEND]_3p_$calls_line[CTYPE] maybe 3 prime flank sequence $calls_line[CQID] $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CTHREEP]);
+		}
 	    } else {
 		print STDERR "Not outputting previoulsy output as a foreign plasmid: $calls_line[CQID]\n"
 	    }
@@ -382,6 +509,7 @@ while (my $line = <$infile>)  {
     }
     if ($prev_qid ne "") {
 	my @calls_line = split(/\t/,$insertion_events{$prev_qid});
+	my $category = $calls_line[CTYPE];
 	$calls_line[CTYPE] =~ s/\s+/_/g;
 	(my $contig_id, my $details) = split(/_DIV/, $calls_line[CQID]);
 	if ($found) {
@@ -389,32 +517,54 @@ while (my $line = <$infile>)  {
 		# only do this if this was not already called a foreign plasmid
 		$engineering_found = 1;
 		print $out_clear "$sample_name\tyes\t$calls_line[CSID]\tyes\tinserted sequence : $calls_line[CINSERTED] : deleted sequence : $calls_line[CDELETED]\t\tcomparison to PGG: BLAST: $results\t$species_name\t$max_title\tContig $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]:5' flank $calls_line[CFIVEP]:3' flank $calls_line[CTHREEP]: Reference $calls_line[CSID]:coordinates $calls_line[CSSTART],$calls_line[CSEND]\tinsertion : $calls_line[CILEN] : deletion : $calls_line[CDLEN]\t$contig_id : $calls_line[CSID]\t\t\t\n";
+		print $out_short "$sample_name\t$species_name\tclear\t$category\t$contig_id\t$calls_line[CQSTART]\t$calls_line[CQEND]\n";
+		if (!defined $event_counts{$species_name}) {
+		    $event_counts{$species_name} = {};
+		    $event_counts{$species_name}->{"Total"} = [0,0,0,0,0,0,0,0];
+		}
+		if (!defined $event_counts{$species_name}->{$sample_name}) {
+		    $event_counts{$species_name}->{$sample_name} = [0,0,0,0,0,0,0,0];
+		}
+		$event_counts{$species_name}->{$sample_name}->[TINSC]++;
+		$event_counts{$species_name}->{"Total"}->[TINSC]++;
+		$event_counts_total[TINSC]++;
 		if ($calls_line[CILEN] >= 20) {
-		    print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] clear inserted sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CINSERTED]);
+		    print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$calls_line[CQSTART]_$calls_line[CQEND]_ins_$calls_line[CTYPE] clear inserted sequence $calls_line[CQID] $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CINSERTED]);
 		}
 		if ($calls_line[CDLEN] >= 20) {
-		    print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] clear deleted sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CDELETED]);
+		    print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$calls_line[CQSTART]_$calls_line[CQEND]_del_$calls_line[CTYPE] clear deleted sequence $calls_line[CQID] $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CDELETED]);
 		}
 		if (length($calls_line[CFIVEP]) >= 20) {
-		    print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] clear 5 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CFIVEP]);
+		    print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$calls_line[CQSTART]_$calls_line[CQEND]_5p_$calls_line[CTYPE] clear 5 prime flank sequence $calls_line[CQID] $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CFIVEP]);
 		}
 		if (length($calls_line[CTHREEP]) >= 20) {
-		    print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] clear 3 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CTHREEP]);
+		    print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$calls_line[CQSTART]_$calls_line[CQEND]_3p_$calls_line[CTYPE] clear 3 prime flank sequence $calls_line[CQID] $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CTHREEP]);
 		}
 	    }
 	} elsif (!defined $foreign_plasmids{$contig_id}) {
 	    print $out_maybe "$sample_name\tyes\t$calls_line[CSID]\tyes\tinserted sequence : $calls_line[CINSERTED] : deleted sequence : $calls_line[CDELETED]\t\tcomparison to PGG: BLAST: $results\t$species_name\t$max_title\tContig $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]:5' flank $calls_line[CFIVEP]:3' flank $calls_line[CTHREEP]: Reference $calls_line[CSID]:coordinates $calls_line[CSSTART],$calls_line[CSEND]\tinsertion : $calls_line[CILEN] : deletion : $calls_line[CDLEN]\t$contig_id : $calls_line[CSID]\t\t\t\n";
+	    print $out_short "$sample_name\t$species_name\tmaybe\t$category\t$contig_id\t$calls_line[CQSTART]\t$calls_line[CQEND]\n";
+	    if (!defined $event_counts{$species_name}) {
+		$event_counts{$species_name} = {};
+		$event_counts{$species_name}->{"Total"} = [0,0,0,0,0,0,0,0];
+	    }
+	    if (!defined $event_counts{$species_name}->{$sample_name}) {
+		$event_counts{$species_name}->{$sample_name} = [0,0,0,0,0,0,0,0];
+	    }
+	    $event_counts{$species_name}->{$sample_name}->[TINSM]++;
+	    $event_counts{$species_name}->{"Total"}->[TINSM]++;
+	    $event_counts_total[TINSM]++;
 	    if ($calls_line[CILEN] >= 20) {
-		print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe inserted sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CINSERTED]);
+		print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$calls_line[CQSTART]_$calls_line[CQEND]_ins_$calls_line[CTYPE] maybe inserted sequence $calls_line[CQID] $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CINSERTED]);
 	    }
 	    if ($calls_line[CDLEN] >= 20) {
-		print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe deleted sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CDELETED]);
+		print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$calls_line[CQSTART]_$calls_line[CQEND]_del_$calls_line[CTYPE] maybe deleted sequence $calls_line[CQID] $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CDELETED]);
 	    }
 	    if (length($calls_line[CFIVEP]) >= 20) {
-		print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe 5 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CFIVEP]);
+		print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$calls_line[CQSTART]_$calls_line[CQEND]_5p_$calls_line[CTYPE] maybe 5 prime flank sequence $calls_line[CQID] $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CFIVEP]);
 	    }
 	    if (length($calls_line[CTHREEP]) >= 20) {
-		print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe 3 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CTHREEP]);
+		print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$calls_line[CQSTART]_$calls_line[CQEND]_3p_$calls_line[CTYPE] maybe 3 prime flank sequence $calls_line[CQID] $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CTHREEP]);
 	    }
 	} else {
 	    print STDERR "Not outputting previoulsy output as a foreign plasmid: $calls_line[CQID]\n"
@@ -424,20 +574,32 @@ while (my $line = <$infile>)  {
     close($calls_btab_file);
     foreach my $key (keys %insertion_events) {
 	my @calls_line = split(/\t/,$insertion_events{$key});
+	my $category = $calls_line[CTYPE];
 	$calls_line[CTYPE] =~ s/\s+/_/g;
 	(my $contig_id, my $details) = split(/_DIV/, $calls_line[CQID]);
 	print $out_maybe "$sample_name\tyes\t$calls_line[CSID]\tyes\tinserted sequence : $calls_line[CINSERTED] : deleted sequence : $calls_line[CDELETED]\t\tcomparison to PGG\t$species_name\tunknown insertion\tContig $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]:5' flank $calls_line[CFIVEP]:3' flank $calls_line[CTHREEP]: Reference $calls_line[CSID]:coordinates $calls_line[CSSTART],$calls_line[CSEND]\tinsertion : $calls_line[CILEN] : deletion : $calls_line[CDLEN]\t$contig_id : $calls_line[CSID]\t\t\t\n";
+	print $out_short "$sample_name\t$species_name\tmaybe\t$category\t$contig_id\t$calls_line[CQSTART]\t$calls_line[CQEND]\n";
+	if (!defined $event_counts{$species_name}) {
+	    $event_counts{$species_name} = {};
+	    $event_counts{$species_name}->{"Total"} = [0,0,0,0,0,0,0,0];
+	}
+	if (!defined $event_counts{$species_name}->{$sample_name}) {
+	    $event_counts{$species_name}->{$sample_name} = [0,0,0,0,0,0,0,0];
+	}
+	$event_counts{$species_name}->{$sample_name}->[TINSM]++;
+	$event_counts{$species_name}->{"Total"}->[TINSM]++;
+	$event_counts_total[TINSM]++;
 	if ($calls_line[CILEN] >= 20) {
-	    print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe inserted sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CINSERTED]);
+	    print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$calls_line[CQSTART]_$calls_line[CQEND]_ins_$calls_line[CTYPE] maybe inserted sequence $calls_line[CQID] $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CINSERTED]);
 	}
 	if ($calls_line[CDLEN] >= 20) {
-	    print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe deleted sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CDELETED]);
+	    print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$calls_line[CQSTART]_$calls_line[CQEND]_del_$calls_line[CTYPE] maybe deleted sequence $calls_line[CQID] $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CDELETED]);
 	}
 	if (length($calls_line[CFIVEP]) >= 20) {
-	    print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe 5 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CFIVEP]);
+	    print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$calls_line[CQSTART]_$calls_line[CQEND]_5p_$calls_line[CTYPE] maybe 5 prime flank sequence $calls_line[CQID] $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CFIVEP]);
 	}
 	if (length($calls_line[CTHREEP]) >= 20) {
-	    print_fasta($out_fasta, "$sample_name" . "_$calls_line[CTYPE]_$calls_line[CQID] maybe 3 prime flank sequence $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CTHREEP]);
+	    print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$calls_line[CQSTART]_$calls_line[CQEND]_3p_$calls_line[CTYPE] maybe 3 prime flank sequence $calls_line[CQID] $contig_id:coordinates $calls_line[CQSTART],$calls_line[CQEND]", $calls_line[CTHREEP]);
 	}
     }
     if (!$engineering_found) {
@@ -463,14 +625,52 @@ while (my $line = <$infile>)  {
 	    next; # ignore recovered read contigs
 	}
 	print $out_stop "$sample_name\tyes\tPGG feature medoids\tyes\t$type_stop_codon in $feat_name : sequence : $feat_seq\t\tcomparison to PGG feature medoids\t$species_name\tNA\tContig $contig_id: feature $feat_name coordinates $qstart,$qend: stop codon contig coordinate $stop_codon_coord\tfeature length $qlen : stop codon length 1-3bp\t\t\t\t\n";
-	print_fasta($out_fasta, "$sample_name" . "_$contig_id" . "_$stop_codon_coord $type_stop_codon $feat_name $frame", $feat_seq);
+	print $out_short "$sample_name\t$species_name\tmaybe\tSTOP CODON\t$contig_id\t$stop_codon_coord\t$stop_codon_coord\n";
+	if (!defined $event_counts{$species_name}) {
+	    $event_counts{$species_name} = {};
+	    $event_counts{$species_name}->{"Total"} = [0,0,0,0,0,0,0,0];
+	}
+	if (!defined $event_counts{$species_name}->{$sample_name}) {
+	    $event_counts{$species_name}->{$sample_name} = [0,0,0,0,0,0,0,0];
+	}
+	$event_counts{$species_name}->{$sample_name}->[TSC]++;
+	$event_counts{$species_name}->{"Total"}->[TSC]++;
+	$event_counts_total[TSC]++;
+	print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$stop_codon_coord $type_stop_codon $feat_name $frame", $feat_seq);
     }
     close($stop_codons_file);
 }
+
+print $out_summary "Species\tSample\tClear Insertions\tClear Foreign Plasmids\tDeletions\tPossible Insertions\tPossible Foreign Plasmids\tTandem Duplications\tMutations\tStop Codons\n";
+
+my $sort_by_name_total = sub { # sort by name but put Total last
+    if ($a eq "Total") {
+	return (1);
+    } elsif ($b eq "Total") {
+	return (-1);
+    } else {
+	return ($a cmp $b);
+    }
+};
+
+my @sorted_species = sort $sort_by_name_total (keys %event_counts);
+
+foreach my $species (@sorted_species) {
+    my @sorted_samples = sort $sort_by_name_total (keys %{ $event_counts{$species} });
+    foreach my $sample (@sorted_samples) {
+	my $counts_string = join('\t', @{ $event_counts{$species}->{$sample} });
+	print $out_summary "$species\t$sample\t$counts_string\n";
+    }
+}
+
+my $total_counts_string = join('\t', @event_counts_total);
+print $out_summary "All\tTotal\t$total_counts_string\n"; 
 
 close($out_clear);
 close($out_stop);
 close($out_maybe);
 close($out_fasta);
+close($out_short);
+close($out_summary);
 
 exit(0);
