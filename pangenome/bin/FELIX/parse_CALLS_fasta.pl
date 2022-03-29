@@ -115,6 +115,10 @@ open (my $out_fasta, ">", $out_fasta_file) || die ("ERROR: cannot open output fi
 open (my $out_short, ">", $out_short_file) || die ("ERROR: cannot open output file $out_short_file\n");
 open (my $out_summary, ">", $out_summary_file) || die ("ERROR: cannot open output file $out_summary_file\n");
 
+
+my $total_counts_string = join("\t", @event_counts_total);
+print $out_summary "All\tTotal\t$total_counts_string\n"; 
+
 # read file which specifies the Sample ID, CALLS file, CALLS INSERTIONS Blastn tabular results, Plasmids fasta file, Plasmids Blastn tabular results
 open (my $infile, "<", $files) || die ("ERROR: cannot open input file $files\n");
 while (my $line = <$infile>)  {
@@ -319,7 +323,7 @@ while (my $line = <$infile>)  {
 	if ($results ne "") {
 	    $results .= ":";
 	}
-	$results .= join(',', @split_line);
+	$results .= join(",", @split_line);
 	if (($stitle =~ /vector/i) || ($stitle =~ /construct/i) || ($stitle =~ /synthetic/i) || ($stitle =~ /marker plasmid/i)) {
 	    $found = 1;
 	}
@@ -496,7 +500,7 @@ while (my $line = <$infile>)  {
 	if ($results ne "") {
 	    $results .= ":";
 	}
-	$results .= join(',', @split_line);
+	$results .= join(",", @split_line);
 	if (($stitle =~ /vector/i) || ($stitle =~ /construct/i) || ($stitle =~ /synthetic/i) || ($stitle =~ /marker plasmid/i)) {
 	    $found = 1;
 	}
@@ -604,6 +608,13 @@ while (my $line = <$infile>)  {
     }
     if (!$engineering_found) {
 	print $out_clear "$sample_name\tyes\tPGG\tno\tNA\t\tcomparison to PGG\t$species_name\tNA\tNA\tNA\tNA\tNA\tNA\t\n";
+	if (!defined $event_counts{$species_name}) {
+	    $event_counts{$species_name} = {};
+	    $event_counts{$species_name}->{"Total"} = [0,0,0,0,0,0,0,0];
+	}
+	if (!defined $event_counts{$species_name}->{$sample_name}) {
+	    $event_counts{$species_name}->{$sample_name} = [0,0,0,0,0,0,0,0];
+	}
     }
     
     my $stop_codons_file;
@@ -639,6 +650,11 @@ while (my $line = <$infile>)  {
 	print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$stop_codon_coord $type_stop_codon $feat_name $frame", $feat_seq);
     }
     close($stop_codons_file);
+
+    print $out_summary "$sample_name\n";
+$total_counts_string = join("\t", @event_counts_total);
+print $out_summary "All\tTotal\t$total_counts_string\n"; 
+
 }
 
 print $out_summary "Species\tSample\tClear Insertions\tClear Foreign Plasmids\tDeletions\tPossible Insertions\tPossible Foreign Plasmids\tTandem Duplications\tMutations\tStop Codons\n";
@@ -658,12 +674,12 @@ my @sorted_species = sort $sort_by_name_total (keys %event_counts);
 foreach my $species (@sorted_species) {
     my @sorted_samples = sort $sort_by_name_total (keys %{ $event_counts{$species} });
     foreach my $sample (@sorted_samples) {
-	my $counts_string = join('\t', @{ $event_counts{$species}->{$sample} });
+	my $counts_string = join("\t", @{ $event_counts{$species}->{$sample} });
 	print $out_summary "$species\t$sample\t$counts_string\n";
     }
 }
 
-my $total_counts_string = join('\t', @event_counts_total);
+$total_counts_string = join("\t", @event_counts_total);
 print $out_summary "All\tTotal\t$total_counts_string\n"; 
 
 close($out_clear);
