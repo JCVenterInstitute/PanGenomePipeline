@@ -22,7 +22,7 @@ my %plasmids = (); # key = plasmid name, value = plasmid sequence
 my %foreign_plasmids = (); # key = plasmid name, value = 1 to indicate this plasmid was deemed a foreign plasmid
 my %insertion_events = (); # key = insertion event name, value = CALLs line for the insertion event
 my %event_counts = (); # key1 = species, key2 = sample name / total, value = array of counts
-my @event_counts_total = [0,0,0,0,0,0,0,0]; # array of total counts
+my @event_counts_total = (0) x 8; # array of total counts
 
 # CONSTANTS #
 use constant TINSC => 0;
@@ -114,10 +114,6 @@ open (my $out_maybe, ">", $out_maybe_file) || die ("ERROR: cannot open output fi
 open (my $out_fasta, ">", $out_fasta_file) || die ("ERROR: cannot open output file $out_fasta_file\n");
 open (my $out_short, ">", $out_short_file) || die ("ERROR: cannot open output file $out_short_file\n");
 open (my $out_summary, ">", $out_summary_file) || die ("ERROR: cannot open output file $out_summary_file\n");
-
-
-my $total_counts_string = join("\t", @event_counts_total);
-print $out_summary "All\tTotal\t$total_counts_string\n"; 
 
 # read file which specifies the Sample ID, CALLS file, CALLS INSERTIONS Blastn tabular results, Plasmids fasta file, Plasmids Blastn tabular results
 open (my $infile, "<", $files) || die ("ERROR: cannot open input file $files\n");
@@ -650,11 +646,6 @@ while (my $line = <$infile>)  {
 	print_fasta($out_fasta, "$sample_name" . "$species_name_ns" . "_$contig_id" . "_$stop_codon_coord $type_stop_codon $feat_name $frame", $feat_seq);
     }
     close($stop_codons_file);
-
-    print $out_summary "$sample_name\n";
-$total_counts_string = join("\t", @event_counts_total);
-print $out_summary "All\tTotal\t$total_counts_string\n"; 
-
 }
 
 print $out_summary "Species\tSample\tClear Insertions\tClear Foreign Plasmids\tDeletions\tPossible Insertions\tPossible Foreign Plasmids\tTandem Duplications\tMutations\tStop Codons\n";
@@ -679,7 +670,7 @@ foreach my $species (@sorted_species) {
     }
 }
 
-$total_counts_string = join("\t", @event_counts_total);
+my $total_counts_string = join("\t", @event_counts_total);
 print $out_summary "All\tTotal\t$total_counts_string\n"; 
 
 close($out_clear);
