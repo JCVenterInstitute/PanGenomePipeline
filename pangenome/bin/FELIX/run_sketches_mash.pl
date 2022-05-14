@@ -1,7 +1,7 @@
 #!/usr/bin/env perl
 
 use strict;
-use Getopt::Long;
+use Getopt::Long qw(:config no_ignore_case);
 use Cwd;
 use File::Basename;
 use Scalar::Util qw(looks_like_number);
