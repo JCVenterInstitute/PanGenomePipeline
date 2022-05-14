@@ -92,7 +92,7 @@ while (my $genome_path = <$input_fh>) {
     my $mash_sketch_out = $out_dir . $gp_id . ".mash_sketch_error";
     my $out = $out_dir . $gp_id;
     print STDERR "Executing command:\n$mash_exec sketch -k $kmer -s $size -o $out $genome_path >& $mash_sketch_out\n";
-    `$mash_exec sketch -k $kmer -s $size -o $out -l $genome_path >& $mash_sketch_out`;
+    `$mash_exec sketch -k $kmer -s $size -o $out $genome_path >& $mash_sketch_out`;
     my $mash_file = $out . ".msh";
     if (!(-e $mash_file) || !(-s $mash_file)) {
 	die ("mash had a problem quitting:\nNo or zero size .msh sketch file created\nSee file: $mash_sketch_out for complete mash sketch output\n");
