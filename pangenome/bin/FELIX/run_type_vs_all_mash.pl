@@ -225,7 +225,12 @@ if ($num_kept > 0) {
     print STDERR "Percentiles for ANI to the type strain for kept genomes:\n";
     my $slice = $num_kept / 100;
     for (my $i=1; $i <= 100; $i++) {
-	my $index = int(($i * $slice) + 0.499);
+	my $index = int(($i * $slice) + 0.499) - 1;
+	if ($index < 0) {
+	    $index = 0;
+	} elsif ($index >= $num_kept) {
+	    $index = $num_kept - 1;
+	}
 	my $percentile = 100 * (1 - $distances[$ordered_indices[$index]]);
 	print STDERR "$i:$percentile\t$genome_ids[$ordered_indices[$index]]\n";
     }
@@ -240,13 +245,13 @@ if ($num_kept > 0) {
 	my $mean_diff;
 	my $median_diff;
 	foreach my $diff (@diffs) {
-	    my $ani_est = 100 * (1 - $diff);
-	    $total_diff += $ani_est;
-	    if ($ani_est < $min_diff) {
-		$min_diff = $ani_est;
+	    my $ani_est_diff = 100 * $diff;
+	    $total_diff += $ani_est_diff;
+	    if ($ani_est_diff < $min_diff) {
+		$min_diff = $ani_est_diff;
 	    }
-	    if ($ani_est > $max_diff) {
-		$max_diff = $ani_est;
+	    if ($ani_est_diff > $max_diff) {
+		$max_diff = $ani_est_diff;
 	    }
 	}
 	@ordered_diffs = sort { $a <=> $b } @diffs; # sort diffs from smallest to largest
@@ -257,6 +262,12 @@ if ($num_kept > 0) {
 	my $slice = $num_diffs / 100;
 	for (my $i=1; $i <= 100; $i++) {
 	    my $index = int(($i * $slice) + 0.499);
+	    my $index = int(($i * $slice) + 0.499) - 1;
+	    if ($index < 0) {
+		$index = 0;
+	    } elsif ($index >= $num_diffs) {
+		$index = $num_diffs - 1;
+	    }
 	    my $percentile = 100 * (1 - $ordered_diffs[$index]);
 	    print STDERR "$i:$percentile\n";
 	}
