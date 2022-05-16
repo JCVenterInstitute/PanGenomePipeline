@@ -127,8 +127,8 @@ if ($genome_paths_size != $genome_ids_size) {
 }
 
 my $mash_out_file = $out . ".mash_dist_out";
-print STDERR "Executing command:\n$mash_exec dist -t -l $input_file $type_strain > $mash_out_file\n";
-`$mash_exec dist -t -l $input_file $type_strain > $mash_out_file`;
+print STDERR "Executing command:\n$mash_exec dist -t $type_strain `cat $input_file` > $mash_out_file\n";
+`$mash_exec dist -t $type_strain \`cat $input_file\` > $mash_out_file`;
 if (!(-e $mash_out_file) || !(-s $mash_out_file)) {
     die ( "ERROR: mash dist command failed: $mash_out_file does not exist or is zero size!\n");
 }
@@ -136,31 +136,30 @@ my $dist_fh;
 unless (open ($dist_fh, "<", $mash_out_file) )  {
     die ("ERROR: Cannot open mash distances file $mash_out_file!\n");
 }
-my $col_count = 0;
-print STDOUT "ID";
+print STDOUT "#Type strain $type_strain_id\n";
 my $dist = <$dist_fh>; #skip header line
-$dist = <$dist_fh>;
-my $first = 1;
-while ($dist =~ /([^\t\n\r]+)([\t\n\r])/g) { #process the tab delimited distances
-    if ($first) {
-	$first = 0;
-	next; #skip header
+my $row_count = 0;
+while ($dist = <$dist_fh>) { #process the MASH lines
+    if ($row_count >= $genome_ids_size) {
+	die ("ERROR: The number of distances in the tabular mash output exceeds the number of genome identifiers provided ($genome_ids_size).\n");
     }
-    if ($col_count >= $genome_ids_size) {
-	die ("ERROR: The number of distances in a single row of the tabular mash output exceeds the number of genome identifiers provided ($genome_ids_size).\n");
+    my @fields = split(/\s/, $dist);
+    my $num_fields = @fields;
+    if ($num_fields != 2) {
+	die ("ERROR: Unexpected number of fields ($num_fields) in tablular mash output - expecting 2.\n$dist\n");
     }
-    my $ani_est = 100 * (1 - $1);
+    my $ani_est = 100 * (1 - $fields[1]);
     if (!$cutoff || ($ani_est >= $cutoff)) {
-	$print_ids[$col_count] = 1;
-	print STDOUT "\t$genome_ids[$col_count]";
+	$print_ids[$row_count] = 1;
+	print STDOUT "$genome_ids[$row_count]\t$ani_est\n";
 	$genomes_kept++;
     } else {
-	$print_ids[$col_count] = 0;
-	print STDERR "Genome $genome_ids[$col_count] is being filtered out for ANI ($ani_est) below cutoff ($cutoff)\n";
+	$print_ids[$row_count] = 0;
+	print STDERR "Genome $genome_ids[$row_count] is being filtered out for ANI ($ani_est) below cutoff ($cutoff)\n";
 	$genomes_discard++;
     }
-    $distances[$col_count] += $1; #have to do this because we are only doing upper half of symmetric matrix
-    $indices[$col_count] = $col_count;
+    $distances[$row_count] += $fields[1];
+    $indices[$row_count] = $row_count;
     $num_all++;
     $total_all += $ani_est;
     if ($ani_est < $min_all) {
@@ -170,7 +169,7 @@ while ($dist =~ /([^\t\n\r]+)([\t\n\r])/g) { #process the tab delimited distance
 	$max_all = $ani_est;
     }
     if ($cutoff) {
-	if ($print_ids[$col_count]) {
+	if ($print_ids[$row_count]) {
 	    $num_kept++;
 	    $total_kept += $ani_est;
 	    if ($ani_est < $min_kept) {
@@ -190,9 +189,8 @@ while ($dist =~ /([^\t\n\r]+)([\t\n\r])/g) { #process the tab delimited distance
 	    }
 	}
     }
-    $col_count++;
+    $row_count++;
 }
-print STDOUT "\n";
 close($dist_fh);
 `rm $mash_out_file`;
 @ordered_indices = sort { $distances[$a] <=> $distances[$b] || $a <=> $b } @indices; # sort indices from smallest to largest distance to type strain
