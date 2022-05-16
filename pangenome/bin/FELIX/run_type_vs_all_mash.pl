@@ -227,10 +227,10 @@ if ($num_kept > 0) {
     for (my $i=1; $i <= 100; $i++) {
 	my $index = int(($i * $slice) + 0.499);
 	my $percentile = 100 * (1 - $distances[$ordered_indices[$index]]);
-	print STDERR "$i:$percentile\n";
+	print STDERR "$i:$percentile\t$genome_ids[$ordered_indices[$index]]\n";
     }
     for (my $i=1; $i < $num_kept; $i++) {
-	$diffs[$i-1] = $distances[$ordered_indices[$i-1]] - $distances[$ordered_indices[$i]];
+	$diffs[$i-1] = $distances[$ordered_indices[$i]] - $distances[$ordered_indices[$i-1]];
     }
     my $num_diffs = @diffs;
     if ($num_diffs > 0) {
