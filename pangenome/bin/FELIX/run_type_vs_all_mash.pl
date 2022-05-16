@@ -256,7 +256,7 @@ if ($num_kept > 0) {
 	}
 	@ordered_diffs = sort { $a <=> $b } @diffs; # sort diffs from smallest to largest
 	$mean_diff = $total_diff / $num_diffs;
-	$median_diff = 100 * (1 - (($num_diffs % 2) ? $ordered_diffs[($num_diffs / 2)] : (($ordered_diffs[(($num_diffs / 2) - 1)] + $ordered_diffs[($num_diffs / 2)]) / 2)));
+	$median_diff = 100 * ((($num_diffs % 2) ? $ordered_diffs[($num_diffs / 2)] : (($ordered_diffs[(($num_diffs / 2) - 1)] + $ordered_diffs[($num_diffs / 2)]) / 2)));
 	print STDERR "Mean, median, min, max pairwise ANI differences for just kept genomes: $mean_diff, $median_diff, $min_diff, $max_diff\n";
 	print STDERR "Percentiles for ANI differences for kept genomes:\n";
 	my $slice = $num_diffs / 100;
@@ -268,7 +268,7 @@ if ($num_kept > 0) {
 	    } elsif ($index >= $num_diffs) {
 		$index = $num_diffs - 1;
 	    }
-	    my $percentile = 100 * (1 - $ordered_diffs[$index]);
+	    my $percentile = 100 * $ordered_diffs[$index];
 	    print STDERR "$i:$percentile\n";
 	}
     }
