@@ -8,15 +8,16 @@ use Scalar::Util qw(looks_like_number);
 
 my $dirname = dirname(__FILE__);
 
-my ($mash_exec, $help, $cutoff, $out, $input_file, $id_file, $type_strain, $type_strain_id);
+my ($mash_exec, $help, $cutoff, $out, $input_file, $type_strain);
 my $cwd = getcwd;
-my @genome_ids; #array of genome identifiers used for column labels
-my @print_ids; #array parallel to @genome_ids which indicates the column should be printed (1) or skipped (0) based on ANI cutoff to the type strain.
+my @genome_ids; #array of genome identifiers used for labels
+my @print_ids; #array parallel to @genome_ids which indicates the genome should be printed (1) or skipped (0) based on ANI cutoff to the type strain.
 my @distances; #distances from type strain to other genomes used to determine median and other stats
 my @indices; #indices of parallel arrays from 0 -> N-1
 my @ordered_indices; #indices of parallel arrays from 0 -> N-1 ordered by distance from type strain smallest first
 my @diffs; #differences between ordered ditances
 my @ordered_diffs; #ordered differences between ordered ditances smallest first
+my $type_strain_id;
 my $mean_all;
 my $num_all = 0;
 my $total_all = 0;
@@ -38,8 +39,8 @@ my $median_discard;
 my $genomes_kept = 0;
 my $genomes_discard = 0;
 $cutoff = "";
-GetOptions("mash_exec|M=s"=>\$mash_exec, "out_prefix|o=s"=>\$out, "help|h|?"=>\$help, "cutoff|c=s"=>\$cutoff, "input_file|f=s"=>\$input_file, "id_file|i=s"=>\$id_file, "type_strain|t=s"=>\$type_strain, "type_strain_id|T=s"=>\$type_strain_id);
-if ($help || !$input_file || !$id_file || !$mash_exec || !$type_strain || !$type_strain_id) {
+GetOptions("mash_exec|M=s"=>\$mash_exec, "out_prefix|o=s"=>\$out, "help|h|?"=>\$help, "cutoff|c=s"=>\$cutoff, "input_file|f=s"=>\$input_file, "type_strain|t=s"=>\$type_strain);
+if ($help || !$input_file || !$mash_exec || !$type_strain) {
     if (!$help) {
 	if (!$input_file) {
 	    print STDERR "Must specify an input file of genome paths!\n\n";
@@ -47,25 +48,17 @@ if ($help || !$input_file || !$id_file || !$mash_exec || !$type_strain || !$type
 	if (!$mash_exec) {
 	    print STDERR "Must specify a path to the MASH executable!\n\n";
 	}
-	if (!$id_file) {
-	    print STDERR "Must specify an identifier file of genome identifiers!\n\n";
-	}
 	if (!$type_strain) {
 	    print STDERR "Must specify a path to the type strain genome MASH sketch!\n\n";
-	}
-	if (!$type_strain_id) {
-	    print STDERR "Must specify an identifier for the type strain genome!\n\n";
 	}
     }
     print STDERR "Runs a type strain versus all MASH of a set of genome MASH sketches specified by the input_file(-f)\n\n";
     print STDERR "--------------------USAGE--------------------------------------\n";
     print STDERR "	-f input file of genome MASH sketch file paths, one per line (required)\n";
-    print STDERR "	-i input file of genome idenitifiers, one per line, in the same order and number of identifiers as the genome MASH sketch paths file (required)\n";
     print STDERR "	-o output file prefix (required if you do not want some generic silly name for your output files)\n";
     print STDERR "	-c cutoff value to use to ignore genomes below this ANI level to the type strain genome if desired\n";
     print STDERR "	-M mash executable (required)\n";
-    print STDERR "	-t genome MASH sketch file path to the type strain\n";
-    print STDERR "	-T genome identifier for the type strain\n";
+    print STDERR "	-t genome MASH sketch file path to the type strain (required)\n";
     print STDERR "	-? or -h help\n";
 		
     exit(1);
@@ -93,12 +86,6 @@ if (-d $mash_exec) {
 if (!(-x $mash_exec)) {
     die ("$mash_exec mash executable file is not executable!\n");
 }
-if (!(-e $id_file)) {
-    die ( "$id_file the genome identifers input file does not exist!\n");
-}
-if (-d $id_file) {
-    die ( "$id_file the genome identifiers input file is a directory!\n");
-}
 if (!(-e $input_file)) {
     die ( "$input_file the genomes MASH sketch paths input file does not exist!\n");
 }
@@ -111,43 +98,76 @@ if (!(-e $type_strain)) {
 if (-d $type_strain) {
     die ( "$type_strain the type strain genome MASH sketch path file is a directory!\n");
 }
-my $id_fh;
-unless (open ($id_fh, "<", $id_file) )  {
-    die ("ERROR: Cannot open genome identifiers input file $id_file!\n");
-}
-while (my $id = <$id_fh>) {
-    chomp ($id); #remove newline
-    push @genome_ids, $id;
-}
-my $genome_ids_size = @genome_ids; #size of the array / number of genome identifiers
 my $genome_paths_size = `wc -l < $input_file`;
 chomp($genome_paths_size);
-if ($genome_paths_size != $genome_ids_size) {
-    die ("ERROR: The number of genome identifiers ($genome_ids_size) is not equal to the number of genome MASH sketch paths ($genome_paths_size)!\n");
+
+my $input_fh;
+unless (open ($input_fh, "<", $input_file) )  {
+    die ("ERROR: Cannot open genome sketch paths input file $input_file!\n");
 }
 
 my $mash_out_file = $out . ".mash_dist_out";
-print STDERR "Executing command:\n$mash_exec dist -t $type_strain `cat $input_file` > $mash_out_file\n";
-`$mash_exec dist -t $type_strain \`cat $input_file\` > $mash_out_file`;
-if (!(-e $mash_out_file) || !(-s $mash_out_file)) {
-    die ( "ERROR: mash dist command failed: $mash_out_file does not exist or is zero size!\n");
+`rm $mash_out_file`;
+my $tmp_mash_out_file = $out . ".tmp_mash_dist_out";
+my $index = 0;
+my $mash_paths = "";
+while (my $genome_path = <$input_fh>) {
+    chomp ($genome_path); #remove newline
+    if (!(-e $genome_path)) {
+	die ( "$genome_path the genome sketch path file does not exist!\n");
+    }
+    if (-d $genome_path) {
+	die ( "$genome_path the genome sketch pathfile is a directory!\n");
+    }
+    $mash_paths .= " $genome_path";
+    $index++;
+    if ($index == 1000) {
+	$index = 0;
+	print STDERR "Executing command:\n$mash_exec dist -t $type_strain $mash_paths > $tmp_mash_out_file\n";
+	`$mash_exec dist -t $type_strain $mash_paths > $tmp_mash_out_file`;
+	if (!(-e $tmp_mash_out_file) || !(-s $tmp_mash_out_file)) {
+	    die ( "ERROR: mash dist command failed: $tmp_mash_out_file does not exist or is zero size!\n");
+	}
+	`cat $tmp_mash_out_file >> $mash_out_file`;
+	`rm $tmp_mash_out_file`;
+	$mash_paths = "";
+    }
 }
+if ($index != 1000) {
+    $index = 0;
+    print STDERR "Executing command:\n$mash_exec dist -t $type_strain $mash_paths > $tmp_mash_out_file\n";
+    `$mash_exec dist -t $type_strain $mash_paths > $tmp_mash_out_file`;
+    if (!(-e $tmp_mash_out_file) || !(-s $tmp_mash_out_file)) {
+	die ( "ERROR: mash dist command failed: $tmp_mash_out_file does not exist or is zero size!\n");
+    }
+    `cat $tmp_mash_out_file >> $mash_out_file`;
+    `rm $tmp_mash_out_file`;
+    $mash_paths = "";
+}
+
 my $dist_fh;
 unless (open ($dist_fh, "<", $mash_out_file) )  {
     die ("ERROR: Cannot open mash distances file $mash_out_file!\n");
 }
 print STDOUT "#Type strain $type_strain_id\n";
-my $dist = <$dist_fh>; #skip header line
+my $dist = <$dist_fh>; #process header line
+my @fields = split(/\s/, $dist);
+my $num_fields = @fields;
+if ($num_fields != 2) {
+    die ("ERROR: Unexpected number of fields ($num_fields) in tablular mash output - expecting 2.\n$dist\n");
+}
+$type_strain_id = $fields[1];
 my $row_count = 0;
 while ($dist = <$dist_fh>) { #process the MASH lines
-    if ($row_count >= $genome_ids_size) {
-	die ("ERROR: The number of distances in the tabular mash output exceeds the number of genome identifiers provided ($genome_ids_size).\n");
+    if ($row_count >= $genome_paths_size) {
+	die ("ERROR: The number of distances in the tabular mash output exceeds the number of genome identifiers provided ($genome_paths_size).\n");
     }
-    my @fields = split(/\s/, $dist);
-    my $num_fields = @fields;
+    @fields = split(/\s/, $dist);
+    $num_fields = @fields;
     if ($num_fields != 2) {
 	die ("ERROR: Unexpected number of fields ($num_fields) in tablular mash output - expecting 2.\n$dist\n");
     }
+    $genome_ids[$row_count] = $fields[0];
     my $ani_est = 100 * (1 - $fields[1]);
     if (!$cutoff || ($ani_est >= $cutoff)) {
 	$print_ids[$row_count] = 1;
@@ -201,7 +221,7 @@ if ($num_all > 0) {
     $mean_all = 0;
     $median_all = 0;
 }
-print STDERR "Mean, median, min, max pairwise ANI for all $genome_ids_size genomes: $mean_all, $median_all, $min_all, $max_all\n";
+print STDERR "Mean, median, min, max pairwise ANI for all $genome_paths_size genomes: $mean_all, $median_all, $min_all, $max_all\n";
 if ($cutoff && ($genomes_discard > 0)) {
     if ($num_kept > 0) {
 	$mean_kept = $total_kept / $num_kept;
@@ -225,7 +245,7 @@ if ($num_kept > 0) {
     print STDERR "Percentiles for ANI to the type strain for kept genomes:\n";
     my $slice = $num_kept / 100;
     for (my $i=1; $i <= 100; $i++) {
-	my $index = int(($i * $slice) + 0.499) - 1;
+	$index = int(($i * $slice) + 0.499) - 1;
 	if ($index < 0) {
 	    $index = 0;
 	} elsif ($index >= $num_kept) {
@@ -261,8 +281,7 @@ if ($num_kept > 0) {
 	print STDERR "Percentiles for ANI differences for kept genomes:\n";
 	my $slice = $num_diffs / 100;
 	for (my $i=1; $i <= 100; $i++) {
-	    my $index = int(($i * $slice) + 0.499);
-	    my $index = int(($i * $slice) + 0.499) - 1;
+	    $index = int(($i * $slice) + 0.499) - 1;
 	    if ($index < 0) {
 		$index = 0;
 	    } elsif ($index >= $num_diffs) {
