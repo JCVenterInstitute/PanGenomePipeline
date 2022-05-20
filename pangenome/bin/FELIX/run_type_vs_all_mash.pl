@@ -109,8 +109,11 @@ unless (open ($input_fh, "<", $input_file) )  {
 my $mash_out_file = $out . ".mash_dist_out";
 `rm $mash_out_file`;
 my $tmp_mash_out_file = $out . ".tmp_mash_dist_out";
+my $stats_file = $out . ".stats";
+my $out_file = $out . ".out";
 my $index = 0;
 my $mash_paths = "";
+my $first = 1;
 while (my $genome_path = <$input_fh>) {
     chomp ($genome_path); #remove newline
     if (!(-e $genome_path)) {
@@ -128,7 +131,12 @@ while (my $genome_path = <$input_fh>) {
 	if (!(-e $tmp_mash_out_file) || !(-s $tmp_mash_out_file)) {
 	    die ( "ERROR: mash dist command failed: $tmp_mash_out_file does not exist or is zero size!\n");
 	}
-	`cat $tmp_mash_out_file >> $mash_out_file`;
+	if ($first) {
+	    `cat $tmp_mash_out_file >> $mash_out_file`;
+	    $first = 0;
+	} else {
+	    `tail -n +2 $tmp_mash_out_file >> $mash_out_file`;
+	}
 	`rm $tmp_mash_out_file`;
 	$mash_paths = "";
     }
@@ -140,7 +148,11 @@ if ($index != 1000) {
     if (!(-e $tmp_mash_out_file) || !(-s $tmp_mash_out_file)) {
 	die ( "ERROR: mash dist command failed: $tmp_mash_out_file does not exist or is zero size!\n");
     }
-    `cat $tmp_mash_out_file >> $mash_out_file`;
+    if ($first) {
+	`cat $tmp_mash_out_file >> $mash_out_file`;
+    } else {
+	`tail -n +2 $tmp_mash_out_file >> $mash_out_file`;
+    }
     `rm $tmp_mash_out_file`;
     $mash_paths = "";
 }
@@ -149,7 +161,15 @@ my $dist_fh;
 unless (open ($dist_fh, "<", $mash_out_file) )  {
     die ("ERROR: Cannot open mash distances file $mash_out_file!\n");
 }
-print STDOUT "#Type strain $type_strain_id\n";
+my $stats_fh;
+unless (open ($dist_fh, ">", $stats_file) )  {
+    die ("ERROR: Cannot open stats output file $stats_file!\n");
+}
+my $out_fh;
+unless (open ($dist_fh, ">", $out_file) )  {
+    die ("ERROR: Cannot open output file $out_file!\n");
+}
+print $out_fh "#Type strain $type_strain_id\n";
 my $dist = <$dist_fh>; #process header line
 my @fields = split(/\s/, $dist);
 my $num_fields = @fields;
@@ -171,11 +191,11 @@ while ($dist = <$dist_fh>) { #process the MASH lines
     my $ani_est = 100 * (1 - $fields[1]);
     if (!$cutoff || ($ani_est >= $cutoff)) {
 	$print_ids[$row_count] = 1;
-	print STDOUT "$genome_ids[$row_count]\t$ani_est\n";
+	print $out_fh "$genome_ids[$row_count]\t$ani_est\n";
 	$genomes_kept++;
     } else {
 	$print_ids[$row_count] = 0;
-	print STDERR "Genome $genome_ids[$row_count] is being filtered out for ANI ($ani_est) below cutoff ($cutoff)\n";
+	print $stats_fh "Genome $genome_ids[$row_count] is being filtered out for ANI ($ani_est) below cutoff ($cutoff)\n";
 	$genomes_discard++;
     }
     $distances[$row_count] += $fields[1];
@@ -212,6 +232,7 @@ while ($dist = <$dist_fh>) { #process the MASH lines
     $row_count++;
 }
 close($dist_fh);
+close($out_fh);
 `rm $mash_out_file`;
 @ordered_indices = sort { $distances[$a] <=> $distances[$b] || $a <=> $b } @indices; # sort indices from smallest to largest distance to type strain
 if ($num_all > 0) {
@@ -221,7 +242,7 @@ if ($num_all > 0) {
     $mean_all = 0;
     $median_all = 0;
 }
-print STDERR "Mean, median, min, max pairwise ANI for all $genome_paths_size genomes: $mean_all, $median_all, $min_all, $max_all\n";
+print $stats_fh "Mean, median, min, max pairwise ANI for all $genome_paths_size genomes: $mean_all, $median_all, $min_all, $max_all\n";
 if ($cutoff && ($genomes_discard > 0)) {
     if ($num_kept > 0) {
 	$mean_kept = $total_kept / $num_kept;
@@ -237,12 +258,12 @@ if ($cutoff && ($genomes_discard > 0)) {
 	$mean_discard = 0;
 	$median_discard = 0;
     }
-    print STDERR "For cutoff ($cutoff) and type strain $type_strain_id: $genomes_kept kept, $genomes_discard discarded\n";
-    print STDERR "Mean, median, min, max pairwise ANI for just kept genomes: $mean_kept, $median_kept, $min_kept, $max_kept\n";
-    print STDERR "Mean, median, min, max pairwise ANI for just discarded genomes: $mean_discard, $median_discard, $min_discard, $max_discard\n";
+    print $stats_fh "For cutoff ($cutoff) and type strain $type_strain_id: $genomes_kept kept, $genomes_discard discarded\n";
+    print $stats_fh "Mean, median, min, max pairwise ANI for just kept genomes: $mean_kept, $median_kept, $min_kept, $max_kept\n";
+    print $stats_fh "Mean, median, min, max pairwise ANI for just discarded genomes: $mean_discard, $median_discard, $min_discard, $max_discard\n";
 }
 if ($num_kept > 0) {
-    print STDERR "Percentiles for ANI to the type strain for kept genomes:\n";
+    print $stats_fh "Percentiles for ANI to the type strain for kept genomes:\n";
     my $slice = $num_kept / 100;
     for (my $i=1; $i <= 100; $i++) {
 	$index = int(($i * $slice) + 0.499) - 1;
@@ -252,7 +273,7 @@ if ($num_kept > 0) {
 	    $index = $num_kept - 1;
 	}
 	my $percentile = 100 * (1 - $distances[$ordered_indices[$index]]);
-	print STDERR "$i:$percentile\t$genome_ids[$ordered_indices[$index]]\n";
+	print $stats_fh "$i:$percentile\t$genome_ids[$ordered_indices[$index]]\n";
     }
     for (my $i=1; $i < $num_kept; $i++) {
 	$diffs[$i-1] = $distances[$ordered_indices[$i]] - $distances[$ordered_indices[$i-1]];
@@ -277,8 +298,8 @@ if ($num_kept > 0) {
 	@ordered_diffs = sort { $a <=> $b } @diffs; # sort diffs from smallest to largest
 	$mean_diff = $total_diff / $num_diffs;
 	$median_diff = 100 * ((($num_diffs % 2) ? $ordered_diffs[($num_diffs / 2)] : (($ordered_diffs[(($num_diffs / 2) - 1)] + $ordered_diffs[($num_diffs / 2)]) / 2)));
-	print STDERR "Mean, median, min, max pairwise ANI differences for just kept genomes: $mean_diff, $median_diff, $min_diff, $max_diff\n";
-	print STDERR "Percentiles for ANI differences for kept genomes:\n";
+	print $stats_fh "Mean, median, min, max pairwise ANI differences for just kept genomes: $mean_diff, $median_diff, $min_diff, $max_diff\n";
+	print $stats_fh "Percentiles for ANI differences for kept genomes:\n";
 	my $slice = $num_diffs / 100;
 	for (my $i=1; $i <= 100; $i++) {
 	    $index = int(($i * $slice) + 0.499) - 1;
@@ -288,8 +309,9 @@ if ($num_kept > 0) {
 		$index = $num_diffs - 1;
 	    }
 	    my $percentile = 100 * $ordered_diffs[$index];
-	    print STDERR "$i:$percentile\n";
+	    print $stats_fh "$i:$percentile\n";
 	}
     }
 }
+close($stats_fh);
 exit (0);
