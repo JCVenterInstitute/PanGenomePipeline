@@ -302,7 +302,7 @@ sub run_aro_searches {
     copy_aro_files( "$RGI_DIR/_db", $aro_dir );
 
     # Run rgi.
-    my @cmd = ( 'python', $RGI_EXEC, '-t', 'protein', '-i', $input_fasta, '-o', $output_json );
+    my @cmd = ( 'python2', $RGI_EXEC, '-t', 'protein', '-i', $input_fasta, '-o', $output_json );
     my $base = (fileparse($RGI_EXEC, qr/\.[^.]*/ ))[0];
     my $lf = "$log_dir/$base.log";
     my $ef = "$log_dir/$base.err";

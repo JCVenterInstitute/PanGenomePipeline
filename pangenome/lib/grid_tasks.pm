@@ -81,8 +81,8 @@ sub launch_grid_job {
 
     my ( $project_code, $working_dir, $shell_script, $stdoutdir, $stderrdir, $queue, $job_array_max ) = @_;
 
-    my $qsub_command = "qsub -V -P $project_code -o $stdoutdir -e $stderrdir -wd $working_dir";
-    $qsub_command .= " -l $queue" if $queue;
+    my $qsub_command = "qsub -l centos7 -V -P $project_code -o $stdoutdir -e $stderrdir -wd $working_dir";
+    #$qsub_command .= " -l $queue" if $queue;
     $qsub_command .= " -t 1-$job_array_max" if $job_array_max;
 
     $qsub_command .= " $shell_script";

@@ -201,7 +201,7 @@ while( my $file = <$lfh> ) {
             #Store Keyword's value in assembly hash
             if ( $keyword eq "ACCESSION" ) {
               
-                if ( $line =~ /^\s*ACCESSION\s*(\w+)/ ){
+                if ( $line =~ /^\s*ACCESSION\s*(\S+)/ ){
                     $assembly->{'accession'} = $1 unless($1 eq "unknown");
                 }
 
@@ -218,7 +218,7 @@ while( my $file = <$lfh> ) {
 
             } elsif ( $keyword eq "LOCUS" ) {
 
-                if ( $line =~ /^LOCUS\s+(\w+)/ ) {
+                if ( $line =~ /^LOCUS\s+(\S+)/ ) {
                     $assembly->{'accession'} = $1 
                 }
 

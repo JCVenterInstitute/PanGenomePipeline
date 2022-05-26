@@ -213,6 +213,7 @@ my $grouping_file       = '';
 my $topology_file       = '';
 my $lfh                 = undef;
 my $debug               = 0;
+my $core_cutoff		= 95;
 
 my %opts;
 GetOptions( \%opts,
@@ -237,6 +238,7 @@ GetOptions( \%opts,
             'use_nuc|n',
             'working_dir|w=s',
             'leave_blast',
+	    'core_cutoff=s',
             'help|h',
          ) || die "Problem getting options.\n";                             
 pod2usage( { -exitval => 1, -verbose => 2 } ) if $opts{help};
@@ -288,6 +290,7 @@ my $final_step = (keys %{@$itinerary[-1]} )[0];
 
 # set up rerun_groups if requested
 my @rerun_groups;
+
 if ( $opts{ rerun_groups } ) {
 
     @rerun_groups = split(',',$opts{rerun_groups});
@@ -581,7 +584,7 @@ sub final_panoct_run {
         || _die( "Can't create symlink for cluster_sizes.txt: $!", __LINE__ );
 
     my @cmd = ( $PANOCT_EXEC, '-R', 'matchtable.txt.expanded', '-f', $tagfile, '-g',  'combined.att_file', 
-                '-P', 'combined.fasta', '-b', $final_dir, '-c', '0,95' );
+                '-P', 'combined.fasta', '-b', $final_dir, '-c', '0,'. $core_cutoff );
 
     if ( $topology_file ) {
 
@@ -604,7 +607,7 @@ sub final_panoct_run {
     } stdout => $lh;
 
     # Now run gene_order.pl one last time
-    @cmd = ( $GENE_ORDER_EXEC, '-P', '-W', './cluster_sizes.txt', '-M', './95_core_adjacency_vector.txt',
+    @cmd = ( $GENE_ORDER_EXEC, '-P', '-W', './cluster_sizes.txt', '-M', './'. $core_cutoff. '_core_adjacency_vector.txt',
              '-m', './0_core_adjacency_vector.txt', '-C', './centroids.fasta.expanded', '-t', $tagfile,
              '-A', 'core.att', '-a', 'fGI.att', '-I', 'fGI_report.txt' );
 
@@ -1151,7 +1154,7 @@ sub run_run_panoct {
     push( @cmd, '-f', $combined_fasta ) if $combined_fasta;
     push( @cmd, '--topology_file', $topology_file ) if ( $topology_file && $working_dir =~ /L1B\d+/ );
     push( @cmd, '--use_nuc' )           if $opts{ use_nuc };
-    push( @cmd, '--strict', 'low' )     if $opts{ less_strict_panoct };
+    push( @cmd, '--strict', 'no' )     if $opts{ less_strict_panoct };
     push( @cmd, '--panoct_verbose' )    if $opts{ panoct_verbose };
     push( @cmd, '--no_grid' )           if $opts{ no_grid };
     push( @cmd, '--panoct_local' )      if $opts{ panoct_local };
@@ -1159,6 +1162,7 @@ sub run_run_panoct {
     push( @cmd, '--lite' )          unless $opts{ no_lite };
     push( @cmd, '--leave_blast' )       if $opts{ leave_blast };
     push( @cmd, '--no_frameshift' )     if $opts{ no_frameshift };
+    push( @cmd, '--core_cutoff', $opts{ core_cutoff } ) if $opts { core_cutoff };
     if ( $opts{ no_blast } ) {
         my $blast_file = "$working_dir/combined.blast";
         if ( -f $blast_file ) {

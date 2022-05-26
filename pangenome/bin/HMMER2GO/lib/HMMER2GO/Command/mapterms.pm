@@ -159,8 +159,8 @@ sub _fetch_mappings {
     my $outfile = 'pfam2go';
     unlink $outfile if -e $outfile;
     
-    my $host = "ftp.geneontology.org";
-    my $dir  = "/pub/go/external2go";
+    my $host = "current.geneontology.org";
+    my $dir  = "/ontology/external2go";
     my $file = "pfam2go";
 
     my $ftp = Net::FTP->new($host, Passive => 1, Debug => 0)

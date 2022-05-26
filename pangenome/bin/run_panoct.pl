@@ -116,6 +116,8 @@ B<--debug>                      :   Integer specifying log message levels.  Lowe
 
 B<--leave_blast>                :   Intended for debugging: Don't remove intermediate blast files.
 
+B<--core_cutoff>		:   Cutoff Value for Core genes.
+
 B<--help,-h>                    :   Display this help message.
 
 =head1  DESCRIPTION
@@ -365,6 +367,7 @@ my $strict              = '';
 my $att_suffix          = 'patt';
 my $use_nuc             = '';
 my @panoct_args;
+my $core_cutoff         = 95;
 
 my %opts;
 GetOptions( \%opts,
@@ -402,6 +405,7 @@ GetOptions( \%opts,
     'topology_file=s',
     'debug=i',
     'leave_blast',
+    'core_cutoff=s',
     'help|h',
     ) || die "Error getting options! $!";
 pod2usage( { -exitval => 1, -verbose => 2 } ) if $opts{help};
@@ -421,6 +425,10 @@ if ( $blast_file_path ) {
         blast_genomes();
     }    
 
+}
+
+if ($opts{ core_cutoff } ) {
+	$core_cutoff = $opts{ core_cutoff };
 }
 
 #Step 2: Run panoct
@@ -562,13 +570,13 @@ sub call_core_cluster_histogram {
 
 sub create_fGI_info {
 
-    my ( $result_dir ) = @_;
+    my ( $result_dir, $core_perc ) = @_;
 
     my $fgi_dir = "$result_dir/fGIs";
     mkdir $fgi_dir || _die( "Couldn't create $fgi_dir: $!", __LINE__ );
  
     my @cmd =   (   $GENE_ORDER_EXEC, '-T', '2', '-W', "$result_dir/cluster_weights.txt",
-                    '-M', "$result_dir/95_core_adjacency_vector.txt",
+                    '-M', "$result_dir/".$core_perc."_core_adjacency_vector.txt",
                     '-m', "$result_dir/0_core_adjacency_vector.txt", '-l', '5',
                     '-t', "$genome_list_file", '-A', "$fgi_dir/Core.att",
                     '-a', "$fgi_dir/fGI.att", '-I', "$fgi_dir/fGI_report.txt",
@@ -655,7 +663,7 @@ sub call_graphics_scripts {
     call_core_cluster_histogram( $core_cluster_data, $plots_dir );
 
     # create fGI data for make_pan_chromosome.sh
-    create_fGI_info( $results_dir );
+    create_fGI_info( $results_dir, $core_cutoff );
 
     # run make_pan_chromosome.sh
     call_make_pan_chromosome( $results_dir );
@@ -831,7 +839,7 @@ sub call_stat_generation_script {
     my $frameshift_file = "$results_dir/frameshifts.txt";
     my $centroid_file   = "$results_dir/centroids.fasta";
     my $fragment_file   = "$results_dir/fragments_fusions.txt";
-
+    my $core_threshold  = $core_cutoff;
     unless ( -s "$gene_att_file.dat" ) {
         create_att_dat_file( $gene_att_file, $working_dir );
     }
@@ -858,7 +866,7 @@ sub call_stat_generation_script {
             $params .= " -o $results_dir";
             $params .= " --hmm_file $opts{ hmm_file }" if $opts{ hmm_file }; 
             $params .= " --role_lookup $role_lookup_file" if $role_lookup_file;
-
+	    $params .= " --core_threshold $core_threshold";
             my $cmd = $STATS_EXEC . " $params";
 
             _log( "Running stat generation:\n$cmd", 0 );
@@ -957,7 +965,7 @@ sub call_compute_pangenome {
 
     my $input_file      = "$results_dir/matchtable_paralog.txt";
     my $output_file     = "$results_dir/pangenome_size";
-    my $core_threshold  = 95;
+    my $core_threshold  = $core_cutoff;
     my $new_threshold   = 0;
     my $combinations    = 250;
 
@@ -1055,7 +1063,11 @@ sub call_panoct {
         push( @params, '-i', $opts{ percent_id } ) if $opts{ percent_id };
         push( @params, '-S', $strict ) if $strict;
         push( @params, '-F', '1.33' ) unless $opts{ no_frameshift };
-        push( @params, '-L', '1', '-M', 'Y', '-H', 'Y', '-V', 'Y', '-N', 'Y', '-G', 'y', '-c', '0,50,95,100', '-T' );
+	my $lst = '0,10,50,70,95,100';
+	if ($core_cutoff != 0 && $core_cutoff != 10 && $core_cutoff != 50 && $core_cutoff != 70 && $core_cutoff != 95 && $core_cutoff != 100) {
+		$lst .= "," . $core_cutoff;
+	}
+        push( @params, '-L', '1', '-M', 'Y', '-H', 'Y', '-V', 'Y', '-N', 'Y', '-G', 'y', '-c', $lst, '-T' );
         push( @params, '-v' ) if $opts{ panoct_verbose };
     }
 
@@ -1180,7 +1192,7 @@ sub get_max_target_seqs {
 
     my %seen;
 
-    open( my $dfh, '<', $genome_list ) || _die( "Can't open $genome_list: $!", __LINE__ );
+    open( my $dfh, '<', $genome_list ) || die( "Can't open $genome_list: $!", __LINE__ );
     while ( <$dfh> ) {
         chomp;
         $seen{$_}++;
@@ -1188,7 +1200,7 @@ sub get_max_target_seqs {
 
     my @dupes = grep { $seen{$_} > 1 } keys %seen;
     if ( scalar @dupes ) {
-        _die( "Found duplicate genomes in $genome_list:\n" . join("\n",@dupes) , __LINE__ ) ;
+        die( "Found duplicate genomes in $genome_list:\n" . join("\n",@dupes) , __LINE__ ) ;
     }
 
     my $target = 2 * scalar( keys %seen );
