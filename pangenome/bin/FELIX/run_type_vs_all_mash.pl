@@ -111,6 +111,7 @@ my $mash_out_file = $out . ".mash_dist_out";
 my $tmp_mash_out_file = $out . ".tmp_mash_dist_out";
 my $stats_file = $out . ".stats";
 my $out_file = $out . ".out";
+my $filtered_file = $out . ".filtered";
 my $index = 0;
 my $mash_paths = "";
 my $first = 1;
@@ -166,10 +167,15 @@ unless (open ($dist_fh, ">", $stats_file) )  {
     die ("ERROR: Cannot open stats output file $stats_file!\n");
 }
 my $out_fh;
-unless (open ($dist_fh, ">", $out_file) )  {
+unless (open ($out_fh, ">", $out_file) )  {
     die ("ERROR: Cannot open output file $out_file!\n");
 }
 print $out_fh "#Type strain $type_strain_id\n";
+my $filtered_fh;
+unless (open ($filtered_fh, ">", $filtered_file) )  {
+    die ("ERROR: Cannot open filtered output file $filtered_file!\n");
+}
+print $filtered_fh "#Genomes being filtered out for ANI below cutoff ($cutoff)\n";
 my $dist = <$dist_fh>; #process header line
 my @fields = split(/\s/, $dist);
 my $num_fields = @fields;
@@ -195,7 +201,7 @@ while ($dist = <$dist_fh>) { #process the MASH lines
 	$genomes_kept++;
     } else {
 	$print_ids[$row_count] = 0;
-	print $stats_fh "Genome $genome_ids[$row_count] is being filtered out for ANI ($ani_est) below cutoff ($cutoff)\n";
+	print $filtered_fh "$genome_ids[$row_count]\t$ani_est\n";
 	$genomes_discard++;
     }
     $distances[$row_count] += $fields[1];
@@ -233,6 +239,7 @@ while ($dist = <$dist_fh>) { #process the MASH lines
 }
 close($dist_fh);
 close($out_fh);
+close($filtered_fh);
 `rm $mash_out_file`;
 @ordered_indices = sort { $distances[$a] <=> $distances[$b] || $a <=> $b } @indices; # sort indices from smallest to largest distance to type strain
 if ($num_all > 0) {
