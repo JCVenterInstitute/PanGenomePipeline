@@ -163,7 +163,7 @@ unless (open ($dist_fh, "<", $mash_out_file) )  {
     die ("ERROR: Cannot open mash distances file $mash_out_file!\n");
 }
 my $stats_fh;
-unless (open ($dist_fh, ">", $stats_file) )  {
+unless (open ($stats_fh, ">", $stats_file) )  {
     die ("ERROR: Cannot open stats output file $stats_file!\n");
 }
 my $out_fh;
