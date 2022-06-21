@@ -8,7 +8,7 @@ use Scalar::Util qw(looks_like_number);
 
 my $dirname = dirname(__FILE__);
 
-my ($mash_exec, $help, $cutoff, $redundant, $max_reps, $out, $input_file, $type_strain);
+my ($mash_exec, $help, $cutoff, $redundant, $max_reps, $out, $input_file, $type_strain, $quit_ANI, $iterate);
 my $cwd = getcwd;
 my @genome_ids; #array of genome identifiers used for labels
 my @genome_paths; #array of genome sketch paths
@@ -55,8 +55,7 @@ my $stddev_redundant;
 my $sumsquared_redundant = 0;
 my $num_cur_reps = 0;
 my $num_total_reps = 0;
-$cutoff = "";
-GetOptions("mash_exec|M=s"=>\$mash_exec, "out_prefix|o=s"=>\$out, "help|h|?"=>\$help, "cutoff|c=s"=>\$cutoff, "redundant|r=s"=>\$redundant, "max_reps|m=s"=>\$max_reps, "input_file|f=s"=>\$input_file, "type_strain|t=s"=>\$type_strain);
+GetOptions("mash_exec|M=s"=>\$mash_exec, "out_prefix|o=s"=>\$out, "help|h|?"=>\$help, "cutoff|c=s"=>\$cutoff, "redundant|r=s"=>\$redundant, "max_reps|m=s"=>\$max_reps, "input_file|f=s"=>\$input_file, "type_strain|t=s"=>\$type_strain, "rep_dist|d=s"=>\$quit_ANI, "iterate|i"=>\$iterate);
 if ($help || !$input_file || !$mash_exec || !$type_strain) {
     if (!$help) {
 	if (!$input_file) {
@@ -74,10 +73,12 @@ if ($help || !$input_file || !$mash_exec || !$type_strain) {
     print STDERR "	-f input file of genome MASH sketch file paths, one per line (required)\n";
     print STDERR "	-o output file prefix (required if you do not want some generic silly name for your output files)\n";
     print STDERR "	-c cutoff value to use to ignore genomes below this ANI level to the type strain genome if desired\n";
-    print STDERR "	-r cutoff value to use to ignore redundant genomes above this ANI level to the type strain genome if desired\n";
+    print STDERR "	-r cutoff value to use to ignore redundant genomes above this ANI level to the type strain genome or representative genomes if desired\n";
+    print STDERR "	-d cutoff value to stop generating representative genomes above this ANI level to the representative genomes (default 100)\n";
     print STDERR "	-m maximum number of genomes to keep as representative for the species (default 1000)\n";
     print STDERR "	-M mash executable (required)\n";
     print STDERR "	-t genome MASH sketch file path to the type strain (required)\n";
+    print STDERR "	-i iterate the generation of representative genomes\n";
     print STDERR "	-? or -h help\n";
 		
     exit(1);
@@ -103,8 +104,17 @@ if ($cutoff ne "") {
     if (!looks_like_number($cutoff)) {
 	die ("ERROR: the ANI cutoff $cutoff does not look like a number\n");
     }
-    if (($cutoff < 0) || ($cutoff > 100)) {
-	die ("ERROR: $cutoff is outside of the expected ANI cutoff range of 0-100\n");
+    if (($cutoff < 80) || ($cutoff > 100)) {
+	die ("ERROR: $cutoff is outside of the expected ANI cutoff range of 80-100\n");
+    }
+}
+
+if ($quit_ANI ne "") { 
+    if (!looks_like_number($quit_ANI)) {
+	die ("ERROR: the ANI representative minimum distance cutoff $quit_ANI does not look like a number\n");
+    }
+    if (($quit_ANI < 99) || ($quit_ANI > 100)) {
+	die ("ERROR: $quit_ANI is outside of the expected ANI representative minimum distance cutoff range of 99-100\n");
     }
 }
 
@@ -112,8 +122,8 @@ if ($redundant ne "") {
     if (!looks_like_number($redundant)) {
 	die ("ERROR: the ANI redundant cutoff $redundant does not look like a number\n");
     }
-    if (($redundant < 90) || ($redundant > 100)) {
-	die ("ERROR: $redundant is outside of the expected ANI redundant cutoff range of 90-100\n");
+    if (($redundant < 99) || ($redundant > 100)) {
+	die ("ERROR: $redundant is outside of the expected ANI redundant cutoff range of 99-100\n");
     }
 }
 
@@ -147,6 +157,7 @@ unless (open ($input_fh, "<", $input_file) )  {
 }
 
 my $mash_out_file = $out . ".mash_dist_out";
+my $mash_out_old_file = $out . ".mash_dist_old_out";
 my $tmp_mash_out_file = $out . ".tmp_mash_dist_out";
 my $stats_file = $out . ".stats";
 my $out_file = $out . ".out";
@@ -393,6 +404,7 @@ if ($num_kept > 0) {
 	} elsif ($index >= $num_kept) {
 	    $index = $num_kept - 1;
 	}
+	$index += $num_redundant;
 	for (my $i=$num_redundant; $i < $red_plus_kept; $i++) {
 	    my $rep_ANI = 100 * (1 - $distances[$ordered_indices[$i]]);
 	    if ($index == $i) {
@@ -406,6 +418,7 @@ if ($num_kept > 0) {
 		} elsif ($index >= $num_kept) {
 		    $index = $num_kept - 1;
 		}
+		$index += $num_redundant;
 	    } else {
 		push (@kept_paths, $genome_paths[$ordered_indices[$i]]);
 	    }
@@ -459,7 +472,7 @@ if ($num_kept > 0) {
 }
 close($stats_fh);
 
-while (!$done_reps) {
+while ($iterate && !$done_reps) {
     my $reps_mash_file = $out . "_reps";
     print STDERR "Executing command:\n$mash_exec paste -l $reps_mash_file $reps_sk_file\n";
     `$mash_exec paste -l $reps_mash_file $reps_sk_file`;
@@ -572,7 +585,6 @@ while (!$done_reps) {
     }
     $num_total_redundant += $cur_redundant;
     close($dist_fh);
-    `rm $mash_out_file`;
     my $reps_fh;
     unless (open ($reps_fh, ">>", $reps_file) )  {
 	die ("ERROR: Cannot open stats output file $reps_file!\n");
@@ -581,18 +593,46 @@ while (!$done_reps) {
     unless (open ($reps_sk_fh, ">", $reps_sk_file) )  {
 	die ("ERROR: Cannot open stats output file $reps_sk_file!\n");
     }
-    $num_cur_reps = 0;
+    my $num_new_reps = 0;
     for (my $i=0; $i < $num_cur_reps; $i++) {
 	if ($max_dist_reps[$i] >= 0) {
 	    my $rep_ANI = 100 * (1 - $max_dist_reps[$i]);
-	    print $reps_fh "$reps_ids[$i]\t$genome_ids[$max_index_reps[$i]]\t$rep_ANI\n";
-	    print $reps_sk_fh "$kept_paths[$max_index_reps[$i]]\n";
-	    $num_cur_reps++;
+	    if ($rep_ANI < $quit_ANI) {
+		$print_ids[$max_index_reps[$i]] = 0;
+		print $reps_fh "$reps_ids[$i]\t$genome_ids[$max_index_reps[$i]]\t$rep_ANI\n";
+		print $reps_sk_fh "$kept_paths[$max_index_reps[$i]]\n";
+		$num_new_reps++;
+	    }
 	}
     }
     close($reps_fh);
     close($reps_sk_fh);
-    $num_total_reps += $num_cur_reps;
+    $num_total_reps += $num_new_reps;
+    if (($num_new_reps == 0) || (($num_new_reps + $cur_redundant) == $num_cur_genomes) || ($num_total_reps >= $max_reps)){
+	$done_reps = 1;
+    } else {
+	unless (open ($dist_fh, "<", $mash_out_file) )  {
+	    die ("ERROR: Cannot open mash distances file $mash_out_file!\n");
+	}
+	my $dist_old_fh;
+	unless (open ($dist_old_fh, ">", $mash_out_old_file) )  {
+	    die ("ERROR: Cannot open mash distances file $mash_out_old_file!\n");
+	}
+	$dist = <$dist_fh>; #process header line
+	print $dist_old_fh $dist;
+	my $j = 0;
+	for (my $i=0; $i < $num_cur_genomes; $i++) {
+	    $dist = <$dist_fh>;
+	    if ($print_ids[$i]) {
+		print $dist_old_fh $dist;
+		$kept_paths[$j] = $kept_paths[$i];
+		$j++;
+	    }
+	}
+	close($dist_fh);
+	close($dist_old_fh);
+    }
+	
     $done_reps = 1;
 }
 
