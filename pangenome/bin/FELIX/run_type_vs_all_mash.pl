@@ -54,7 +54,8 @@ my $median_redundant;
 my $stddev_redundant;
 my $sumsquared_redundant = 0;
 my $num_cur_reps = 0;
-my $num_total_reps = 0;
+my $num_prev_reps = 1;
+my $num_total_reps = 1;
 GetOptions("mash_exec|M=s"=>\$mash_exec, "out_prefix|o=s"=>\$out, "help|h|?"=>\$help, "cutoff|c=s"=>\$cutoff, "redundant|r=s"=>\$redundant, "max_reps|m=s"=>\$max_reps, "input_file|f=s"=>\$input_file, "type_strain|t=s"=>\$type_strain, "rep_dist|d=s"=>\$quit_ANI, "iterate|i"=>\$iterate);
 if ($help || !$input_file || !$mash_exec || !$type_strain) {
     if (!$help) {
@@ -156,14 +157,15 @@ unless (open ($input_fh, "<", $input_file) )  {
     die ("ERROR: Cannot open genome sketch paths input file $input_file!\n");
 }
 
-my $mash_out_file = $out . ".mash_dist_out";
-my $mash_out_old_file = $out . ".mash_dist_old_out";
+my $mash_out_file_prefix = $out . ".mash_dist_out_";
+my $mash_out_file = $out . ".mash_dist_out_0";
 my $tmp_mash_out_file = $out . ".tmp_mash_dist_out";
 my $stats_file = $out . ".stats";
 my $out_file = $out . ".out";
 my $filtered_file = $out . ".filtered";
 my $redundant_file = $out . ".redundant";
 my $reps_file = $out . ".reps";
+my $reps_fh;
 my $reps_sk_file = $out . ".reps_msh";
 my $index = 0;
 my $mash_paths = "";
@@ -192,7 +194,7 @@ while (my $genome_path = <$input_fh>) {
 	} else {
 	    `tail -n +2 $tmp_mash_out_file >> $mash_out_file`;
 	}
-	`rm $tmp_mash_out_file`;
+	unlink $tmp_mash_out_file;
 	$mash_paths = "";
     }
 }
@@ -209,11 +211,13 @@ if ($index != 1000) {
     } else {
 	`tail -n +2 $tmp_mash_out_file >> $mash_out_file`;
     }
-    `rm $tmp_mash_out_file`;
+    unlink $tmp_mash_out_file;
     $mash_paths = "";
 }
 
 my $dist_fh;
+my $prev_dist_fh;
+my $next_prev_dist_fh;
 unless (open ($dist_fh, "<", $mash_out_file) )  {
     die ("ERROR: Cannot open mash distances file $mash_out_file!\n");
 }
@@ -308,7 +312,6 @@ while ($dist = <$dist_fh>) { #process the MASH lines
 }
 $num_total_redundant += $num_redundant;
 close($dist_fh);
-`rm $mash_out_file`;
 @ordered_indices = sort { $distances[$a] <=> $distances[$b] || $a <=> $b } @indices; # sort indices from smallest to largest distance to type strain
 for (my $i=0; $i < $num_redundant; $i++) {
     my $ani_est = 100 * (1 - $distances[$ordered_indices[$i]]);
@@ -384,7 +387,6 @@ if ($num_kept > 0) {
 	print $stats_fh "$i\t$percentile\t$genome_ids[$ordered_indices[$index]]\n";
     }
     if ($num_kept > $max_reps) {
-	my $reps_fh;
 	unless (open ($reps_fh, ">", $reps_file) )  {
 	    die ("ERROR: Cannot open stats output file $reps_file!\n");
 	}
@@ -395,8 +397,6 @@ if ($num_kept > 0) {
 	my $tmp_reps = int($max_reps / 10);
 	my $rep_slice = $num_kept / $tmp_reps;
 	print $reps_fh "$type_strain_id\t$type_strain_id\t100\n";
-	print $reps_sk_fh "$type_strain\n";
-	$num_cur_reps++;
 	my $step = 1;
 	$index = int(($step * $rep_slice) + 0.499) - 1;
 	if ($index < 0) {
@@ -424,7 +424,6 @@ if ($num_kept > 0) {
 	    }
 	}
 	$num_total_reps += $num_cur_reps;
-	close($reps_fh);
 	close($reps_sk_fh);
     } else {
 	print STDERR "Number of kept genomes $num_kept <= maximum number of genome representatives specified $max_reps - use kept genomes as representatives.\n";
@@ -472,21 +471,23 @@ if ($num_kept > 0) {
 }
 close($stats_fh);
 
+my $iteration = 1;
+my $prev_mash_out_file = $mash_out_file;
 while ($iterate && !$done_reps) {
-    my $reps_mash_file = $out . "_reps";
-    print STDERR "Executing command:\n$mash_exec paste -l $reps_mash_file $reps_sk_file\n";
-    `$mash_exec paste -l $reps_mash_file $reps_sk_file`;
-    $reps_mash_file .= ".msh";
+    my $reps_mash_file_prefix = $out . "_reps";
+    my $reps_mash_file = $out . "_reps.msh";
+    print STDERR "Executing command:\n$mash_exec paste -l $reps_mash_file_prefix $reps_sk_file\n";
+    unlink $reps_mash_file;
+    `$mash_exec paste -l $reps_mash_file_prefix $reps_sk_file`;
     if (!(-e $reps_mash_file) || !(-s $reps_mash_file)) {
 	die ( "ERROR: mash paste command failed: $reps_mash_file does not exist or is zero size!\n");
     }
-    
+
+    $mash_out_file = $mash_out_file_prefix . $iteration;
     $index = 0;
     $mash_paths = "";
     $first = 1;
-    @genome_paths = ();
     foreach my $genome_path (@kept_paths) {
-	push (@genome_paths, $genome_path);
 	$mash_paths .= " $genome_path";
 	$index++;
 	if ($index == 1000) {
@@ -502,7 +503,7 @@ while ($iterate && !$done_reps) {
 	    } else {
 		`tail -n +2 $tmp_mash_out_file >> $mash_out_file`;
 	    }
-	    `rm $tmp_mash_out_file`;
+	    unlink $tmp_mash_out_file;
 	    $mash_paths = "";
 	}
     }
@@ -518,13 +519,32 @@ while ($iterate && !$done_reps) {
 	} else {
 	    `tail -n +2 $tmp_mash_out_file >> $mash_out_file`;
 	}
-	`rm $tmp_mash_out_file`;
+	unlink $tmp_mash_out_file;
 	$mash_paths = "";
     }
 
     unless (open ($dist_fh, "<", $mash_out_file) )  {
 	die ("ERROR: Cannot open mash distances file $mash_out_file!\n");
     }
+    unless (open ($prev_dist_fh, "<", $prev_mash_out_file) )  {
+	die ("ERROR: Cannot open mash distances file $prev_mash_out_file!\n");
+    }
+    my $next_prev_mash_out_file = $mash_out_file . "_next";
+    unless (open ($next_prev_dist_fh, ">", $next_prev_mash_out_file) )  {
+	die ("ERROR: Cannot open mash distances file $next_prev_mash_out_file!\n");
+    }
+
+    #process all of the header lines
+    $dist = <$prev_dist_fh>; #process header line
+    my @prev_reps_ids = split(/\s/, $dist);
+    $num_fields = @prev_reps_ids;
+    my $prev_expected_fields = $num_prev_reps + 1;
+    if ($num_fields != $prev_expected_fields) {
+	die ("ERROR: Unexpected number of fields ($num_fields) in tablular mash output - expecting $prev_expected_fields.\n$dist\n");
+    }
+    shift @prev_reps_ids;
+    my $header_out = $dist;
+    chomp ($header_out); #remove newline
     $dist = <$dist_fh>; #process header line
     my @reps_ids = split(/\s/, $dist);
     $num_fields = @reps_ids;
@@ -533,26 +553,84 @@ while ($iterate && !$done_reps) {
 	die ("ERROR: Unexpected number of fields ($num_fields) in tablular mash output - expecting $expected_fields.\n$dist\n");
     }
     shift @reps_ids;
+    push (@prev_reps_ids, @reps_ids);
+    if ($dist !~ /^#query\t/) {
+	die ("ERROR: Unexpected format of header line for $mash_out_file\n$dist\n");
+    }
+    my $suffix_header = $dist;
+    $suffix_header =~ s/^#query//;
+    $header_out .= $suffix_header;
+    print $next_prev_dist_fh $header_out;
+    $num_fields = @prev_reps_ids;
+    if ($num_fields != $num_total_reps) {
+	die ("ERROR: number of header fields ($num_fields) not equal too total number of representatives ($num_total_reps)\n");
+    }
     my @max_dist_reps; # the maximum distance seen for each current representative genome of the minimum distances across the representative genomes
     my @max_index_reps; # the index for the maximum distance seen for each current representative genome of the minimum distances across the representative genomes
-    for (my $i=0; $i < $num_cur_reps; $i++) {
+    for (my $i=0; $i < $num_total_reps; $i++) {
 	$max_dist_reps[$i] = -1;
     }
     my $num_cur_genomes = @kept_paths;
     @genome_ids = ();
     @print_ids = ();
     $row_count = 0;
+    my $mean_rep;
+    my $num_rep = 0;
+    my $total_rep = 0;
+    my $min_rep = 101;
+    my $max_rep = -1;
+    my $stddev_rep;
+    my $sumsquared_rep = 0;
     my $cur_redundant = 0;
-    while ($dist = <$dist_fh>) { #process the MASH lines
-	if ($row_count >= $num_cur_genomes) {
-	    die ("ERROR: The number of distances in the tabular mash output exceeds the number of genome identifiers provided ($num_cur_genomes).\n");
-	}
-	@fields = split(/\s/, $dist);
-	$num_fields = @fields;
+    #process all of the distance lines from all of the files
+    my $cur_dist;
+    my @cur_fields;
+    my $cur_genome_id;
+    my $not_done_cur = 1;
+    if ($cur_dist = <$dist_fh>) {
+	my @cur_fields = split(/\s/, $cur_dist);
+	$num_fields = @cur_fields;
 	if ($num_fields != $expected_fields) {
 	    die ("ERROR: Unexpected number of fields ($num_fields) in tablular mash output - expecting $expected_fields.\n$dist\n");
 	}
+	my $cur_genome_id = shift @cur_fields;
+    } else {
+	$not_done_cur = 0;
+    }
+    while ($not_done_cur && ($dist = <$prev_dist_fh>)) { #process the MASH lines
+	@fields = split(/\s/, $dist);
+	$num_fields = @fields;
+	if ($num_fields != $prev_expected_fields) {
+	    die ("ERROR: Unexpected number of fields ($num_fields) in tablular mash output - expecting $prev_expected_fields.\n$dist\n");
+	}
 	$genome_ids[$row_count] = shift @fields;
+	if ($genome_ids[$row_count] != $cur_genome_id) {
+	    next; #skipping genomes which became representative genomes
+	} else {
+	    my $line_out = $dist;
+	    chomp ($header_out); #remove newline
+	    push (@fields, @cur_fields);
+	    if ($cur_dist !~ /^[^\t]+\t/) {
+		die ("ERROR: Unexpected format of line for $mash_out_file\n$dist\n");
+	    }
+	    my $suffix_line = $cur_dist;
+	    $suffix_line =~ s/^[^\t]*//;
+	    $line_out .= $suffix_line;
+	    print $next_prev_dist_fh $line_out;
+	    if ($cur_dist = <$dist_fh>) {
+		@cur_fields = split(/\s/, $cur_dist);
+		$num_fields = @cur_fields;
+		if ($num_fields != $expected_fields) {
+		    die ("ERROR: Unexpected number of fields ($num_fields) in tablular mash output - expecting $expected_fields.\n$dist\n");
+		}
+		$cur_genome_id = shift @cur_fields;
+	    } else {
+		$not_done_cur = 0;
+	    }
+	}
+	if ($row_count >= $num_cur_genomes) {
+	    die ("ERROR: The number of distances in the tabular mash output exceeds the number of genome identifiers provided ($num_cur_genomes).\n");
+	}
 	my $reps_index = 0;
 	$print_ids[$row_count] = 1;
 	my $min_dist = 1;
@@ -561,7 +639,7 @@ while ($iterate && !$done_reps) {
 	    my $ani_est = 100 * (1 - $dist);
 	    if (($redundant ne "") && ($ani_est >= $redundant)) {
 		$print_ids[$row_count] = 0;
-		print $redundant_fh "$reps_ids[$reps_index]\t$genome_ids[$row_count]\t$ani_est\n";
+		print $redundant_fh "$prev_reps_ids[$reps_index]\t$genome_ids[$row_count]\t$ani_est\n";
 		$cur_redundant++;
 		last;
 	    }
@@ -580,18 +658,31 @@ while ($iterate && !$done_reps) {
 	    } else {
 		die ("ERROR: min_index not set when it should have been\n");
 	    }
+	    my $ani_est = 100 * (1 - $min_dist);
+	    $num_rep++;
+	    $total_rep += $ani_est;
+	    $sumsquared_rep += $ani_est * $ani_est;
+	    if ($ani_est < $min_rep) {
+		$min_rep = $ani_est;
+	    }
+	    if ($ani_est > $max_rep) {
+		$max_rep = $ani_est;
+	    }
 	}
 	$row_count++;
     }
     $num_total_redundant += $cur_redundant;
-    close($dist_fh);
-    my $reps_fh;
-    unless (open ($reps_fh, ">>", $reps_file) )  {
-	die ("ERROR: Cannot open stats output file $reps_file!\n");
+    if ($num_rep > 0) {
+	$mean_rep = $total_rep / $num_rep;
+	$stddev_rep = sqrt(($sumsquared_rep - ($mean_rep * $mean_rep * $num_rep)) / (($num_rep > 1) ? ($num_rep - 1) : 1));
+    } else {
+	$mean_rep = 0;
+	$stddev_rep = 0;
     }
+    print $stats_fh "Mean, min, max, std_dev minimum pairwise ANI to representative genomes for iteration $iteration: $mean_rep, $min_rep, $max_rep, $stddev_rep\n";
     my $reps_sk_fh;
     unless (open ($reps_sk_fh, ">", $reps_sk_file) )  {
-	die ("ERROR: Cannot open stats output file $reps_sk_file!\n");
+	die ("ERROR: Cannot open representative genomes sketches output file $reps_sk_file!\n");
     }
     my $num_new_reps = 0;
     for (my $i=0; $i < $num_cur_reps; $i++) {
@@ -599,45 +690,44 @@ while ($iterate && !$done_reps) {
 	    my $rep_ANI = 100 * (1 - $max_dist_reps[$i]);
 	    if ($rep_ANI < $quit_ANI) {
 		$print_ids[$max_index_reps[$i]] = 0;
-		print $reps_fh "$reps_ids[$i]\t$genome_ids[$max_index_reps[$i]]\t$rep_ANI\n";
+		print $reps_fh "$prev_reps_ids[$i]\t$genome_ids[$max_index_reps[$i]]\t$rep_ANI\n";
 		print $reps_sk_fh "$kept_paths[$max_index_reps[$i]]\n";
 		$num_new_reps++;
 	    }
 	}
     }
-    close($reps_fh);
     close($reps_sk_fh);
+    $num_prev_reps += $num_cur_reps;
+    $num_cur_reps = $num_new_reps;
     $num_total_reps += $num_new_reps;
     if (($num_new_reps == 0) || (($num_new_reps + $cur_redundant) == $num_cur_genomes) || ($num_total_reps >= $max_reps)){
 	$done_reps = 1;
     } else {
-	unless (open ($dist_fh, "<", $mash_out_file) )  {
-	    die ("ERROR: Cannot open mash distances file $mash_out_file!\n");
-	}
-	my $dist_old_fh;
-	unless (open ($dist_old_fh, ">", $mash_out_old_file) )  {
-	    die ("ERROR: Cannot open mash distances file $mash_out_old_file!\n");
-	}
-	$dist = <$dist_fh>; #process header line
-	print $dist_old_fh $dist;
 	my $j = 0;
 	for (my $i=0; $i < $num_cur_genomes; $i++) {
-	    $dist = <$dist_fh>;
 	    if ($print_ids[$i]) {
-		print $dist_old_fh $dist;
 		$kept_paths[$j] = $kept_paths[$i];
 		$j++;
 	    }
 	}
-	close($dist_fh);
-	close($dist_old_fh);
+	$j--;
+	$#kept_paths = $j; #truncate array
     }
 	
-    $done_reps = 1;
+    $iteration++;
+    close($dist_fh);
+    close($prev_dist_fh);
+    close($next_prev_dist_fh);
+    unlink $mash_out_file;
+    unlink $prev_mash_out_file;
+    $prev_mash_out_file = $next_prev_mash_out_file;
 }
+unlink $prev_mash_out_file;
+close($reps_fh);
 
 if ($redundant ne "") {
     close($redundant_fh);
 }
+
 
 exit (0);
