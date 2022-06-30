@@ -683,7 +683,7 @@ while ($iterate && !$done_reps) {
 	die ("ERROR: Cannot open representative genomes sketches output file $reps_sk_file!\n");
     }
     my $num_new_reps = 0;
-    for (my $i=0; $i < $num_cur_reps; $i++) {
+    for (my $i=0; $i < $num_total_reps; $i++) {
 	if ($max_dist_reps[$i] >= 0) {
 	    my $rep_ANI = 100 * (1 - $max_dist_reps[$i]);
 	    if ($rep_ANI < $quit_ANI) {
