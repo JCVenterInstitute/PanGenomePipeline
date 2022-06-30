@@ -606,27 +606,25 @@ while ($iterate && !$done_reps) {
 	$genome_ids[$row_count] = shift @fields;
 	if ($genome_ids[$row_count] != $cur_genome_id) {
 	    next; #skipping genomes which became representative genomes
+	}
+	my $line_out = $dist;
+	chomp ($line_out); #remove newline
+	push (@fields, @cur_fields);
+	if ($cur_dist !~ /^[^\t]+\t/) {
+	    die ("ERROR: Unexpected format of line for $mash_out_file\n$dist\n");
+	}
+	my $suffix_line = $cur_dist;
+	$suffix_line =~ s/^[^\t]*//;
+	$line_out .= $suffix_line;
+	if ($cur_dist = <$dist_fh>) {
+	    @cur_fields = split(/\s/, $cur_dist);
+	    $num_fields = @cur_fields;
+	    if ($num_fields != $expected_fields) {
+		die ("ERROR: Unexpected number of fields ($num_fields) in tablular mash output - expecting $expected_fields.\n$dist\n");
+	    }
+	    $cur_genome_id = shift @cur_fields;
 	} else {
-	    my $line_out = $dist;
-	    chomp ($header_out); #remove newline
-	    push (@fields, @cur_fields);
-	    if ($cur_dist !~ /^[^\t]+\t/) {
-		die ("ERROR: Unexpected format of line for $mash_out_file\n$dist\n");
-	    }
-	    my $suffix_line = $cur_dist;
-	    $suffix_line =~ s/^[^\t]*//;
-	    $line_out .= $suffix_line;
-	    print $next_prev_dist_fh $line_out;
-	    if ($cur_dist = <$dist_fh>) {
-		@cur_fields = split(/\s/, $cur_dist);
-		$num_fields = @cur_fields;
-		if ($num_fields != $expected_fields) {
-		    die ("ERROR: Unexpected number of fields ($num_fields) in tablular mash output - expecting $expected_fields.\n$dist\n");
-		}
-		$cur_genome_id = shift @cur_fields;
-	    } else {
-		$not_done_cur = 0;
-	    }
+	    $not_done_cur = 0;
 	}
 	if ($row_count >= $num_cur_genomes) {
 	    die ("ERROR: The number of distances in the tabular mash output exceeds the number of genome identifiers provided ($num_cur_genomes).\n");
@@ -650,6 +648,7 @@ while ($iterate && !$done_reps) {
 	    $reps_index++;
 	}
 	if ($print_ids[$row_count]) {
+	    print $next_prev_dist_fh $line_out;
 	    if ($min_index >= 0) {
 		if ($min_dist > $max_dist_reps[$min_index]) {
 		    $max_dist_reps[$min_index] = $min_dist;
