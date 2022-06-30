@@ -469,7 +469,6 @@ if ($num_kept > 0) {
 } else {
     $done_reps = 1;
 }
-close($stats_fh);
 
 my $iteration = 1;
 my $prev_mash_out_file = $mash_out_file;
@@ -722,6 +721,7 @@ while ($iterate && !$done_reps) {
     $prev_mash_out_file = $next_prev_mash_out_file;
 }
 unlink $prev_mash_out_file;
+close($stats_fh);
 close($reps_fh);
 
 if ($redundant ne "") {
