@@ -6,6 +6,9 @@ use Cwd;
 use File::Basename;
 use Scalar::Util qw(looks_like_number);
 
+use constant MAX_DIST => 0;
+use constant MAX_INDEX => 1;
+
 my $dirname = dirname(__FILE__);
 
 my ($mash_exec, $help, $cutoff, $redundant, $max_reps, $out, $input_file, $type_strain, $quit_ANI, $iterate);
@@ -55,7 +58,10 @@ my $stddev_redundant;
 my $sumsquared_redundant = 0;
 my $num_cur_reps = 0;
 my $num_prev_reps = 1;
+my $num_new_reps = 1;
 my $num_total_reps = 1;
+my $cur_redundant = 0;
+my $max_increment_reps;
 GetOptions("mash_exec|M=s"=>\$mash_exec, "out_prefix|o=s"=>\$out, "help|h|?"=>\$help, "cutoff|c=s"=>\$cutoff, "redundant|r=s"=>\$redundant, "max_reps|m=s"=>\$max_reps, "input_file|f=s"=>\$input_file, "type_strain|t=s"=>\$type_strain, "rep_dist|d=s"=>\$quit_ANI, "iterate|i"=>\$iterate);
 if ($help || !$input_file || !$mash_exec || !$type_strain) {
     if (!$help) {
@@ -311,6 +317,7 @@ while ($dist = <$dist_fh>) { #process the MASH lines
     $row_count++;
 }
 $num_total_redundant += $num_redundant;
+$cur_redundant += $num_redundant;
 close($dist_fh);
 @ordered_indices = sort { $distances[$a] <=> $distances[$b] || $a <=> $b } @indices; # sort indices from smallest to largest distance to type strain
 for (my $i=0; $i < $num_redundant; $i++) {
@@ -371,6 +378,7 @@ if (((($cutoff ne "") && ($num_discard > 0)) || (($redundant ne "") && ($num_red
     $median_kept = $median_all;
     $stddev_kept = $stddev_all;
 }
+print $stats_fh "Number new representatives $num_new_reps ($num_total_reps)\nNumber new redundant $cur_redundant ($num_total_redundant)\n";
 
 my $done_reps = 0;
 if ($num_kept > 0) {
@@ -404,6 +412,7 @@ if ($num_kept > 0) {
 	} elsif ($index >= $num_kept) {
 	    $index = $num_kept - 1;
 	}
+	$max_increment_reps = $index + 1;
 	$index += $num_redundant;
 	for (my $i=$num_redundant; $i < $red_plus_kept; $i++) {
 	    my $rep_ANI = 100 * (1 - $distances[$ordered_indices[$i]]);
@@ -472,7 +481,7 @@ if ($num_kept > 0) {
 
 my $iteration = 1;
 my $prev_mash_out_file = $mash_out_file;
-while ($iterate && !$done_reps) {
+while ($iterate) {
     my $reps_mash_file_prefix = $out . "_reps";
     my $reps_mash_file = $out . "_reps.msh";
     print STDERR "Executing command:\n$mash_exec paste -l $reps_mash_file_prefix $reps_sk_file\n";
@@ -564,10 +573,11 @@ while ($iterate && !$done_reps) {
     if ($num_fields != $num_total_reps) {
 	die ("ERROR: number of header fields ($num_fields) not equal too total number of representatives ($num_total_reps)\n");
     }
-    my @max_dist_reps; # the maximum distance seen for each current representative genome of the minimum distances across the representative genomes
-    my @max_index_reps; # the index for the maximum distance seen for each current representative genome of the minimum distances across the representative genomes
+    my @max_ANI_id; # the representative genome id for the closet representative genome
+    my @max_ANI; # the maximum ANI for the closest representative genome
+    my @max_dist_reps; # array of 2 element arrays: (MAX_DIST) the maximum distance seen for each current representative genome of the minimum distances across the representative genomes and (MAX_INDEX)the index for the maximum distance seen for each current representative genome of the minimum distances across the representative genomes
     for (my $i=0; $i < $num_total_reps; $i++) {
-	$max_dist_reps[$i] = -1;
+	$max_dist_reps[$i][MAX_DIST] = -1;
     }
     my $num_cur_genomes = @kept_paths;
     @genome_ids = ();
@@ -580,7 +590,7 @@ while ($iterate && !$done_reps) {
     my $max_rep = -1;
     my $stddev_rep;
     my $sumsquared_rep = 0;
-    my $cur_redundant = 0;
+    $cur_redundant = 0;
     #process all of the distance lines from all of the files
     my $cur_dist;
     my @cur_fields;
@@ -647,16 +657,19 @@ while ($iterate && !$done_reps) {
 	    $reps_index++;
 	}
 	if ($print_ids[$row_count]) {
+	    $max_ANI_id[$row_count] = $prev_reps_ids[$min_index];
 	    print $next_prev_dist_fh $line_out;
 	    if ($min_index >= 0) {
-		if ($min_dist > $max_dist_reps[$min_index]) {
-		    $max_dist_reps[$min_index] = $min_dist;
-		    $max_index_reps[$min_index] = $row_count;
+		if ($min_dist > $max_dist_reps[$min_index][MAX_DIST]) {
+		    $max_dist_reps[$min_index][MAX_DIST] = $min_dist;
+		    $max_dist_reps[$min_index][MAX_INDEX] = $row_count;
 		}
 	    } else {
 		die ("ERROR: min_index not set when it should have been\n");
 	    }
 	    my $ani_est = 100 * (1 - $min_dist);
+	    $max_ANI_id[$row_count] = $prev_reps_ids[$min_index];
+	    $max_ANI[$row_count] = $ani_est;
 	    $num_rep++;
 	    $total_rep += $ani_est;
 	    $sumsquared_rep += $ani_est * $ani_est;
@@ -677,48 +690,79 @@ while ($iterate && !$done_reps) {
 	$mean_rep = 0;
 	$stddev_rep = 0;
     }
-    print $stats_fh "Mean, min, max, std_dev minimum pairwise ANI to representative genomes for iteration $iteration: $mean_rep, $min_rep, $max_rep, $stddev_rep\n";
-    my $reps_sk_fh;
-    unless (open ($reps_sk_fh, ">", $reps_sk_file) )  {
-	die ("ERROR: Cannot open representative genomes sketches output file $reps_sk_file!\n");
-    }
-    my $num_new_reps = 0;
-    for (my $i=0; $i < $num_total_reps; $i++) {
-	if ($max_dist_reps[$i] >= 0) {
-	    my $rep_ANI = 100 * (1 - $max_dist_reps[$i]);
-	    if ($rep_ANI < $quit_ANI) {
-		$print_ids[$max_index_reps[$i]] = 0;
-		print $reps_fh "$prev_reps_ids[$i]\t$genome_ids[$max_index_reps[$i]]\t$rep_ANI\n";
-		print $reps_sk_fh "$kept_paths[$max_index_reps[$i]]\n";
-		$num_new_reps++;
-	    }
+    if ($done_reps) {
+	my $closest_out_file = $out . ".closest";
+	my $closest_fh;
+	unless (open ($closest_fh, ">", $closest_out_file) )  {
+	    die ("ERROR: Cannot open closest file $closest_out_file!\n");
 	}
-    }
-    close($reps_sk_fh);
-    $num_prev_reps += $num_cur_reps;
-    $num_cur_reps = $num_new_reps;
-    $num_total_reps += $num_new_reps;
-    if (($num_new_reps == 0) || (($num_new_reps + $cur_redundant) == $num_cur_genomes) || ($num_total_reps >= $max_reps)){
-	$done_reps = 1;
-    } else {
-	my $j = 0;
 	for (my $i=0; $i < $num_cur_genomes; $i++) {
 	    if ($print_ids[$i]) {
-		$kept_paths[$j] = $kept_paths[$i];
-		$j++;
+		print $closest_fh "$max_ANI_id[$i]\t$genome_ids[$i]\t$max_ANI[$i]\n";
 	    }
 	}
-	$j--;
-	$#kept_paths = $j; #truncate array
-    }
+	close($closest_fh);
+	close($dist_fh);
+	close($prev_dist_fh);
+	close($next_prev_dist_fh);
+	unlink $mash_out_file;
+	unlink $prev_mash_out_file;
+	$prev_mash_out_file = $next_prev_mash_out_file;
+	last;
+    } else {
+	my $reps_sk_fh;
+	unless (open ($reps_sk_fh, ">", $reps_sk_file) )  {
+	    die ("ERROR: Cannot open representative genomes sketches output file $reps_sk_file!\n");
+	}
+	my @ordered_max_dist_reps = sort { $b->[MAX_DIST] <=> $a->[MAX_DIST] } @max_dist_reps; # sort diffs from largest to smallest
+	$num_new_reps = 0;
+	my $num_to_check = $max_reps - $num_total_reps;
+	if ($num_to_check > $num_total_reps) {
+	    $num_to_check = $num_total_reps;
+	}
+	if ($num_to_check > $max_increment_reps) {
+	    $num_to_check = $max_increment_reps;
+	}
+	for (my $i=0; $i < $num_to_check; $i++) {
+	    if ($ordered_max_dist_reps[$i][MAX_DIST] >= 0) {
+		my $rep_ANI = 100 * (1 - $ordered_max_dist_reps[$i][MAX_DIST]);
+		if ($rep_ANI < $quit_ANI) {
+		    $print_ids[$max_dist_reps[$i][MAX_INDEX]] = 0;
+		    print $reps_fh "$prev_reps_ids[$i]\t$genome_ids[$max_dist_reps[$i][MAX_INDEX]]\t$rep_ANI\n";
+		    print $reps_sk_fh "$kept_paths[$max_dist_reps[$i][MAX_INDEX]]\n";
+		    $num_new_reps++;
+		}
+	    } else {
+		last;
+	    }
+	}
+	close($reps_sk_fh);
+	$num_prev_reps += $num_cur_reps;
+	$num_cur_reps = $num_new_reps;
+	$num_total_reps += $num_new_reps;
+	print $stats_fh "Mean, min, max, std_dev minimum pairwise ANI to representative genomes for iteration $iteration: $mean_rep, $min_rep, $max_rep, $stddev_rep\nNumber new representatives $num_new_reps ($num_total_reps)\nNumber new redundant $cur_redundant ($num_total_redundant)\n";
+	if (($num_new_reps == 0) || (($num_new_reps + $cur_redundant) == $num_cur_genomes) || ($num_total_reps >= $max_reps)){
+	    $done_reps = 1;
+	} else {
+	    my $j = 0;
+	    for (my $i=0; $i < $num_cur_genomes; $i++) {
+		if ($print_ids[$i]) {
+		    $kept_paths[$j] = $kept_paths[$i];
+		    $j++;
+		}
+	    }
+	    $j--;
+	    $#kept_paths = $j; #truncate array
+	}
 	
-    $iteration++;
-    close($dist_fh);
-    close($prev_dist_fh);
-    close($next_prev_dist_fh);
-    unlink $mash_out_file;
-    unlink $prev_mash_out_file;
-    $prev_mash_out_file = $next_prev_mash_out_file;
+	$iteration++;
+	close($dist_fh);
+	close($prev_dist_fh);
+	close($next_prev_dist_fh);
+	unlink $mash_out_file;
+	unlink $prev_mash_out_file;
+	$prev_mash_out_file = $next_prev_mash_out_file;
+    }
 }
 unlink $prev_mash_out_file;
 close($stats_fh);
