@@ -11,7 +11,7 @@ use constant MAX_INDEX => 1;
 
 my $dirname = dirname(__FILE__);
 
-my ($mash_exec, $help, $cutoff, $redundant, $max_reps, $out, $input_file, $type_strain, $quit_ANI, $iterate);
+my ($mash_exec, $help, $cutoff, $redundant, $max_reps, $out, $input_file, $type_strain, $quit_ANI, $iterate, $increment);
 my $cwd = getcwd;
 my @genome_ids; #array of genome identifiers used for labels
 my @genome_paths; #array of genome sketch paths
@@ -62,7 +62,7 @@ my $num_new_reps = 1;
 my $num_total_reps = 1;
 my $cur_redundant = 0;
 my $max_increment_reps;
-GetOptions("mash_exec|M=s"=>\$mash_exec, "out_prefix|o=s"=>\$out, "help|h|?"=>\$help, "cutoff|c=s"=>\$cutoff, "redundant|r=s"=>\$redundant, "max_reps|m=s"=>\$max_reps, "input_file|f=s"=>\$input_file, "type_strain|t=s"=>\$type_strain, "rep_dist|d=s"=>\$quit_ANI, "iterate|i"=>\$iterate);
+GetOptions("mash_exec|M=s"=>\$mash_exec, "out_prefix|o=s"=>\$out, "help|h|?"=>\$help, "cutoff|c=s"=>\$cutoff, "redundant|r=s"=>\$redundant, "max_reps|m=s"=>\$max_reps, "input_file|f=s"=>\$input_file, "type_strain|t=s"=>\$type_strain, "rep_dist|d=s"=>\$quit_ANI, "iterate|i"=>\$iterate, "increment|I=s"=>\$increment);
 if ($help || !$input_file || !$mash_exec || !$type_strain) {
     if (!$help) {
 	if (!$input_file) {
@@ -85,6 +85,7 @@ if ($help || !$input_file || !$mash_exec || !$type_strain) {
     print STDERR "	-m maximum number of genomes to keep as representative for the species (default 1000)\n";
     print STDERR "	-M mash executable (required)\n";
     print STDERR "	-t genome MASH sketch file path to the type strain (required)\n";
+    print STDERR "	-I maximum number of new representatives to be chosen per iteration after the first set (optional)\n";
     print STDERR "	-i iterate the generation of representative genomes\n";
     print STDERR "	-? or -h help\n";
 		
@@ -105,6 +106,16 @@ if ($max_reps ne "") {
 } else {
     $max_reps = 1000;
     print STDERR "Maximum number of representative genomes set to default of $max_reps!n";
+}
+
+if ($increment ne "") { 
+    if (!looks_like_number($increment)) {
+	die ("ERROR: the maximum number of representative genomes to be chosen each iteration after the first ($increment) does not look like a number\n");
+    }
+    if (($increment < 1) || ($increment > $max_reps)) {
+	die ("ERROR: $increment is outside of the expected maximum number of representative genomes per iteration range of 1-$max_reps\n");
+    }
+    $increment = int($increment);
 }
 
 if ($cutoff ne "") { 
@@ -322,11 +333,17 @@ close($dist_fh);
 @ordered_indices = sort { $distances[$a] <=> $distances[$b] || $a <=> $b } @indices; # sort indices from smallest to largest distance to type strain
 for (my $i=0; $i < $num_redundant; $i++) {
     my $ani_est = 100 * (1 - $distances[$ordered_indices[$i]]);
+    if ($ani_est < $redundant) {
+	die ("ERROR: Sorted distance/ANI values to type strain does not agree with number redundant count!\n");
+    }
     print $redundant_fh "$type_strain_id\t$genome_ids[$ordered_indices[$i]]\t$ani_est\n";
 }
 my $red_plus_kept = $num_redundant + $num_kept;
 for (my $i=$num_redundant; $i < $red_plus_kept; $i++) {
     my $ani_est = 100 * (1 - $distances[$ordered_indices[$i]]);
+    if ($ani_est >= $redundant) {
+	die ("ERROR: Sorted distance/ANI values to type strain does not agree with number redundant count!\n");
+    }
     print $out_fh "$genome_ids[$ordered_indices[$i]]\t$ani_est\n";
 }
 for (my $i=$red_plus_kept; $i < $num_all; $i++) {
@@ -403,7 +420,18 @@ if ($num_kept > 0) {
 	    die ("ERROR: Cannot open stats output file $reps_sk_file!\n");
 	}
 	my $tmp_reps = int($max_reps / 10);
+	if ($tmp_reps >= ($num_kept / 10)) {
+	    $tmp_reps = int($num_kept / 10);
+	}
+	if ($tmp_reps < 1) {
+	    $tmp_reps = 1;
+	}
 	my $rep_slice = $num_kept / $tmp_reps;
+	if ($increment eq "") { 
+	    $max_increment_reps = $tmp_reps;
+	} else {
+	    $max_increment_reps = $increment;
+	}
 	print $reps_fh "$type_strain_id\t$type_strain_id\t100\n";
 	my $step = 1;
 	$index = int(($step * $rep_slice) + 0.499) - 1;
@@ -412,7 +440,6 @@ if ($num_kept > 0) {
 	} elsif ($index >= $num_kept) {
 	    $index = $num_kept - 1;
 	}
-	$max_increment_reps = $index + 1;
 	$index += $num_redundant;
 	for (my $i=$num_redundant; $i < $red_plus_kept; $i++) {
 	    my $rep_ANI = 100 * (1 - $distances[$ordered_indices[$i]]);
@@ -428,11 +455,13 @@ if ($num_kept > 0) {
 		    $index = $num_kept - 1;
 		}
 		$index += $num_redundant;
-	    } else {
+	    } elsif ($print_ids[$ordered_indices[$i]]) {
 		push (@kept_paths, $genome_paths[$ordered_indices[$i]]);
 	    }
 	}
+	$num_new_reps = $num_cur_reps;
 	$num_total_reps += $num_cur_reps;
+	print $stats_fh "Number new representatives $num_new_reps ($num_total_reps)\nNumber new redundant $cur_redundant ($num_total_redundant)\n";
 	close($reps_sk_fh);
     } else {
 	print STDERR "Number of kept genomes $num_kept <= maximum number of genome representatives specified $max_reps - use kept genomes as representatives.\n";
@@ -727,10 +756,12 @@ while ($iterate) {
 	    if ($ordered_max_dist_reps[$i][MAX_DIST] >= 0) {
 		my $rep_ANI = 100 * (1 - $ordered_max_dist_reps[$i][MAX_DIST]);
 		if ($rep_ANI < $quit_ANI) {
-		    $print_ids[$max_dist_reps[$i][MAX_INDEX]] = 0;
-		    print $reps_fh "$prev_reps_ids[$i]\t$genome_ids[$max_dist_reps[$i][MAX_INDEX]]\t$rep_ANI\n";
-		    print $reps_sk_fh "$kept_paths[$max_dist_reps[$i][MAX_INDEX]]\n";
+		    $print_ids[$ordered_max_dist_reps[$i][MAX_INDEX]] = 0;
+		    print $reps_fh "$prev_reps_ids[$i]\t$genome_ids[$ordered_max_dist_reps[$i][MAX_INDEX]]\t$rep_ANI\n";
+		    print $reps_sk_fh "$kept_paths[$ordered_max_dist_reps[$i][MAX_INDEX]]\n";
 		    $num_new_reps++;
+		} else {
+		    last;
 		}
 	    } else {
 		last;
