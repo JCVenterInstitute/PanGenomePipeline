@@ -461,7 +461,7 @@ if ($num_kept > 0) {
 	my $j = 0;
 	for (my $i=0; $i < $num_all; $i++) {
 	    if ($print_ids[$i]) {
-		$kept_paths[$j] = $kept_paths[$i];
+		$kept_paths[$j] = $genome_paths[$i];
 		$j++;
 	    }
 	}
