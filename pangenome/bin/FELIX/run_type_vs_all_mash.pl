@@ -455,10 +455,18 @@ if ($num_kept > 0) {
 		    $index = $num_kept - 1;
 		}
 		$index += $num_redundant;
-	    } elsif ($print_ids[$ordered_indices[$i]]) {
-		push (@kept_paths, $genome_paths[$ordered_indices[$i]]);
+		$print_ids[$ordered_indices[$i]] = 0;
 	    }
 	}
+	my $j = 0;
+	for (my $i=0; $i < $num_all; $i++) {
+	    if ($print_ids[$i]) {
+		$kept_paths[$j] = $kept_paths[$i];
+		$j++;
+	    }
+	}
+	$j--;
+	$#kept_paths = $j; #truncate array
 	$num_new_reps = $num_cur_reps;
 	$num_total_reps += $num_cur_reps;
 	print $stats_fh "Number new representatives $num_new_reps ($num_total_reps)\nNumber new redundant $cur_redundant ($num_total_redundant)\n";
