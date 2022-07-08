@@ -8,6 +8,7 @@ use Scalar::Util qw(looks_like_number);
 
 use constant MAX_DIST => 0;
 use constant MAX_INDEX => 1;
+use constant MIN_INDEX => 2;
 
 my $dirname = dirname(__FILE__);
 
@@ -300,6 +301,12 @@ while ($dist = <$dist_fh>) { #process the MASH lines
     if ($type_strain_id eq $genome_ids[$row_count]) {
 	$print_ids[$row_count] = 0;
 	$type_strain_present = 1;
+	$distances[$row_count] = $fields[1];
+	if ($distances[$row_count] > 0) {
+	    die ("ERROR: mash distance for type strain to itself > 0!\n");
+	}
+	$indices[$row_count] = $row_count;
+	$row_count++;
 	next; #skip type strain if present
     }
     my $ani_est = 100 * (1 - $fields[1]);
@@ -338,7 +345,7 @@ while ($dist = <$dist_fh>) { #process the MASH lines
 	    $max_discard = $ani_est;
 	}
     }
-    $distances[$row_count] += $fields[1];
+    $distances[$row_count] = $fields[1];
     $indices[$row_count] = $row_count;
     $num_all++;
     $total_all += $ani_est;
@@ -356,7 +363,8 @@ $cur_redundant += $num_redundant;
 close($next_prev_dist_fh);
 close($dist_fh);
 @ordered_indices = sort { $distances[$a] <=> $distances[$b] || $a <=> $b } @indices; # sort indices from smallest to largest distance to type strain
-for (my $i=0; $i < $num_redundant; $i++) {
+my $type_plus_red = $type_strain_present + $num_redundant;
+for (my $i=0; $i < $type_plus_red; $i++) {
     my $ani_est = 100 * (1 - $distances[$ordered_indices[$i]]);
     if ($ani_est < $redundant) {
 	die ("ERROR: Sorted distance/ANI values to type strain does not agree with number redundant count!\n");
@@ -364,18 +372,27 @@ for (my $i=0; $i < $num_redundant; $i++) {
     if ($print_ids[$ordered_indices[$i]]) {
 	die ("ERROR: print_ids values to type strain does not agree with number redundant count!\n");
     }
-    print $redundant_fh "$type_strain_id\t$genome_ids[$ordered_indices[$i]]\t$ani_est\n";
+    if ($type_strain_id ne $genome_ids[$ordered_indices[$i]]) {
+	print $redundant_fh "$type_strain_id\t$genome_ids[$ordered_indices[$i]]\t$ani_est\n";
+    }
 }
-my $red_plus_kept = $num_redundant + $num_kept;
-for (my $i=$num_redundant; $i < $red_plus_kept; $i++) {
+my $red_plus_kept = $type_plus_red + $num_kept;
+for (my $i=$type_plus_red; $i < $red_plus_kept; $i++) {
     my $ani_est = 100 * (1 - $distances[$ordered_indices[$i]]);
     if ($ani_est >= $redundant) {
 	die ("ERROR: Sorted distance/ANI values to type strain does not agree with number redundant count!\n");
     }
+    if (!$print_ids[$ordered_indices[$i]]) {
+	die ("ERROR: print_ids values to type strain does not agree with number redundant count!\n");
+    }
     print $out_fh "$genome_ids[$ordered_indices[$i]]\t$ani_est\n";
 }
-for (my $i=$red_plus_kept; $i < $num_all; $i++) {
+my $type_plus_all = $type_strain_present + $num_all;
+for (my $i=$red_plus_kept; $i < $type_plus_all; $i++) {
     my $ani_est = 100 * (1 - $distances[$ordered_indices[$i]]);
+    if ($print_ids[$ordered_indices[$i]]) {
+	die ("ERROR: print_ids values to type strain does not agree with number redundant count!\n");
+    }
     print $filtered_fh "$genome_ids[$ordered_indices[$i]]\t$ani_est\n";
 }
 close($out_fh);
@@ -469,11 +486,12 @@ if ($num_kept > 0) {
 	    $index = $num_kept - 1;
 	}
 	$index += $num_redundant;
-	for (my $i=$num_redundant; $i < $red_plus_kept; $i++) {
+	for (my $i=$type_plus_red; $i < $red_plus_kept; $i++) {
 	    my $rep_ANI = 100 * (1 - $distances[$ordered_indices[$i]]);
 	    if ($index == $i) {
 		print $reps_fh "$type_strain_id\t$genome_ids[$ordered_indices[$index]]\t$rep_ANI\n";
 		print $reps_sk_fh "$kept_paths[$ordered_indices[$index]]\n";
+		$print_ids[$ordered_indices[$index]] = 0;
 		$num_cur_reps++;
 		$step++;
 		$index = int(($step * $rep_slice) + 0.499) - 1;
@@ -483,7 +501,6 @@ if ($num_kept > 0) {
 		    $index = $num_kept - 1;
 		}
 		$index += $num_redundant;
-		$print_ids[$ordered_indices[$i]] = 0;
 	    }
 	}
 	my $j = 0;
@@ -644,10 +661,11 @@ while ($iterate) {
     }
     my @max_ANI_id; # the representative genome id for the closet representative genome
     my @max_ANI; # the maximum ANI for the closest representative genome
-    my @max_dist_reps; # array of 2 element arrays: (MAX_DIST) the maximum distance seen for each current representative genome of the minimum distances across the representative genomes and (MAX_INDEX)the index for the maximum distance seen for each current representative genome of the minimum distances across the representative genomes
+    my @max_dist_reps; # array of 3 element arrays: (MAX_DIST) the maximum distance seen for each current representative genome of the minimum distances across the representative genomes, (MAX_INDEX)the index for the maximum distance seen for each current representative genome of the minimum distances across the representative genomes in the kept_paths array, and (MIN_INDEX) the index in the prev_reps_ids for the current representative genome
     for (my $i=0; $i < $num_total_reps; $i++) {
 	$max_dist_reps[$i][MAX_DIST] = -1;
 	$max_dist_reps[$i][MAX_INDEX] = -1;
+	$max_dist_reps[$i][MIN_INDEX] = -1;
     }
     $num_cur_genomes = @kept_paths;
     @genome_ids = ();
@@ -733,6 +751,7 @@ while ($iterate) {
 		if ($min_dist > $max_dist_reps[$min_index][MAX_DIST]) {
 		    $max_dist_reps[$min_index][MAX_DIST] = $min_dist;
 		    $max_dist_reps[$min_index][MAX_INDEX] = $row_count;
+		    $max_dist_reps[$min_index][MIN_INDEX] = $min_index;
 		}
 	    } else {
 		die ("ERROR: min_index not set when it should have been\n");
@@ -798,7 +817,7 @@ while ($iterate) {
 		my $rep_ANI = 100 * (1 - $ordered_max_dist_reps[$i][MAX_DIST]);
 		if ($rep_ANI < $quit_ANI) {
 		    $print_ids[$ordered_max_dist_reps[$i][MAX_INDEX]] = 0;
-		    print $reps_fh "$prev_reps_ids[$i]\t$genome_ids[$ordered_max_dist_reps[$i][MAX_INDEX]]\t$rep_ANI\n";
+		    print $reps_fh "$prev_reps_ids[$ordered_max_dist_reps[$i][MIN_INDEX]]\t$genome_ids[$ordered_max_dist_reps[$i][MAX_INDEX]]\t$rep_ANI\n";
 		    print $reps_sk_fh "$kept_paths[$ordered_max_dist_reps[$i][MAX_INDEX]]\n";
 		    $num_new_reps++;
 		} else {
