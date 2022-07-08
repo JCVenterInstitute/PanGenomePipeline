@@ -14,7 +14,6 @@ my $dirname = dirname(__FILE__);
 my ($mash_exec, $help, $cutoff, $redundant, $max_reps, $out, $input_file, $type_strain, $quit_ANI, $iterate, $increment);
 my $cwd = getcwd;
 my @genome_ids; #array of genome identifiers used for labels
-my @genome_paths; #array of genome sketch paths
 my @kept_paths; #array of genome sketch paths that are still active (not redundant, not filtered, not representative)
 my @print_ids; #array parallel to @genome_ids which indicates the genome should be printed (1) or skipped (0) based on ANI cutoff to the type strain.
 my @distances; #distances from type strain to other genomes used to determine median and other stats
@@ -22,6 +21,10 @@ my @indices; #indices of parallel arrays from 0 -> N-1
 my @ordered_indices; #indices of parallel arrays from 0 -> N-1 ordered by distance from type strain smallest first
 my @diffs; #differences between ordered ditances
 my @ordered_diffs; #ordered differences between ordered ditances smallest first
+my %hash_genome_paths;
+my %hash_genome_ids;
+my $num_cur_genomes = 0;
+my $num_original_genomes = 0;
 my $type_strain_id;
 my $mean_all;
 my $num_all = 0;
@@ -166,8 +169,6 @@ if (!(-e $type_strain)) {
 if (-d $type_strain) {
     die ( "$type_strain the type strain genome MASH sketch path file is a directory!\n");
 }
-my $genome_paths_size = `wc -l < $input_file`;
-chomp($genome_paths_size);
 
 my $input_fh;
 unless (open ($input_fh, "<", $input_file) )  {
@@ -189,7 +190,13 @@ my $mash_paths = "";
 my $first = 1;
 while (my $genome_path = <$input_fh>) {
     chomp ($genome_path); #remove newline
-    push (@genome_paths, $genome_path);
+    if (defined $hash_genome_paths{$genome_path}) {
+	die ("ERROR: $genome_path occurs more than once in $input_file\n");
+    } else {
+	$hash_genome_paths{$genome_path} = 1;
+    }
+    push (@kept_paths, $genome_path);
+    $num_cur_genomes++;
     if (!(-e $genome_path)) {
 	die ( "$genome_path the genome sketch path file does not exist!\n");
     }
@@ -238,6 +245,10 @@ my $next_prev_dist_fh;
 unless (open ($dist_fh, "<", $mash_out_file) )  {
     die ("ERROR: Cannot open mash distances file $mash_out_file!\n");
 }
+my $next_prev_mash_out_file = $mash_out_file . "_next";
+unless (open ($next_prev_dist_fh, ">", $next_prev_mash_out_file) )  {
+    die ("ERROR: Cannot open mash distances file $next_prev_mash_out_file!\n");
+}
 my $stats_fh;
 unless (open ($stats_fh, ">", $stats_file) )  {
     die ("ERROR: Cannot open stats output file $stats_file!\n");
@@ -257,6 +268,7 @@ if ($redundant ne "") {
     print $redundant_fh "#Genomes being filtered out for ANI above redundant cutoff ($redundant)\n";
 }
 my $dist = <$dist_fh>; #process header line
+print $next_prev_dist_fh $dist;
 my @fields = split(/\s/, $dist);
 my $num_fields = @fields;
 if ($num_fields != 2) {
@@ -269,9 +281,10 @@ unless (open ($out_fh, ">", $out_file) )  {
 }
 print $out_fh "#Type strain $type_strain_id\n";
 my $row_count = 0;
+my $type_strain_present = 0;
 while ($dist = <$dist_fh>) { #process the MASH lines
-    if ($row_count >= $genome_paths_size) {
-	die ("ERROR: The number of distances in the tabular mash output exceeds the number of genome identifiers provided ($genome_paths_size).\n");
+    if ($row_count >= $num_cur_genomes) {
+	die ("ERROR: The number of distances in the tabular mash output exceeds the number of genome identifiers provided ($num_cur_genomes).\n");
     }
     @fields = split(/\s/, $dist);
     $num_fields = @fields;
@@ -279,6 +292,16 @@ while ($dist = <$dist_fh>) { #process the MASH lines
 	die ("ERROR: Unexpected number of fields ($num_fields) in tablular mash output - expecting 2.\n$dist\n");
     }
     $genome_ids[$row_count] = $fields[0];
+    if (defined $hash_genome_ids{$genome_ids[$row_count]}) {
+	die ("ERROR: $genome_ids[$row_count] occurs more than once in $mash_out_file\n");
+    } else {
+	$hash_genome_ids{$genome_ids[$row_count]} = 1;
+    }
+    if ($type_strain_id eq $genome_ids[$row_count]) {
+	$print_ids[$row_count] = 0;
+	$type_strain_present = 1;
+	next; #skip type strain if present
+    }
     my $ani_est = 100 * (1 - $fields[1]);
     if (($redundant ne "") && ($ani_est >= $redundant)) {
 	$print_ids[$row_count] = 0;
@@ -292,6 +315,7 @@ while ($dist = <$dist_fh>) { #process the MASH lines
 	    $max_redundant = $ani_est;
 	}
     } elsif (($cutoff eq "") || ($ani_est >= $cutoff)) {
+	print $next_prev_dist_fh $dist;
 	$print_ids[$row_count] = 1;
 	$num_kept++;
 	$total_kept += $ani_est;
@@ -329,12 +353,16 @@ while ($dist = <$dist_fh>) { #process the MASH lines
 }
 $num_total_redundant += $num_redundant;
 $cur_redundant += $num_redundant;
+close($next_prev_dist_fh);
 close($dist_fh);
 @ordered_indices = sort { $distances[$a] <=> $distances[$b] || $a <=> $b } @indices; # sort indices from smallest to largest distance to type strain
 for (my $i=0; $i < $num_redundant; $i++) {
     my $ani_est = 100 * (1 - $distances[$ordered_indices[$i]]);
     if ($ani_est < $redundant) {
 	die ("ERROR: Sorted distance/ANI values to type strain does not agree with number redundant count!\n");
+    }
+    if ($print_ids[$ordered_indices[$i]]) {
+	die ("ERROR: print_ids values to type strain does not agree with number redundant count!\n");
     }
     print $redundant_fh "$type_strain_id\t$genome_ids[$ordered_indices[$i]]\t$ani_est\n";
 }
@@ -363,7 +391,7 @@ if ($num_all > 0) {
     $median_all = 0;
     $stddev_all = 0;
 }
-print $stats_fh "Mean, median, min, max, std_dev pairwise ANI for all $genome_paths_size genomes: $mean_all, $median_all, $min_all, $max_all, $stddev_all\n";
+print $stats_fh "Mean, median, min, max, std_dev pairwise ANI for all $num_cur_genomes genomes: $mean_all, $median_all, $min_all, $max_all, $stddev_all\n";
 if (($cutoff ne "") || ($redundant ne "")) {
     if ($cutoff ne "") {
 	print $stats_fh "For cutoff ($cutoff) and type strain $type_strain_id: $num_discard discarded\n";
@@ -413,15 +441,15 @@ if ($num_kept > 0) {
     }
     if ($num_kept > $max_reps) {
 	unless (open ($reps_fh, ">", $reps_file) )  {
-	    die ("ERROR: Cannot open stats output file $reps_file!\n");
+	    die ("ERROR: Cannot open reprentative genomes output file $reps_file!\n");
 	}
 	my $reps_sk_fh;
 	unless (open ($reps_sk_fh, ">", $reps_sk_file) )  {
-	    die ("ERROR: Cannot open stats output file $reps_sk_file!\n");
+	    die ("ERROR: Cannot open representative genome sketch paths output file $reps_sk_file!\n");
 	}
-	my $tmp_reps = int($max_reps / 10);
-	if ($tmp_reps >= ($num_kept / 10)) {
-	    $tmp_reps = int($num_kept / 10);
+	my $tmp_reps = int($max_reps / 20);
+	if ($tmp_reps >= ($num_kept / 20)) {
+	    $tmp_reps = int($num_kept / 20);
 	}
 	if ($tmp_reps < 1) {
 	    $tmp_reps = 1;
@@ -445,7 +473,7 @@ if ($num_kept > 0) {
 	    my $rep_ANI = 100 * (1 - $distances[$ordered_indices[$i]]);
 	    if ($index == $i) {
 		print $reps_fh "$type_strain_id\t$genome_ids[$ordered_indices[$index]]\t$rep_ANI\n";
-		print $reps_sk_fh "$genome_paths[$ordered_indices[$index]]\n";
+		print $reps_sk_fh "$kept_paths[$ordered_indices[$index]]\n";
 		$num_cur_reps++;
 		$step++;
 		$index = int(($step * $rep_slice) + 0.499) - 1;
@@ -461,15 +489,19 @@ if ($num_kept > 0) {
 	my $j = 0;
 	for (my $i=0; $i < $num_all; $i++) {
 	    if ($print_ids[$i]) {
-		$kept_paths[$j] = $genome_paths[$i];
+		$kept_paths[$j] = $kept_paths[$i];
 		$j++;
 	    }
 	}
 	$j--;
 	$#kept_paths = $j; #truncate array
-	$num_new_reps = $num_cur_reps;
+	$num_original_genomes = $num_cur_genomes;
+	$num_cur_genomes = @kept_paths;
 	$num_total_reps += $num_cur_reps;
-	print $stats_fh "Number new representatives $num_new_reps ($num_total_reps)\nNumber new redundant $cur_redundant ($num_total_redundant)\n";
+	print $stats_fh "Number new representatives $num_cur_reps ($num_total_reps)\nNumber new redundant 0 ($num_total_redundant)\n";
+	if (($num_original_genomes + 1) != ($num_cur_genomes + $num_total_reps + $num_total_redundant + $num_discard + $type_strain_present)) { # the +1 accounts for the type strain as a representative genome
+	    die ("ERROR: the number of original genomes ($num_original_genomes) plus one is not equal to the current number of genomes ($num_cur_genomes) plus the number of representative genomes ($num_total_reps) plus the number of redundant genomes ($num_total_redundant) plus the number of discarde genomes ($num_discard)\n");
+	}
 	close($reps_sk_fh);
     } else {
 	print STDERR "Number of kept genomes $num_kept <= maximum number of genome representatives specified $max_reps - use kept genomes as representatives.\n";
@@ -517,7 +549,7 @@ if ($num_kept > 0) {
 }
 
 my $iteration = 1;
-my $prev_mash_out_file = $mash_out_file;
+my $prev_mash_out_file = $next_prev_mash_out_file;
 while ($iterate) {
     my $reps_mash_file_prefix = $out . "_reps";
     my $reps_mash_file = $out . "_reps.msh";
@@ -574,7 +606,7 @@ while ($iterate) {
     unless (open ($prev_dist_fh, "<", $prev_mash_out_file) )  {
 	die ("ERROR: Cannot open mash distances file $prev_mash_out_file!\n");
     }
-    my $next_prev_mash_out_file = $mash_out_file . "_next";
+    $next_prev_mash_out_file = $mash_out_file . "_next";
     unless (open ($next_prev_dist_fh, ">", $next_prev_mash_out_file) )  {
 	die ("ERROR: Cannot open mash distances file $next_prev_mash_out_file!\n");
     }
@@ -615,8 +647,9 @@ while ($iterate) {
     my @max_dist_reps; # array of 2 element arrays: (MAX_DIST) the maximum distance seen for each current representative genome of the minimum distances across the representative genomes and (MAX_INDEX)the index for the maximum distance seen for each current representative genome of the minimum distances across the representative genomes
     for (my $i=0; $i < $num_total_reps; $i++) {
 	$max_dist_reps[$i][MAX_DIST] = -1;
+	$max_dist_reps[$i][MAX_INDEX] = -1;
     }
-    my $num_cur_genomes = @kept_paths;
+    $num_cur_genomes = @kept_paths;
     @genome_ids = ();
     @print_ids = ();
     $row_count = 0;
@@ -634,12 +667,12 @@ while ($iterate) {
     my $cur_genome_id;
     my $not_done_cur = 1;
     if ($cur_dist = <$dist_fh>) {
-	my @cur_fields = split(/\s/, $cur_dist);
+	@cur_fields = split(/\s/, $cur_dist);
 	$num_fields = @cur_fields;
 	if ($num_fields != $expected_fields) {
 	    die ("ERROR: Unexpected number of fields ($num_fields) in tablular mash output - expecting $expected_fields.\n$dist\n");
 	}
-	my $cur_genome_id = shift @cur_fields;
+	$cur_genome_id = shift @cur_fields;
     } else {
 	$not_done_cur = 0;
     }
@@ -679,16 +712,16 @@ while ($iterate) {
 	$print_ids[$row_count] = 1;
 	my $min_dist = 1;
 	my $min_index = -1;
-	foreach my $dist (@fields) {
-	    my $ani_est = 100 * (1 - $dist);
+	foreach my $distance (@fields) {
+	    my $ani_est = 100 * (1 - $distance);
 	    if (($redundant ne "") && ($ani_est >= $redundant)) {
 		$print_ids[$row_count] = 0;
 		print $redundant_fh "$prev_reps_ids[$reps_index]\t$genome_ids[$row_count]\t$ani_est\n";
 		$cur_redundant++;
 		last;
 	    }
-	    if ($dist < $min_dist) {
-		$min_dist = $dist;
+	    if ($distance < $min_dist) {
+		$min_dist = $distance;
 		$min_index = $reps_index;
 	    }
 	    $reps_index++;
