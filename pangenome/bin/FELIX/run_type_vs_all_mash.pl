@@ -61,9 +61,9 @@ my $median_redundant;
 my $stddev_redundant;
 my $sumsquared_redundant = 0;
 my $num_cur_reps = 0;
-my $num_prev_reps = 1;
-my $num_new_reps = 1;
-my $num_total_reps = 1;
+my $num_prev_reps = 1; #include the type strain as a representative genome from the beginning
+my $num_new_reps = 1; #include the type strain as a representative genome from the beginning
+my $num_total_reps = 1; #include the type strain as a representative genome from the beginning
 my $cur_redundant = 0;
 my $max_increment_reps;
 GetOptions("mash_exec|M=s"=>\$mash_exec, "out_prefix|o=s"=>\$out, "help|h|?"=>\$help, "cutoff|c=s"=>\$cutoff, "redundant|r=s"=>\$redundant, "max_reps|m=s"=>\$max_reps, "input_file|f=s"=>\$input_file, "type_strain|t=s"=>\$type_strain, "rep_dist|d=s"=>\$quit_ANI, "iterate|i"=>\$iterate, "increment|I=s"=>\$increment);
@@ -281,6 +281,7 @@ unless (open ($out_fh, ">", $out_file) )  {
     die ("ERROR: Cannot open output file $out_file!\n");
 }
 print $out_fh "#Type strain $type_strain_id\n";
+print $stats_fh "Number of genome sketches input: $num_cur_genomes\n";
 my $row_count = 0;
 my $type_strain_present = 0;
 while ($dist = <$dist_fh>) { #process the MASH lines
@@ -299,6 +300,7 @@ while ($dist = <$dist_fh>) { #process the MASH lines
 	$hash_genome_ids{$genome_ids[$row_count]} = 1;
     }
     if ($type_strain_id eq $genome_ids[$row_count]) {
+	print $stats_fh "Type strain $type_strain_id found in genome sketches input - skipping\n";
 	$print_ids[$row_count] = 0;
 	$type_strain_present = 1;
 	$distances[$row_count] = $fields[1];
@@ -388,6 +390,9 @@ for (my $i=$type_plus_red; $i < $red_plus_kept; $i++) {
     print $out_fh "$genome_ids[$ordered_indices[$i]]\t$ani_est\n";
 }
 my $type_plus_all = $type_strain_present + $num_all;
+if ($type_plus_all != $num_cur_genomes) {
+    die ("ERROR: The number of genomes in the input including the type strain ($type_plus_all) is not equal to the number of input genome sketches ($num_cur_genomes)!\n");
+}
 for (my $i=$red_plus_kept; $i < $type_plus_all; $i++) {
     my $ani_est = 100 * (1 - $distances[$ordered_indices[$i]]);
     if ($print_ids[$ordered_indices[$i]]) {
@@ -408,7 +413,7 @@ if ($num_all > 0) {
     $median_all = 0;
     $stddev_all = 0;
 }
-print $stats_fh "Mean, median, min, max, std_dev pairwise ANI for all $num_cur_genomes genomes: $mean_all, $median_all, $min_all, $max_all, $stddev_all\n";
+print $stats_fh "Mean, median, min, max, std_dev pairwise ANI for all $num_all genomes: $mean_all, $median_all, $min_all, $max_all, $stddev_all\n";
 if (($cutoff ne "") || ($redundant ne "")) {
     if ($cutoff ne "") {
 	print $stats_fh "For cutoff ($cutoff) and type strain $type_strain_id: $num_discard discarded\n";
@@ -504,7 +509,7 @@ if ($num_kept > 0) {
 	    }
 	}
 	my $j = 0;
-	for (my $i=0; $i < $num_all; $i++) {
+	for (my $i=0; $i < $num_cur_genomes; $i++) {
 	    if ($print_ids[$i]) {
 		$kept_paths[$j] = $kept_paths[$i];
 		$j++;
@@ -517,7 +522,7 @@ if ($num_kept > 0) {
 	$num_total_reps += $num_cur_reps;
 	print $stats_fh "Number new representatives $num_cur_reps ($num_total_reps)\nNumber new redundant 0 ($num_total_redundant)\n";
 	if (($num_original_genomes + 1) != ($num_cur_genomes + $num_total_reps + $num_total_redundant + $num_discard + $type_strain_present)) { # the +1 accounts for the type strain as a representative genome
-	    die ("ERROR: the number of original genomes ($num_original_genomes) plus one is not equal to the current number of genomes ($num_cur_genomes) plus the number of representative genomes ($num_total_reps) plus the number of redundant genomes ($num_total_redundant) plus the number of discarde genomes ($num_discard)\n");
+	    die ("ERROR: the number of original genomes ($num_original_genomes) plus one is not equal to the current number of genomes ($num_cur_genomes) plus the number of representative genomes ($num_total_reps) plus the number of redundant genomes ($num_total_redundant) plus the number of discarded genomes ($num_discard) plus the type strain if present in the input sketch files ($type_strain_present)\n");
 	}
 	close($reps_sk_fh);
     } else {
