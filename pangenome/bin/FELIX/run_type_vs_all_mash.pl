@@ -375,7 +375,7 @@ for (my $i=0; $i < $type_plus_red; $i++) {
 	die ("ERROR: print_ids values to type strain does not agree with number redundant count!\n");
     }
     if ($type_strain_id ne $genome_ids[$ordered_indices[$i]]) {
-	print $redundant_fh "$type_strain_id\t$genome_ids[$ordered_indices[$i]]\t$ani_est\n";
+	print $redundant_fh "$type_strain_id\t$genome_ids[$ordered_indices[$i]]\t$ani_est\t$kept_paths[$ordered_indices[$i]]\n";
     }
 }
 my $red_plus_kept = $type_plus_red + $num_kept;
@@ -494,7 +494,7 @@ if ($num_kept > 0) {
 	for (my $i=$type_plus_red; $i < $red_plus_kept; $i++) {
 	    my $rep_ANI = 100 * (1 - $distances[$ordered_indices[$i]]);
 	    if ($index == $i) {
-		print $reps_fh "$type_strain_id\t$genome_ids[$ordered_indices[$index]]\t$rep_ANI\n";
+		print $reps_fh "$type_strain_id\t$genome_ids[$ordered_indices[$index]]\t$rep_ANI\t$kept_paths[$ordered_indices[$index]]\n";
 		print $reps_sk_fh "$kept_paths[$ordered_indices[$index]]\n";
 		$print_ids[$ordered_indices[$index]] = 0;
 		$num_cur_reps++;
@@ -739,7 +739,7 @@ while ($iterate) {
 	    my $ani_est = 100 * (1 - $distance);
 	    if (($redundant ne "") && ($ani_est >= $redundant)) {
 		$print_ids[$row_count] = 0;
-		print $redundant_fh "$prev_reps_ids[$reps_index]\t$genome_ids[$row_count]\t$ani_est\n";
+		print $redundant_fh "$prev_reps_ids[$reps_index]\t$genome_ids[$row_count]\t$ani_est\t$kept_paths[$row_count]\n";
 		$cur_redundant++;
 		last;
 	    }
@@ -822,7 +822,7 @@ while ($iterate) {
 		my $rep_ANI = 100 * (1 - $ordered_max_dist_reps[$i][MAX_DIST]);
 		if ($rep_ANI < $quit_ANI) {
 		    $print_ids[$ordered_max_dist_reps[$i][MAX_INDEX]] = 0;
-		    print $reps_fh "$prev_reps_ids[$ordered_max_dist_reps[$i][MIN_INDEX]]\t$genome_ids[$ordered_max_dist_reps[$i][MAX_INDEX]]\t$rep_ANI\n";
+		    print $reps_fh "$prev_reps_ids[$ordered_max_dist_reps[$i][MIN_INDEX]]\t$genome_ids[$ordered_max_dist_reps[$i][MAX_INDEX]]\t$rep_ANI\t$kept_paths[$ordered_max_dist_reps[$i][MAX_INDEX]]\n";
 		    print $reps_sk_fh "$kept_paths[$ordered_max_dist_reps[$i][MAX_INDEX]]\n";
 		    $num_new_reps++;
 		} else {
