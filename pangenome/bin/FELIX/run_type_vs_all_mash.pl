@@ -22,8 +22,10 @@ my @indices; #indices of parallel arrays from 0 -> N-1
 my @ordered_indices; #indices of parallel arrays from 0 -> N-1 ordered by distance from type strain smallest first
 my @diffs; #differences between ordered ditances
 my @ordered_diffs; #ordered differences between ordered ditances smallest first
-my %hash_genome_paths;
-my %hash_genome_ids;
+my %hash_genome_paths; #hash to check that genome sketch paths are unique
+my %hash_genome_ids; #hash to check that genome ids are unique
+my %hash_reps_ids; #hash to check that missing ids in the current mash dist output file are representative genomes from the last iteration
+my %hash_next_reps_ids; #hash to check that missing ids in the current mash dist output file are representative genomes from the last iteration
 my $num_cur_genomes = 0;
 my $num_original_genomes = 0;
 my $type_strain_id;
@@ -223,8 +225,9 @@ while (my $genome_path = <$input_fh>) {
 	$mash_paths = "";
     }
 }
+%hash_genome_paths = (); #free memory
 close($input_fh);
-if ($index != 1000) {
+if ($index) {
     $index = 0;
     print STDERR "Executing command:\n$mash_exec dist -t $type_strain $mash_paths > $tmp_mash_out_file\n";
     `$mash_exec dist -t $type_strain $mash_paths > $tmp_mash_out_file`;
@@ -243,6 +246,11 @@ if ($index != 1000) {
 my $dist_fh;
 my $prev_dist_fh;
 my $next_prev_dist_fh;
+my $sync_file = $out . ".sync";
+my $sync_fh;
+unless (open ($sync_fh, ">", $sync_file) )  {
+    die ("ERROR: Cannot opensync debug file $sync_file!\n");
+}
 unless (open ($dist_fh, "<", $mash_out_file) )  {
     die ("ERROR: Cannot open mash distances file $mash_out_file!\n");
 }
@@ -294,6 +302,7 @@ while ($dist = <$dist_fh>) { #process the MASH lines
 	die ("ERROR: Unexpected number of fields ($num_fields) in tablular mash output - expecting 2.\n$dist\n");
     }
     $genome_ids[$row_count] = $fields[0];
+    print $sync_fh "$genome_ids[$row_count]\t$kept_paths[$row_count]\n";
     if (defined $hash_genome_ids{$genome_ids[$row_count]}) {
 	die ("ERROR: $genome_ids[$row_count] occurs more than once in $mash_out_file\n");
     } else {
@@ -360,6 +369,10 @@ while ($dist = <$dist_fh>) { #process the MASH lines
     }
     $row_count++;
 }
+if ($row_count != $num_cur_genomes) {
+    die ("ERROR: The number of distances in the tabular mash output ($row_count) is not the same as the number of genome identifiers provided ($num_cur_genomes).\n");
+}
+%hash_genome_ids = (); #free memory
 $num_total_redundant += $num_redundant;
 $cur_redundant += $num_redundant;
 close($next_prev_dist_fh);
@@ -494,6 +507,7 @@ if ($num_kept > 0) {
 	for (my $i=$type_plus_red; $i < $red_plus_kept; $i++) {
 	    my $rep_ANI = 100 * (1 - $distances[$ordered_indices[$i]]);
 	    if ($index == $i) {
+		$hash_next_reps_ids{$genome_ids[$ordered_indices[$index]]} = 1;
 		print $reps_fh "$type_strain_id\t$genome_ids[$ordered_indices[$index]]\t$rep_ANI\t$kept_paths[$ordered_indices[$index]]\n";
 		print $reps_sk_fh "$kept_paths[$ordered_indices[$index]]\n";
 		$print_ids[$ordered_indices[$index]] = 0;
@@ -521,6 +535,7 @@ if ($num_kept > 0) {
 	$num_cur_genomes = @kept_paths;
 	$num_total_reps += $num_cur_reps;
 	print $stats_fh "Number new representatives $num_cur_reps ($num_total_reps)\nNumber new redundant 0 ($num_total_redundant)\n";
+	print $stats_fh "Number current active genomes: $num_cur_genomes\n";
 	if (($num_original_genomes + 1) != ($num_cur_genomes + $num_total_reps + $num_total_redundant + $num_discard + $type_strain_present)) { # the +1 accounts for the type strain as a representative genome
 	    die ("ERROR: the number of original genomes ($num_original_genomes) plus one is not equal to the current number of genomes ($num_cur_genomes) plus the number of representative genomes ($num_total_reps) plus the number of redundant genomes ($num_total_redundant) plus the number of discarded genomes ($num_discard) plus the type strain if present in the input sketch files ($type_strain_present)\n");
 	}
@@ -570,9 +585,12 @@ if ($num_kept > 0) {
     $done_reps = 1;
 }
 
+unlink $mash_out_file;
 my $iteration = 1;
 my $prev_mash_out_file = $next_prev_mash_out_file;
 while ($iterate) {
+    %hash_reps_ids = %hash_next_reps_ids;
+    %hash_next_reps_ids = ();
     my $reps_mash_file_prefix = $out . "_reps";
     my $reps_mash_file = $out . "_reps.msh";
     print STDERR "Executing command:\n$mash_exec paste -l $reps_mash_file_prefix $reps_sk_file\n";
@@ -606,7 +624,7 @@ while ($iterate) {
 	    $mash_paths = "";
 	}
     }
-    if ($index != 1000) {
+    if ($index) {
 	$index = 0;
 	print STDERR "Executing command:\n$mash_exec dist -t $reps_mash_file $mash_paths > $tmp_mash_out_file\n";
 	`$mash_exec dist -t $reps_mash_file $mash_paths > $tmp_mash_out_file`;
@@ -672,10 +690,10 @@ while ($iterate) {
 	$max_dist_reps[$i][MAX_INDEX] = -1;
 	$max_dist_reps[$i][MIN_INDEX] = -1;
     }
-    $num_cur_genomes = @kept_paths;
     @genome_ids = ();
     @print_ids = ();
     $row_count = 0;
+    print $sync_fh "Iteration: $iteration\n";
     my $mean_rep;
     my $num_rep = 0;
     my $total_rep = 0;
@@ -707,8 +725,12 @@ while ($iterate) {
 	}
 	$genome_ids[$row_count] = shift @fields;
 	if ($genome_ids[$row_count] != $cur_genome_id) {
+	    if (!defined $hash_reps_ids{$genome_ids[$row_count]}) {
+		die ("ERROR: genome id $genome_ids[$row_count] in previous mash dist output is not a representative genome from the previous iteration\n");
+	    }
 	    next; #skipping genomes which became representative genomes
 	}
+	print $sync_fh "$genome_ids[$row_count]\t$kept_paths[$row_count]\n";
 	my $line_out = $dist;
 	chomp ($line_out); #remove newline
 	push (@fields, @cur_fields);
@@ -776,6 +798,9 @@ while ($iterate) {
 	}
 	$row_count++;
     }
+    if ($row_count != $num_cur_genomes) {
+	die ("ERROR: The number of distances in the tabular mash output ($row_count) is not the same as the current active number of genome ($num_cur_genomes).\n");
+    }
     $num_total_redundant += $cur_redundant;
     if ($num_rep > 0) {
 	$mean_rep = $total_rep / $num_rep;
@@ -821,6 +846,7 @@ while ($iterate) {
 	    if ($ordered_max_dist_reps[$i][MAX_DIST] >= 0) {
 		my $rep_ANI = 100 * (1 - $ordered_max_dist_reps[$i][MAX_DIST]);
 		if ($rep_ANI < $quit_ANI) {
+		    $hash_next_reps_ids{$genome_ids[$ordered_max_dist_reps[$i][MAX_INDEX]]} = 1;
 		    $print_ids[$ordered_max_dist_reps[$i][MAX_INDEX]] = 0;
 		    print $reps_fh "$prev_reps_ids[$ordered_max_dist_reps[$i][MIN_INDEX]]\t$genome_ids[$ordered_max_dist_reps[$i][MAX_INDEX]]\t$rep_ANI\t$kept_paths[$ordered_max_dist_reps[$i][MAX_INDEX]]\n";
 		    print $reps_sk_fh "$kept_paths[$ordered_max_dist_reps[$i][MAX_INDEX]]\n";
@@ -849,6 +875,8 @@ while ($iterate) {
 	    }
 	    $j--;
 	    $#kept_paths = $j; #truncate array
+	    $num_cur_genomes = @kept_paths;
+	    print $stats_fh "Number current active genomes: $num_cur_genomes\n";
 	}
 	
 	$iteration++;
