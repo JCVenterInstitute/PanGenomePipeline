@@ -724,7 +724,8 @@ while ($iterate) {
 	    die ("ERROR: Unexpected number of fields ($num_fields) in tablular mash output - expecting $prev_expected_fields.\n$dist\n");
 	}
 	$genome_ids[$row_count] = shift @fields;
-	if ($genome_ids[$row_count] != $cur_genome_id) {
+	if ($genome_ids[$row_count] ne $cur_genome_id) {
+	    print $sync_fh "skipping $genome_ids[$row_count]\t$kept_paths[$row_count]\n";
 	    if (!defined $hash_reps_ids{$genome_ids[$row_count]}) {
 		die ("ERROR: genome id $genome_ids[$row_count] in previous mash dist output is not a representative genome from the previous iteration\n");
 	    }
@@ -799,7 +800,7 @@ while ($iterate) {
 	$row_count++;
     }
     if ($row_count != $num_cur_genomes) {
-	die ("ERROR: The number of distances in the tabular mash output ($row_count) is not the same as the current active number of genome ($num_cur_genomes).\n");
+	die ("ERROR: The number of distances in the tabular mash output ($row_count) is not the same as the current active number of genomes ($num_cur_genomes).\n");
     }
     $num_total_redundant += $cur_redundant;
     if ($num_rep > 0) {
@@ -865,19 +866,18 @@ while ($iterate) {
 	print $stats_fh "Mean, min, max, std_dev minimum pairwise ANI to representative genomes for iteration $iteration: $mean_rep, $min_rep, $max_rep, $stddev_rep\nNumber new representatives $num_new_reps ($num_total_reps)\nNumber new redundant $cur_redundant ($num_total_redundant)\n";
 	if (($num_new_reps == 0) || (($num_new_reps + $cur_redundant) == $num_cur_genomes) || ($num_total_reps >= $max_reps)){
 	    $done_reps = 1;
-	} else {
-	    my $j = 0;
-	    for (my $i=0; $i < $num_cur_genomes; $i++) {
-		if ($print_ids[$i]) {
-		    $kept_paths[$j] = $kept_paths[$i];
-		    $j++;
-		}
-	    }
-	    $j--;
-	    $#kept_paths = $j; #truncate array
-	    $num_cur_genomes = @kept_paths;
-	    print $stats_fh "Number current active genomes: $num_cur_genomes\n";
 	}
+	my $j = 0;
+	for (my $i=0; $i < $num_cur_genomes; $i++) {
+	    if ($print_ids[$i]) {
+		$kept_paths[$j] = $kept_paths[$i];
+		$j++;
+	    }
+	}
+	$j--;
+	$#kept_paths = $j; #truncate array
+	$num_cur_genomes = @kept_paths;
+	print $stats_fh "Number current active genomes: $num_cur_genomes\n";
 	
 	$iteration++;
 	close($dist_fh);
@@ -891,6 +891,7 @@ while ($iterate) {
 unlink $prev_mash_out_file;
 close($stats_fh);
 close($reps_fh);
+close($sync_fh);
 
 if ($redundant ne "") {
     close($redundant_fh);
