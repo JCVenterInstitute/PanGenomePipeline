@@ -210,7 +210,7 @@ while (my $genome_path = <$input_fh>) {
     $index++;
     if ($index == 1000) {
 	$index = 0;
-	print STDERR "Executing command:\n$mash_exec dist -t $type_strain $mash_paths > $tmp_mash_out_file\n";
+	print STDERR "Executing command:\n$mash_exec dist -t $type_strain mash_paths > $tmp_mash_out_file\n";
 	`$mash_exec dist -t $type_strain $mash_paths > $tmp_mash_out_file`;
 	if (!(-e $tmp_mash_out_file) || !(-s $tmp_mash_out_file)) {
 	    die ( "ERROR: mash dist command failed: $tmp_mash_out_file does not exist or is zero size!\n");
@@ -229,7 +229,7 @@ while (my $genome_path = <$input_fh>) {
 close($input_fh);
 if ($index) {
     $index = 0;
-    print STDERR "Executing command:\n$mash_exec dist -t $type_strain $mash_paths > $tmp_mash_out_file\n";
+    print STDERR "Executing command:\n$mash_exec dist -t $type_strain mash_paths > $tmp_mash_out_file\n";
     `$mash_exec dist -t $type_strain $mash_paths > $tmp_mash_out_file`;
     if (!(-e $tmp_mash_out_file) || !(-s $tmp_mash_out_file)) {
 	die ( "ERROR: mash dist command failed: $tmp_mash_out_file does not exist or is zero size!\n");
@@ -246,11 +246,11 @@ if ($index) {
 my $dist_fh;
 my $prev_dist_fh;
 my $next_prev_dist_fh;
-my $sync_file = $out . ".sync";
-my $sync_fh;
-unless (open ($sync_fh, ">", $sync_file) )  {
-    die ("ERROR: Cannot opensync debug file $sync_file!\n");
-}
+#my $sync_file = $out . ".sync";
+#my $sync_fh;
+#unless (open ($sync_fh, ">", $sync_file) )  {
+#    die ("ERROR: Cannot opensync debug file $sync_file!\n");
+#}
 unless (open ($dist_fh, "<", $mash_out_file) )  {
     die ("ERROR: Cannot open mash distances file $mash_out_file!\n");
 }
@@ -302,7 +302,7 @@ while ($dist = <$dist_fh>) { #process the MASH lines
 	die ("ERROR: Unexpected number of fields ($num_fields) in tablular mash output - expecting 2.\n$dist\n");
     }
     $genome_ids[$row_count] = $fields[0];
-    print $sync_fh "$genome_ids[$row_count]\t$kept_paths[$row_count]\n";
+#    print $sync_fh "$genome_ids[$row_count]\t$kept_paths[$row_count]\n";
     if (defined $hash_genome_ids{$genome_ids[$row_count]}) {
 	die ("ERROR: $genome_ids[$row_count] occurs more than once in $mash_out_file\n");
     } else {
@@ -388,7 +388,8 @@ for (my $i=0; $i < $type_plus_red; $i++) {
 	die ("ERROR: print_ids values to type strain does not agree with number redundant count!\n");
     }
     if ($type_strain_id ne $genome_ids[$ordered_indices[$i]]) {
-	print $redundant_fh "$type_strain_id\t$genome_ids[$ordered_indices[$i]]\t$ani_est\t$kept_paths[$ordered_indices[$i]]\n";
+#	print $redundant_fh "$type_strain_id\t$genome_ids[$ordered_indices[$i]]\t$ani_est\t$kept_paths[$ordered_indices[$i]]\n";
+	print $redundant_fh "$type_strain_id\t$genome_ids[$ordered_indices[$i]]\t$ani_est\n";
     }
 }
 my $red_plus_kept = $type_plus_red + $num_kept;
@@ -508,7 +509,8 @@ if ($num_kept > 0) {
 	    my $rep_ANI = 100 * (1 - $distances[$ordered_indices[$i]]);
 	    if ($index == $i) {
 		$hash_next_reps_ids{$genome_ids[$ordered_indices[$index]]} = 1;
-		print $reps_fh "$type_strain_id\t$genome_ids[$ordered_indices[$index]]\t$rep_ANI\t$kept_paths[$ordered_indices[$index]]\n";
+		print $reps_fh "$type_strain_id\t$genome_ids[$ordered_indices[$index]]\t$rep_ANI\n";
+#		print $reps_fh "$type_strain_id\t$genome_ids[$ordered_indices[$index]]\t$rep_ANI\t$kept_paths[$ordered_indices[$index]]\n";
 		print $reps_sk_fh "$kept_paths[$ordered_indices[$index]]\n";
 		$print_ids[$ordered_indices[$index]] = 0;
 		$num_cur_reps++;
@@ -593,6 +595,7 @@ while ($iterate) {
     %hash_next_reps_ids = ();
     my $reps_mash_file_prefix = $out . "_reps";
     my $reps_mash_file = $out . "_reps.msh";
+    print STDERR "Iteration: $iteration\n";
     print STDERR "Executing command:\n$mash_exec paste -l $reps_mash_file_prefix $reps_sk_file\n";
     unlink $reps_mash_file;
     `$mash_exec paste -l $reps_mash_file_prefix $reps_sk_file`;
@@ -609,7 +612,7 @@ while ($iterate) {
 	$index++;
 	if ($index == 1000) {
 	    $index = 0;
-	    print STDERR "Executing command:\n$mash_exec dist -t $reps_mash_file $mash_paths > $tmp_mash_out_file\n";
+	    print STDERR "Executing command:\n$mash_exec dist -t $reps_mash_file mash_paths > $tmp_mash_out_file\n";
 	    `$mash_exec dist -t $reps_mash_file $mash_paths > $tmp_mash_out_file`;
 	    if (!(-e $tmp_mash_out_file) || !(-s $tmp_mash_out_file)) {
 		die ( "ERROR: mash dist command failed: $tmp_mash_out_file does not exist or is zero size!\n");
@@ -626,7 +629,7 @@ while ($iterate) {
     }
     if ($index) {
 	$index = 0;
-	print STDERR "Executing command:\n$mash_exec dist -t $reps_mash_file $mash_paths > $tmp_mash_out_file\n";
+	print STDERR "Executing command:\n$mash_exec dist -t $reps_mash_file mash_paths > $tmp_mash_out_file\n";
 	`$mash_exec dist -t $reps_mash_file $mash_paths > $tmp_mash_out_file`;
 	if (!(-e $tmp_mash_out_file) || !(-s $tmp_mash_out_file)) {
 	    die ( "ERROR: mash dist command failed: $tmp_mash_out_file does not exist or is zero size!\n");
@@ -693,7 +696,7 @@ while ($iterate) {
     @genome_ids = ();
     @print_ids = ();
     $row_count = 0;
-    print $sync_fh "Iteration: $iteration\n";
+#    print $sync_fh "Iteration: $iteration\n";
     my $mean_rep;
     my $num_rep = 0;
     my $total_rep = 0;
@@ -725,13 +728,13 @@ while ($iterate) {
 	}
 	$genome_ids[$row_count] = shift @fields;
 	if ($genome_ids[$row_count] ne $cur_genome_id) {
-	    print $sync_fh "skipping $genome_ids[$row_count]\t$kept_paths[$row_count]\n";
+#	    print $sync_fh "skipping $genome_ids[$row_count]\t$kept_paths[$row_count]\n";
 	    if (!defined $hash_reps_ids{$genome_ids[$row_count]}) {
 		die ("ERROR: genome id $genome_ids[$row_count] in previous mash dist output is not a representative genome from the previous iteration\n");
 	    }
 	    next; #skipping genomes which became representative genomes
 	}
-	print $sync_fh "$genome_ids[$row_count]\t$kept_paths[$row_count]\n";
+#	print $sync_fh "$genome_ids[$row_count]\t$kept_paths[$row_count]\n";
 	my $line_out = $dist;
 	chomp ($line_out); #remove newline
 	push (@fields, @cur_fields);
@@ -762,7 +765,8 @@ while ($iterate) {
 	    my $ani_est = 100 * (1 - $distance);
 	    if (($redundant ne "") && ($ani_est >= $redundant)) {
 		$print_ids[$row_count] = 0;
-		print $redundant_fh "$prev_reps_ids[$reps_index]\t$genome_ids[$row_count]\t$ani_est\t$kept_paths[$row_count]\n";
+#		print $redundant_fh "$prev_reps_ids[$reps_index]\t$genome_ids[$row_count]\t$ani_est\t$kept_paths[$row_count]\n";
+		print $redundant_fh "$prev_reps_ids[$reps_index]\t$genome_ids[$row_count]\t$ani_est\n";
 		$cur_redundant++;
 		last;
 	    }
@@ -849,7 +853,8 @@ while ($iterate) {
 		if ($rep_ANI < $quit_ANI) {
 		    $hash_next_reps_ids{$genome_ids[$ordered_max_dist_reps[$i][MAX_INDEX]]} = 1;
 		    $print_ids[$ordered_max_dist_reps[$i][MAX_INDEX]] = 0;
-		    print $reps_fh "$prev_reps_ids[$ordered_max_dist_reps[$i][MIN_INDEX]]\t$genome_ids[$ordered_max_dist_reps[$i][MAX_INDEX]]\t$rep_ANI\t$kept_paths[$ordered_max_dist_reps[$i][MAX_INDEX]]\n";
+		    print $reps_fh "$prev_reps_ids[$ordered_max_dist_reps[$i][MIN_INDEX]]\t$genome_ids[$ordered_max_dist_reps[$i][MAX_INDEX]]\t$rep_ANI\n";
+#		    print $reps_fh "$prev_reps_ids[$ordered_max_dist_reps[$i][MIN_INDEX]]\t$genome_ids[$ordered_max_dist_reps[$i][MAX_INDEX]]\t$rep_ANI\t$kept_paths[$ordered_max_dist_reps[$i][MAX_INDEX]]\n";
 		    print $reps_sk_fh "$kept_paths[$ordered_max_dist_reps[$i][MAX_INDEX]]\n";
 		    $num_new_reps++;
 		} else {
@@ -891,7 +896,7 @@ while ($iterate) {
 unlink $prev_mash_out_file;
 close($stats_fh);
 close($reps_fh);
-close($sync_fh);
+#close($sync_fh);
 
 if ($redundant ne "") {
     close($redundant_fh);
