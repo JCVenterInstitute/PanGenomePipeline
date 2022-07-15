@@ -106,8 +106,8 @@ if ($max_reps ne "") {
     if (!looks_like_number($max_reps)) {
 	die ("ERROR: the maximum number of representative genomes $max_reps does not look like a number\n");
     }
-    if (($max_reps < 100) || ($max_reps > 1000000)) {
-	die ("ERROR: $max_reps is outside of the expected maximum number of representative genomes range of 100-1,000,000\n");
+    if (($max_reps < 50) || ($max_reps > 1000000)) {
+	die ("ERROR: $max_reps is outside of the expected maximum number of representative genomes range of 50-1,000,000\n");
     }
 } else {
     $max_reps = 1000;
@@ -547,7 +547,9 @@ if ($num_kept > 0) {
 	$done_reps = 1;
     }
     for (my $i=$num_redundant; $i < $red_plus_kept; $i++) {
-	$diffs[$i-1] = $distances[$ordered_indices[$i]] - $distances[$ordered_indices[$i-1]];
+	if ($i > 0) {
+	    $diffs[$i-1] = $distances[$ordered_indices[$i]] - $distances[$ordered_indices[$i-1]];
+	}
     }
     my $num_diffs = @diffs;
     if ($num_diffs > 0) {
