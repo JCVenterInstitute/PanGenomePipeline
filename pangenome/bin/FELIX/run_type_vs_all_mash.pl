@@ -12,7 +12,7 @@ use constant MIN_INDEX => 2;
 
 my $dirname = dirname(__FILE__);
 
-my ($mash_exec, $help, $cutoff, $redundant, $max_reps, $out, $input_file, $type_strain, $quit_ANI, $iterate, $increment);
+my ($mash_exec, $help, $cutoff, $redundant, $max_reps, $out, $input_file, $type_strain, $quit_ANI, $iterate, $increment, $stop_mean, $stop_min, $stop_reps);
 my $cwd = getcwd;
 my @genome_ids; #array of genome identifiers used for labels
 my @kept_paths; #array of genome sketch paths that are still active (not redundant, not filtered, not representative)
@@ -68,7 +68,7 @@ my $num_new_reps = 1; #include the type strain as a representative genome from t
 my $num_total_reps = 1; #include the type strain as a representative genome from the beginning
 my $cur_redundant = 0;
 my $max_increment_reps;
-GetOptions("mash_exec|M=s"=>\$mash_exec, "out_prefix|o=s"=>\$out, "help|h|?"=>\$help, "cutoff|c=s"=>\$cutoff, "redundant|r=s"=>\$redundant, "max_reps|m=s"=>\$max_reps, "input_file|f=s"=>\$input_file, "type_strain|t=s"=>\$type_strain, "rep_dist|d=s"=>\$quit_ANI, "iterate|i"=>\$iterate, "increment|I=s"=>\$increment);
+GetOptions("mash_exec|M=s"=>\$mash_exec, "out_prefix|o=s"=>\$out, "help|h|?"=>\$help, "cutoff|c=s"=>\$cutoff, "redundant|r=s"=>\$redundant, "max_reps|m=s"=>\$max_reps, "input_file|f=s"=>\$input_file, "type_strain|t=s"=>\$type_strain, "rep_dist|d=s"=>\$quit_ANI, "iterate|i"=>\$iterate, "increment|I=s"=>\$increment, "stop_mean|S=s"=>\$stop_mean, "stop_min|s=s"=>\$stop_min, "stop_reps|R=s"=>\$stop_reps);
 if ($help || !$input_file || !$mash_exec || !$type_strain) {
     if (!$help) {
 	if (!$input_file) {
@@ -93,6 +93,9 @@ if ($help || !$input_file || !$mash_exec || !$type_strain) {
     print STDERR "	-t genome MASH sketch file path to the type strain (required)\n";
     print STDERR "	-I maximum number of new representatives to be chosen per iteration after the first set (optional)\n";
     print STDERR "	-i iterate the generation of representative genomes\n";
+    print STDERR "	-R stop iterations if the number of new representatives is less than or equal to this value\n";
+    print STDERR "	-s stop iterations if the minimum ANI is greater than or equal to this value\n";
+    print STDERR "	-S stop iterations if the mean ANI is greater than or equal to this value\n";
     print STDERR "	-? or -h help\n";
 		
     exit(1);
@@ -104,7 +107,7 @@ if (!$out) {
 
 if ($max_reps ne "") { 
     if (!looks_like_number($max_reps)) {
-	die ("ERROR: the maximum number of representative genomes $max_reps does not look like a number\n");
+	die ("ERROR: the maximum number of representative genomes ($max_reps) does not look like a number\n");
     }
     if (($max_reps < 50) || ($max_reps > 1000000)) {
 	die ("ERROR: $max_reps is outside of the expected maximum number of representative genomes range of 50-1,000,000\n");
@@ -112,6 +115,15 @@ if ($max_reps ne "") {
 } else {
     $max_reps = 1000;
     print STDERR "Maximum number of representative genomes set to default of $max_reps!n";
+}
+
+if ($stop_reps ne "") { 
+    if (!looks_like_number($stop_reps)) {
+	die ("ERROR: the minimum number of new representative genomes to keep iterating ($stop_reps) does not look like a number\n");
+    }
+} else {
+    $stop_reps = 0;
+    print STDERR "Minimum number of new representative genomes to keep iterating set to default of $stop_reps!n";
 }
 
 if ($increment ne "") { 
@@ -126,29 +138,62 @@ if ($increment ne "") {
 
 if ($cutoff ne "") { 
     if (!looks_like_number($cutoff)) {
-	die ("ERROR: the ANI cutoff $cutoff does not look like a number\n");
+	die ("ERROR: the ANI cutoff ($cutoff) does not look like a number\n");
     }
     if (($cutoff < 80) || ($cutoff > 100)) {
-	die ("ERROR: $cutoff is outside of the expected ANI cutoff range of 80-100\n");
+	die ("ERROR: $cutoff is outside of the expected ANI cutoff range to exclude genomesof 80-100\n");
     }
-}
-
-if ($quit_ANI ne "") { 
-    if (!looks_like_number($quit_ANI)) {
-	die ("ERROR: the ANI representative minimum distance cutoff $quit_ANI does not look like a number\n");
-    }
-    if (($quit_ANI < 99) || ($quit_ANI > 100)) {
-	die ("ERROR: $quit_ANI is outside of the expected ANI representative minimum distance cutoff range of 99-100\n");
-    }
+} else {
+    $cutoff = 95;
+    print STDERR "ANI cutoff to exclude genomes set to default of $cutoff!n";
 }
 
 if ($redundant ne "") { 
     if (!looks_like_number($redundant)) {
-	die ("ERROR: the ANI redundant cutoff $redundant does not look like a number\n");
+	die ("ERROR: the ANI redundant cutoff ($redundant) does not look like a number\n");
     }
     if (($redundant < 99) || ($redundant > 100)) {
 	die ("ERROR: $redundant is outside of the expected ANI redundant cutoff range of 99-100\n");
     }
+} else {
+    $redundant = 99.99;
+    print STDERR "ANI redundant cutoff set to default $redundant!\n";
+}
+
+if ($quit_ANI ne "") { 
+    if (!looks_like_number($quit_ANI)) {
+	die ("ERROR: the ANI representative minimum distance cutoff ($quit_ANI) does not look like a number\n");
+    }
+    if (($quit_ANI < 99) || ($quit_ANI > 100)) {
+	die ("ERROR: $quit_ANI is outside of the expected ANI representative minimum distance cutoff range of 99-100\n");
+    }
+} else {
+    $quit_ANI = $redundant;
+    print STDERR "ANI representative minimum distance cutoff set to ANI redundant cutoff $quit_ANI!\n";
+}
+
+if ($stop_mean ne "") { 
+    if (!looks_like_number($stop_mean)) {
+	die ("ERROR: the ANI mean cutoff ($stop_mean) does not look like a number\n");
+    }
+    if (($stop_mean < $cutoff) || ($stop_mean > $redundant)) {
+	die ("ERROR: $stop_mean is outside of the expected ANI mean range of $cutoff-$redundant\n");
+    }
+} else {
+    $stop_mean = $redundant;
+    print STDERR "ANI stopping mean cutoff set to ANI redundant cutoff $stop_mean!\n";
+}
+
+if ($stop_min ne "") { 
+    if (!looks_like_number($stop_min)) {
+	die ("ERROR: the ANI minimum cutoff ($stop_min) does not look like a number\n");
+    }
+    if (($stop_min < $cutoff) || ($stop_min > $redundant)) {
+	die ("ERROR: $stop_min is outside of the expected ANI minimum range of $cutoff-$redundant\n");
+    }
+} else {
+    $stop_min = $redundant;
+    print STDERR "ANI stopping minimum cutoff set to ANI redundant cutoff $stop_min!\n";
 }
 
 if (!(-e $mash_exec)) {
@@ -871,7 +916,7 @@ while ($iterate) {
 	$num_cur_reps = $num_new_reps;
 	$num_total_reps += $num_new_reps;
 	print $stats_fh "Mean, min, max, std_dev minimum pairwise ANI to representative genomes for iteration $iteration: $mean_rep, $min_rep, $max_rep, $stddev_rep\nNumber new representatives $num_new_reps ($num_total_reps)\nNumber new redundant $cur_redundant ($num_total_redundant)\n";
-	if (($num_new_reps == 0) || (($num_new_reps + $cur_redundant) == $num_cur_genomes) || ($num_total_reps >= $max_reps)){
+	if (($mean_rep >= $stop_mean) || ($min_rep >= $stop_min) || ($num_new_reps <= $stop_reps) || (($num_new_reps + $cur_redundant) == $num_cur_genomes) || ($num_total_reps >= $max_reps)){
 	    $done_reps = 1;
 	}
 	my $j = 0;
