@@ -591,11 +591,11 @@ if ($num_kept > 0) {
 		do {
 		    $step++;
 		    $index = int(($step * $rep_slice) + 0.499) - 1;
-		    if ($index >= $num_kept) {
-			$index = $num_kept - 1;
-		    }
 		    $index += $type_plus_red;
-		} until (($index > $prev_index) || ($prev_index >= $red_plus_kept));
+		} until ($index > $prev_index);
+		if ($index >= $red_plus_kept) {
+		    $index = $red_plus_kept - 1;
+		}
 	    }
 	}
 	my $j = 0;
