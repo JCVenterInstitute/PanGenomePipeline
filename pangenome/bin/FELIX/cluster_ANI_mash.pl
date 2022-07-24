@@ -225,7 +225,7 @@ sub process_group
 	$indices[$row_count] = $row_count;
 	$row_count++;
     }
-    if ($row_count != $group_size) {
+    if ($row_count != ($group_size - 1)) { #this accounts for the median genome from the group being excluded
 	die ("ERROR: The number of distances in the tabular mash output ($row_count) is not the same as the number of genome identifiers provided ($group_size).\n");
     }
     close($dist_fh);
