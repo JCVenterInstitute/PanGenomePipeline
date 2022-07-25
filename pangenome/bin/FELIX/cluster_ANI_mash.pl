@@ -125,8 +125,8 @@ sub process_group
 # recursive processing of each group of ANI related genomes
 {
     (my $group_ref, my $group_num, my $depth, my $reps_fh, my $redundant_fh)  = @_;
-    print STDERR "PG $group_num,$depth\n";
     my $group_size = @{ $group_ref };
+    print STDERR "PG $group_num:$depth:$group_size\n";
     if ($group_size == 0) {
 	die ("ERROR:empty group passed into process_group\n");
     }
@@ -136,6 +136,7 @@ sub process_group
     }
     my $num_new_reps = 0;
     my $group_genome_median = $group_ref->[$group_size / 2];
+    $group_size--; #this accounts for the median genome from the group being excluded
     print $reps_fh "$group_genome_median\t$group_num\n";
     $depth++;
 
@@ -225,13 +226,14 @@ sub process_group
 	$indices[$row_count] = $row_count;
 	$row_count++;
     }
-    if ($row_count != ($group_size - 1)) { #this accounts for the median genome from the group being excluded
+    if ($row_count != $group_size) {
 	die ("ERROR: The number of distances in the tabular mash output ($row_count) is not the same as the number of genome identifiers provided ($group_size).\n");
     }
     close($dist_fh);
     unlink $mash_out_file;
     $num_total_redundant += $num_redundant;
-    my @ordered_indices = sort { $distances[$a] <=> $distances[$b] || $a <=> $b } @indices; # sort indices from smallest to largest distance to type strain
+    print STDERR "#reds for $group_genome_median $num_total_redundant:$num_redundant:$group_num\n";
+    my @ordered_indices = sort { $distances[$a] <=> $distances[$b] || $a <=> $b } @indices; # sort indices from smallest to largest distance to genome median
     if ($num_kept > 0) {
 	my @group; #array of genome ids which might be redundant to each other
 	my $prev_ordered_distance = $distances[$ordered_indices[$num_redundant]];
@@ -245,6 +247,7 @@ sub process_group
 	    } else {
 		my $new_group_num = $group_num . $group_num_suffix;
 		$num_new_reps += &process_group(\@group, $new_group_num, $depth, $reps_fh, $redundant_fh);
+		print STDERR "#reps $num_total_reps:$new_group_num\n";
 		$begin_ordered_distance = $ordered_distance;
 		@group = ();
 		$group_num_suffix++;
@@ -706,6 +709,7 @@ if ($num_kept > 0) {
 		push(@group, $genome_ids[$ordered_indices[$i]]);
 	    } else {
 		$num_total_reps += &process_group(\@group, $group_num, 1, $reps_fh, $redundant_fh);
+		print STDERR "#reps $num_total_reps:$group_num\n";
 		$begin_ordered_distance = $ordered_distance;
 		@group = ();
 		$group_num++;
