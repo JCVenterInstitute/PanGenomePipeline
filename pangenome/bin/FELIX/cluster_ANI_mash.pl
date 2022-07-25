@@ -138,6 +138,7 @@ sub process_group
     my $group_genome_median = $group_ref->[$group_size / 2];
     $group_size--; #this accounts for the median genome from the group being excluded
     print $reps_fh "$group_genome_median\t$group_num\n";
+    $num_new_reps++;
     $depth++;
 
     my $mash_out_file_prefix = $out . ".mash_dist_out_";
@@ -196,6 +197,7 @@ sub process_group
     my $num_fields = @fields;
     my @genome_ids;
     my @indices;
+    my @distances;
     if ($num_fields != 2) {
 	die ("ERROR: Unexpected number of fields ($num_fields) in tablular mash output - expecting 2.\n$dist\n");
     }
