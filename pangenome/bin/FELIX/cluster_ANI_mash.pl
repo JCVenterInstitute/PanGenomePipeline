@@ -132,6 +132,7 @@ sub process_group
     }
     if ($group_size == 1) {
 	print $reps_fh "$group_ref->[0]\t$group_num\n";
+	print STDERR "Single $group_ref->[0]\n";
 	return(1);
     }
     my $num_new_reps = 0;
@@ -249,13 +250,18 @@ sub process_group
 	    } else {
 		my $new_group_num = $group_num . $group_num_suffix;
 		$num_new_reps += &process_group(\@group, $new_group_num, $depth, $reps_fh, $redundant_fh);
-		print STDERR "#reps $num_total_reps:$new_group_num\n";
+		print STDERR "#reps $num_new_reps:$new_group_num\n";
 		$begin_ordered_distance = $ordered_distance;
 		@group = ();
 		$group_num_suffix++;
 		push(@group, $genome_ids[$ordered_indices[$i]]);
 	    }
 	    $prev_ordered_distance = $ordered_distance;
+	}
+	if (@group > 0) {
+	    my $new_group_num = $group_num . $group_num_suffix;
+	    $num_new_reps += &process_group(\@group, $new_group_num, $depth, $reps_fh, $redundant_fh);
+	    print STDERR "#reps $num_new_reps:$new_group_num\n";
 	}
     }
 
@@ -718,6 +724,10 @@ if ($num_kept > 0) {
 		push(@group, $genome_ids[$ordered_indices[$i]]);
 	    }
 	    $prev_ordered_distance = $ordered_distance;
+	}
+	if (@group > 0) {
+	    $num_total_reps += &process_group(\@group, $group_num, 1, $reps_fh, $redundant_fh);
+	    print STDERR "#reps $num_total_reps:$group_num\n";
 	}
 	print $stats_fh "Number representative genomes: $num_total_reps\nNumber redundant genomes: $num_total_redundant\n";
 #	print $stats_fh "Number current active genomes: $num_cur_genomes\n";
