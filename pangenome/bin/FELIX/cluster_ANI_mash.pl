@@ -124,7 +124,7 @@ if (-d $type_strain_path) {
 sub process_group
 # recursive processing of each group of ANI related genomes
 {
-    (my $group_ref, my $group_num, my $group_top, my $depth, my $reps_fh, my $redundant_fh)  = @_;
+    (my $group_ref, my $group_top, my $group_num, my $depth, my $reps_fh, my $redundant_fh)  = @_;
     my $group_size = @{ $group_ref };
     print STDERR "PG $group_num:$depth:$group_size\n";
     if ($group_size == 0) {
