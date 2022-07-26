@@ -124,7 +124,7 @@ if (-d $type_strain_path) {
 sub process_group
 # recursive processing of each group of ANI related genomes
 {
-    (my $group_ref, my $group_num, my $depth, my $reps_fh, my $redundant_fh)  = @_;
+    (my $group_ref, my $group_num, my $group_top, my $depth, my $reps_fh, my $redundant_fh)  = @_;
     my $group_size = @{ $group_ref };
     print STDERR "PG $group_num:$depth:$group_size\n";
     if ($group_size == 0) {
@@ -143,7 +143,7 @@ sub process_group
     $depth++;
 
     my $mash_out_file_prefix = $out . ".mash_dist_out_";
-    my $mash_out_file = $mash_out_file_prefix . $group_num;
+    my $mash_out_file = $mash_out_file_prefix . $group_top;
     my $tmp_mash_out_file = $mash_out_file . ".tmp";
     $group_num .= "_";
     my $index = 0;
@@ -249,7 +249,7 @@ sub process_group
 		push(@group, $genome_ids[$ordered_indices[$i]]);
 	    } else {
 		my $new_group_num = $group_num . $group_num_suffix;
-		$num_new_reps += &process_group(\@group, $new_group_num, $depth, $reps_fh, $redundant_fh);
+		$num_new_reps += &process_group(\@group, $group_top, $new_group_num, $depth, $reps_fh, $redundant_fh);
 		print STDERR "#reps $num_new_reps:$new_group_num\n";
 		$begin_ordered_distance = $ordered_distance;
 		@group = ();
@@ -260,7 +260,7 @@ sub process_group
 	}
 	if (@group > 0) {
 	    my $new_group_num = $group_num . $group_num_suffix;
-	    $num_new_reps += &process_group(\@group, $new_group_num, $depth, $reps_fh, $redundant_fh);
+	    $num_new_reps += &process_group(\@group, $group_top, $new_group_num, $depth, $reps_fh, $redundant_fh);
 	    print STDERR "#reps $num_new_reps:$new_group_num\n";
 	}
     }
@@ -716,7 +716,7 @@ if ($num_kept > 0) {
 	    if ((($ordered_distance - $begin_ordered_distance) <= (2 * $redundant_dist)) && (($ordered_distance - $prev_ordered_distance) <= $redundant_dist)) {
 		push(@group, $genome_ids[$ordered_indices[$i]]);
 	    } else {
-		$num_total_reps += &process_group(\@group, $group_num, 1, $reps_fh, $redundant_fh);
+		$num_total_reps += &process_group(\@group, $group_num, $group_num, 1, $reps_fh, $redundant_fh);
 		print STDERR "#reps $num_total_reps:$group_num\n";
 		$begin_ordered_distance = $ordered_distance;
 		@group = ();
@@ -726,7 +726,7 @@ if ($num_kept > 0) {
 	    $prev_ordered_distance = $ordered_distance;
 	}
 	if (@group > 0) {
-	    $num_total_reps += &process_group(\@group, $group_num, 1, $reps_fh, $redundant_fh);
+	    $num_total_reps += &process_group(\@group, $group_num, $group_num, 1, $reps_fh, $redundant_fh);
 	    print STDERR "#reps $num_total_reps:$group_num\n";
 	}
 	print $stats_fh "Number representative genomes: $num_total_reps\nNumber redundant genomes: $num_total_redundant\n";
