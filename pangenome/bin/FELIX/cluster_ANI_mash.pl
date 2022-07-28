@@ -245,10 +245,14 @@ sub process_group
 	push(@group, $genome_ids[$ordered_indices[$num_redundant]]);
 	for (my $i=$num_redundant + 1; $i < $group_size; $i++) {
 	    my $ordered_distance = $distances[$ordered_indices[$i]];
-	    if ((($ordered_distance - $begin_ordered_distance) <= (2 * $redundant_dist)) && (($ordered_distance - $prev_ordered_distance) <= $redundant_dist)) {
+	    my $diff_distance_begin = $ordered_distance - $begin_ordered_distance;
+	    my $diff_distance_prev = $ordered_distance - $prev_ordered_distance;
+#	    if ((($ordered_distance - $begin_ordered_distance) <= (2 * $redundant_dist)) && (($ordered_distance - $prev_ordered_distance) <= $redundant_dist)) {
+	    if ((($ordered_distance - $begin_ordered_distance) <= $redundant_dist) && (($ordered_distance - $prev_ordered_distance) <= ($redundant_dist / 2))) {
 		push(@group, $genome_ids[$ordered_indices[$i]]);
 	    } else {
 		my $new_group_num = $group_num . $group_num_suffix;
+		print STDERR "DR:$begin_ordered_distance:$prev_ordered_distance:$ordered_distance:$diff_distance_prev:$diff_distance_begin\n";
 		$num_new_reps += &process_group(\@group, $group_top, $new_group_num, $depth, $reps_fh, $redundant_fh);
 		print STDERR "#reps $num_new_reps:$new_group_num\n";
 		$begin_ordered_distance = $ordered_distance;
@@ -713,9 +717,13 @@ if ($num_kept > 0) {
 	push(@group, $genome_ids[$ordered_indices[$type_plus_red]]);
 	for (my $i=$type_plus_red + 1; $i < $red_plus_kept; $i++) {
 	    my $ordered_distance = $distances[$ordered_indices[$i]];
-	    if ((($ordered_distance - $begin_ordered_distance) <= (2 * $redundant_dist)) && (($ordered_distance - $prev_ordered_distance) <= $redundant_dist)) {
+	    my $diff_distance_begin = $ordered_distance - $begin_ordered_distance;
+	    my $diff_distance_prev = $ordered_distance - $prev_ordered_distance;
+#	    if ((($ordered_distance - $begin_ordered_distance) <= (2 * $redundant_dist)) && (($ordered_distance - $prev_ordered_distance) <= $redundant_dist)) {
+	    if ((($ordered_distance - $begin_ordered_distance) <= $redundant_dist) && (($ordered_distance - $prev_ordered_distance) <= ($redundant_dist / 2))) {
 		push(@group, $genome_ids[$ordered_indices[$i]]);
 	    } else {
+		print STDERR "DR:$begin_ordered_distance:$prev_ordered_distance:$ordered_distance:$diff_distance_prev:$diff_distance_begin\n";
 		$num_total_reps += &process_group(\@group, $group_num, $group_num, 1, $reps_fh, $redundant_fh);
 		print STDERR "#reps $num_total_reps:$group_num\n";
 		$begin_ordered_distance = $ordered_distance;
