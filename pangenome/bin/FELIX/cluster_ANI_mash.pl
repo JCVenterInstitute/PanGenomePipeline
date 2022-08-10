@@ -7,6 +7,8 @@ use File::Basename;
 use Scalar::Util qw(looks_like_number);
 
 my $dirname = dirname(__FILE__);
+my $commandline = join (" ", @ARGV);
+print STDERR "$commandline\n";
 
 my ($mash_exec, $help, $cutoff, $redundant, $max_reps, $out, $input_file, $type_strain_path, $quit_ANI, $iterate, $increment, $stop_mean, $stop_min, $stop_reps, $fold_reduction);
 my $redundant_dist;
@@ -208,6 +210,14 @@ sub process_group
     my $row_count = 0;
     my $num_redundant = 0;
     my $num_kept = 0;
+    my $mean_all;
+    my $num_all = 0;
+    my $total_all = 0;
+    my $min_all = 101;
+    my $max_all = -1;
+    my $median_all;
+    my $stddev_all;
+    my $sumsquared_all = 0;
     while ($dist = <$dist_fh>) { #process the MASH lines
 	if ($row_count >= $group_size) {
 	    die ("ERROR: The number of distances in the tabular mash output exceeds the number of genome identifiers provided ($group_size).\n");
@@ -225,6 +235,15 @@ sub process_group
 	} else {
 	    $num_kept++;
 	}
+	$num_all++;
+	$total_all += $ani_est;
+	$sumsquared_all += $ani_est * $ani_est;
+	if ($ani_est < $min_all) {
+	    $min_all = $ani_est;
+	}
+	if ($ani_est > $max_all) {
+	    $max_all = $ani_est;
+	}
 	$distances[$row_count] = $fields[1];
 	$indices[$row_count] = $row_count;
 	$row_count++;
@@ -232,10 +251,20 @@ sub process_group
     if ($row_count != $group_size) {
 	die ("ERROR: The number of distances in the tabular mash output ($row_count) is not the same as the number of genome identifiers provided ($group_size).\n");
     }
+    if ($num_all > 0) {
+	$mean_all = $total_all / $num_all;
+	$median_all = 100 * (1 - (($num_all % 2) ? $distances[$ordered_indices[($num_all / 2)]] : (($distances[$ordered_indices[(($num_all / 2) - 1)]] + $distances[$ordered_indices[($num_all / 2)]]) / 2)));
+	$stddev_all = sqrt(($sumsquared_all - ($mean_all * $mean_all * $num_all)) / (($num_all > 1) ? ($num_all - 1) : 1));
+    } else {
+	$mean_all = 0;
+	$median_all = 0;
+	$stddev_all = 0;
+    }
+    print STDERR "Mean, median, min, max, std_dev pairwise ANI for $num_all genomes: $mean_all, $median_all, $min_all, $max_all, $stddev_all\n";
     close($dist_fh);
     unlink $mash_out_file;
     $num_total_redundant += $num_redundant;
-    print STDERR "#reds for $group_genome_median $num_total_redundant:$num_redundant:$group_num\n";
+    print STDERR "#reds for $group_genome_median $num_redundant:$num_total_redundant:$group_num\n";
     my @ordered_indices = sort { $distances[$a] <=> $distances[$b] || $a <=> $b } @indices; # sort indices from smallest to largest distance to genome median
     if ($num_kept > 0) {
 	my @group; #array of genome ids which might be redundant to each other
@@ -247,8 +276,8 @@ sub process_group
 	    my $ordered_distance = $distances[$ordered_indices[$i]];
 	    my $diff_distance_begin = $ordered_distance - $begin_ordered_distance;
 	    my $diff_distance_prev = $ordered_distance - $prev_ordered_distance;
-#	    if ((($ordered_distance - $begin_ordered_distance) <= (2 * $redundant_dist)) && (($ordered_distance - $prev_ordered_distance) <= $redundant_dist)) {
-	    if ((($ordered_distance - $begin_ordered_distance) <= $redundant_dist) && (($ordered_distance - $prev_ordered_distance) <= ($redundant_dist / 2))) {
+	    if (($diff_distance_begin <= (2 * $redundant_dist)) && ($diff_distance_prev <= $redundant_dist)) {
+#	    if (($diff_distance_begin <= $redundant_dist) && ($diff_distance_prev <= ($redundant_dist / 2))) {
 		push(@group, $genome_ids[$ordered_indices[$i]]);
 	    } else {
 		my $new_group_num = $group_num . $group_num_suffix;
@@ -719,8 +748,8 @@ if ($num_kept > 0) {
 	    my $ordered_distance = $distances[$ordered_indices[$i]];
 	    my $diff_distance_begin = $ordered_distance - $begin_ordered_distance;
 	    my $diff_distance_prev = $ordered_distance - $prev_ordered_distance;
-#	    if ((($ordered_distance - $begin_ordered_distance) <= (2 * $redundant_dist)) && (($ordered_distance - $prev_ordered_distance) <= $redundant_dist)) {
-	    if ((($ordered_distance - $begin_ordered_distance) <= $redundant_dist) && (($ordered_distance - $prev_ordered_distance) <= ($redundant_dist / 2))) {
+	    if (($diff_distance_begin <= (2 * $redundant_dist)) && ($diff_distance_prev <= $redundant_dist)) {
+#	    if (($diff_distance_begin <= $redundant_dist) && ($diff_distance_prev <= ($redundant_dist / 2))) {
 		push(@group, $genome_ids[$ordered_indices[$i]]);
 	    } else {
 		print STDERR "DR:$begin_ordered_distance:$prev_ordered_distance:$ordered_distance:$diff_distance_prev:$diff_distance_begin\n";
