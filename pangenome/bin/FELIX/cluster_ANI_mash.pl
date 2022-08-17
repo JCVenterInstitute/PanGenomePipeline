@@ -138,27 +138,54 @@ sub process_group
 	return(1);
     }
     my $num_new_reps = 0;
-    my $group_genome_median = $group_ref->[$group_size / 2];
+    my $group_genome_median_index = int($group_size / 2);
+    my $group_genome_median = $group_ref->[$group_genome_median_index];
+    splice(@{ $group_ref }, $group_genome_median_index, 1); #remove median from array
     $group_size--; #this accounts for the median genome from the group being excluded
-    print $reps_fh "$group_genome_median\t$group_num\n";
-    $num_new_reps++;
     $depth++;
 
     my $mash_out_file_prefix = $out . ".mash_dist_out_";
     my $mash_out_file = $mash_out_file_prefix . $group_top;
     my $tmp_mash_out_file = $mash_out_file . ".tmp";
     $group_num .= "_";
-    my $index = 0;
-    my $mash_paths = "";
-    my $first = 1;
-    my $group_genome_median_path = $genome_paths[$genome_ids_paths{$group_genome_median}];
-    foreach my $genome_id (@{ $group_ref }) {
-	if ($genome_id eq $group_genome_median) {
-	    next; #skip the median we are using as the query sequence
+    my $num_redundant = 0;
+    my $iteration = 0;
+    my @genome_ids;
+    my @indices;
+    my @distances;
+    my $num_kept = 0;
+    while (($num_redundant == 0) && ($group_size > 0)) {
+	print $reps_fh "median\t$group_genome_median\t$group_num\t$iteration\n";
+	$num_new_reps++;
+	my $index = 0;
+	my $mash_paths = "";
+	my $first = 1;
+	my $group_genome_median_path = $genome_paths[$genome_ids_paths{$group_genome_median}];
+	foreach my $genome_id (@{ $group_ref }) {
+	    if ($genome_id eq $group_genome_median) {
+		die ( "ERROR: group genome median $group_genome_median is still in the group_ref array!\n");
+#		next; #skip the median we are using as the query sequence
+	    }
+	    $mash_paths .= " $genome_paths[$genome_ids_paths{$genome_id}]";
+	    $index++;
+	    if ($index == 1000) {
+		$index = 0;
+		print STDERR "Executing command:\n$mash_exec dist -t $group_genome_median_path mash_paths > $tmp_mash_out_file\n";
+		`$mash_exec dist -t $group_genome_median_path $mash_paths > $tmp_mash_out_file`;
+		if (!(-e $tmp_mash_out_file) || !(-s $tmp_mash_out_file)) {
+		    die ( "ERROR: mash dist command failed: $tmp_mash_out_file does not exist or is zero size!\n");
+		}
+		if ($first) {
+		    `cat $tmp_mash_out_file > $mash_out_file`;
+		    $first = 0;
+		} else {
+		    `tail -n +2 $tmp_mash_out_file >> $mash_out_file`;
+		}
+		unlink $tmp_mash_out_file;
+		$mash_paths = "";
+	    }
 	}
-	$mash_paths .= " $genome_paths[$genome_ids_paths{$genome_id}]";
-	$index++;
-	if ($index == 1000) {
+	if ($index) {
 	    $index = 0;
 	    print STDERR "Executing command:\n$mash_exec dist -t $group_genome_median_path mash_paths > $tmp_mash_out_file\n";
 	    `$mash_exec dist -t $group_genome_median_path $mash_paths > $tmp_mash_out_file`;
@@ -167,105 +194,95 @@ sub process_group
 	    }
 	    if ($first) {
 		`cat $tmp_mash_out_file > $mash_out_file`;
-		$first = 0;
 	    } else {
 		`tail -n +2 $tmp_mash_out_file >> $mash_out_file`;
 	    }
 	    unlink $tmp_mash_out_file;
 	    $mash_paths = "";
 	}
-    }
-    if ($index) {
-	$index = 0;
-	print STDERR "Executing command:\n$mash_exec dist -t $group_genome_median_path mash_paths > $tmp_mash_out_file\n";
-	`$mash_exec dist -t $group_genome_median_path $mash_paths > $tmp_mash_out_file`;
-	if (!(-e $tmp_mash_out_file) || !(-s $tmp_mash_out_file)) {
-	    die ( "ERROR: mash dist command failed: $tmp_mash_out_file does not exist or is zero size!\n");
+	
+	my $dist_fh;
+	unless (open ($dist_fh, "<", $mash_out_file) )  {
+	    die ("ERROR: Cannot open mash distances file $mash_out_file!\n");
 	}
-	if ($first) {
-	    `cat $tmp_mash_out_file > $mash_out_file`;
-	} else {
-	    `tail -n +2 $tmp_mash_out_file >> $mash_out_file`;
-	}
-	unlink $tmp_mash_out_file;
-	$mash_paths = "";
-    }
-
-    my $dist_fh;
-    unless (open ($dist_fh, "<", $mash_out_file) )  {
-	die ("ERROR: Cannot open mash distances file $mash_out_file!\n");
-    }
-    my $dist = <$dist_fh>; #process header line
-    my @fields = split(/\s/, $dist);
-    my $num_fields = @fields;
-    my @genome_ids;
-    my @indices;
-    my @distances;
-    if ($num_fields != 2) {
-	die ("ERROR: Unexpected number of fields ($num_fields) in tablular mash output - expecting 2.\n$dist\n");
-    }
-    if ($fields[1] ne $group_genome_median) {
-	die ("ERROR: query name in tablular mash output is $fields[1] expecting $group_genome_median\n");
-    }
-    my $row_count = 0;
-    my $num_redundant = 0;
-    my $num_kept = 0;
-    my $mean_all;
-    my $num_all = 0;
-    my $total_all = 0;
-    my $min_all = 101;
-    my $max_all = -1;
-    my $median_all;
-    my $stddev_all;
-    my $sumsquared_all = 0;
-    while ($dist = <$dist_fh>) { #process the MASH lines
-	if ($row_count >= $group_size) {
-	    die ("ERROR: The number of distances in the tabular mash output exceeds the number of genome identifiers provided ($group_size).\n");
-	}
-	@fields = split(/\s/, $dist);
-	$num_fields = @fields;
+	my $dist = <$dist_fh>; #process header line
+	my @fields = split(/\s/, $dist);
+	my $num_fields = @fields;
+	@genome_ids = ();
+	@indices = ();
+	@distances = ();
 	if ($num_fields != 2) {
 	    die ("ERROR: Unexpected number of fields ($num_fields) in tablular mash output - expecting 2.\n$dist\n");
 	}
-	$genome_ids[$row_count] = $fields[0];
-	my $ani_est = 100 * (1 - $fields[1]);
-	if ($ani_est >= $redundant) {
-	    print $redundant_fh "$group_genome_median\t$genome_ids[$row_count]\t$ani_est\n";
-	    $num_redundant++;
+	if ($fields[1] ne $group_genome_median) {
+	    die ("ERROR: query name in tablular mash output is $fields[1] expecting $group_genome_median\n");
+	}
+	my $row_count = 0;
+	$num_redundant = 0;
+	$num_kept = 0;
+	my $mean_all;
+	my $num_all = 0;
+	my $total_all = 0;
+	my $min_all = 101;
+	my $max_all = -1;
+	my $median_all;
+	my $stddev_all;
+	my $sumsquared_all = 0;
+	while ($dist = <$dist_fh>) { #process the MASH lines
+	    if ($row_count >= $group_size) {
+		die ("ERROR: The number of distances in the tabular mash output exceeds the number of genome identifiers provided ($group_size).\n");
+	    }
+	    @fields = split(/\s/, $dist);
+	    $num_fields = @fields;
+	    if ($num_fields != 2) {
+		die ("ERROR: Unexpected number of fields ($num_fields) in tablular mash output - expecting 2.\n$dist\n");
+	    }
+	    $genome_ids[$row_count] = $fields[0];
+	    my $ani_est = 100 * (1 - $fields[1]);
+	    if ($ani_est >= $redundant) {
+		print $redundant_fh "$group_genome_median\t$genome_ids[$row_count]\t$ani_est\n";
+		$num_redundant++;
+	    } else {
+		$num_kept++;
+	    }
+	    $num_all++;
+	    $total_all += $ani_est;
+	    $sumsquared_all += $ani_est * $ani_est;
+	    if ($ani_est < $min_all) {
+		$min_all = $ani_est;
+	    }
+	    if ($ani_est > $max_all) {
+		$max_all = $ani_est;
+	    }
+	    $distances[$row_count] = $fields[1];
+	    $indices[$row_count] = $row_count;
+	    $row_count++;
+	}
+	if ($row_count != $group_size) {
+	    die ("ERROR: The number of distances in the tabular mash output ($row_count) is not the same as the number of genome identifiers provided ($group_size).\n");
+	}
+	if ($num_all > 0) {
+	    $mean_all = $total_all / $num_all;
+	    $median_all = 100 * (1 - (($num_all % 2) ? $distances[$ordered_indices[($num_all / 2)]] : (($distances[$ordered_indices[(($num_all / 2) - 1)]] + $distances[$ordered_indices[($num_all / 2)]]) / 2)));
+	    $stddev_all = sqrt(($sumsquared_all - ($mean_all * $mean_all * $num_all)) / (($num_all > 1) ? ($num_all - 1) : 1));
 	} else {
-	    $num_kept++;
+	    $mean_all = 0;
+	    $median_all = 0;
+	    $stddev_all = 0;
 	}
-	$num_all++;
-	$total_all += $ani_est;
-	$sumsquared_all += $ani_est * $ani_est;
-	if ($ani_est < $min_all) {
-	    $min_all = $ani_est;
+	close($dist_fh);
+	unlink $mash_out_file;
+	if ($num_redundant == 0) {
+	    $group_genome_median_index = int($group_size / 2);
+	    $group_genome_median = $group_ref->[$group_genome_median_index];
+	    splice(@{ $group_ref }, $group_genome_median_index, 1); #remove median from array
+	    $group_size--; #this accounts for the median genome from the group being excluded
 	}
-	if ($ani_est > $max_all) {
-	    $max_all = $ani_est;
-	}
-	$distances[$row_count] = $fields[1];
-	$indices[$row_count] = $row_count;
-	$row_count++;
     }
-    if ($row_count != $group_size) {
-	die ("ERROR: The number of distances in the tabular mash output ($row_count) is not the same as the number of genome identifiers provided ($group_size).\n");
-    }
-    if ($num_all > 0) {
-	$mean_all = $total_all / $num_all;
-	$median_all = 100 * (1 - (($num_all % 2) ? $distances[$ordered_indices[($num_all / 2)]] : (($distances[$ordered_indices[(($num_all / 2) - 1)]] + $distances[$ordered_indices[($num_all / 2)]]) / 2)));
-	$stddev_all = sqrt(($sumsquared_all - ($mean_all * $mean_all * $num_all)) / (($num_all > 1) ? ($num_all - 1) : 1));
-    } else {
-	$mean_all = 0;
-	$median_all = 0;
-	$stddev_all = 0;
-    }
-    print STDERR "Mean, median, min, max, std_dev pairwise ANI for $num_all genomes: $mean_all, $median_all, $min_all, $max_all, $stddev_all\n";
-    close($dist_fh);
-    unlink $mash_out_file;
     $num_total_redundant += $num_redundant;
     print STDERR "#reds for $group_genome_median $num_redundant:$num_total_redundant:$group_num\n";
     my @ordered_indices = sort { $distances[$a] <=> $distances[$b] || $a <=> $b } @indices; # sort indices from smallest to largest distance to genome median
+    print STDERR "Mean, median, min, max, std_dev pairwise ANI for $num_all genomes: $mean_all, $median_all, $min_all, $max_all, $stddev_all\n";
     if ($num_kept > 0) {
 	my @group; #array of genome ids which might be redundant to each other
 	my $prev_ordered_distance = $distances[$ordered_indices[$num_redundant]];
