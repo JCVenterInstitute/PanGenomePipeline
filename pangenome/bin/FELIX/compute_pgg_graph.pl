@@ -202,6 +202,9 @@ if ($input_bin_directory) {
     $bin_directory = $input_bin_directory;
 }
 			
+if (($orf_cluster_medoids ne "") && (substr($orf_cluster_medoids, 0, 1) ne "/")) {
+    $orf_cluster_medoids = $cwd . "/$orf_cluster_medoids";
+}
 if ($keep_divergent_alignments) {
     if (-d $keep_divergent_alignments) {
 	if (substr($keep_divergent_alignments, 0, 1) ne "/") {
