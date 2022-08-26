@@ -247,7 +247,7 @@ if (substr($weights, 0, 1) ne "/") {
 if (substr($medoids, 0, 1) ne "/") {
     $medoids = $cwd . "/$medoids";
 }
-if (substr($orf_cluster_medoids, 0, 1) ne "/") {
+if (($orf_cluster_medoids ne "") && (substr($orf_cluster_medoids, 0, 1) ne "/")) {
     $orf_cluster_medoids = $cwd . "/$orf_cluster_medoids";
 }
 if (substr($pgg, 0, 1) ne "/") {
