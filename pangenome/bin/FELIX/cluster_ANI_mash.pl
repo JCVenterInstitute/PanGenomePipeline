@@ -174,11 +174,15 @@ sub process_group
 	$mash_paths .= " $genome_paths[$genome_ids_paths{$genome_id}]";
 	$index++;
 	if ($index == 1000) {
-	    $index = 0;
 	    print STDERR "Executing command:\n$mash_exec dist -t $group_genome_median_path mash_paths > $tmp_mash_out_file\n";
 	    `$mash_exec dist -t $group_genome_median_path $mash_paths > $tmp_mash_out_file`;
 	    if (!(-e $tmp_mash_out_file) || !(-s $tmp_mash_out_file)) {
 		die ( "ERROR: mash dist command failed: $tmp_mash_out_file does not exist or is zero size!\n");
+	    }
+	    my $batch_size = `wc -l < $tmp_mash_out_file`;
+	    $index++;
+	    if ($batch_size != $index ) {
+		die ( "ERROR: mash dist command failed: $tmp_mash_out_file has $batch_size lines - expecting $index lines!\n");
 	    }
 	    if ($first) {
 		`cat $tmp_mash_out_file > $mash_out_file`;
@@ -188,14 +192,19 @@ sub process_group
 	    }
 	    unlink $tmp_mash_out_file;
 	    $mash_paths = "";
+	    $index = 0;
 	}
     }
     if ($index) {
-	$index = 0;
 	print STDERR "Executing command:\n$mash_exec dist -t $group_genome_median_path mash_paths > $tmp_mash_out_file\n";
 	`$mash_exec dist -t $group_genome_median_path $mash_paths > $tmp_mash_out_file`;
 	if (!(-e $tmp_mash_out_file) || !(-s $tmp_mash_out_file)) {
 	    die ( "ERROR: mash dist command failed: $tmp_mash_out_file does not exist or is zero size!\n");
+	}
+	my $batch_size = `wc -l < $tmp_mash_out_file`;
+	$index++;
+	if ($batch_size != $index ) {
+	    die ( "ERROR: mash dist command failed: $tmp_mash_out_file has $batch_size lines - expecting $index lines!\n");
 	}
 	if ($first) {
 	    `cat $tmp_mash_out_file > $mash_out_file`;
@@ -204,6 +213,7 @@ sub process_group
 	}
 	unlink $tmp_mash_out_file;
 	$mash_paths = "";
+	$index = 0;
     }
 	
     my $dist_fh;
@@ -354,11 +364,15 @@ while (my $genome_path = <$input_fh>) {
     $mash_paths .= " $genome_path";
     $index++;
     if ($index == 1000) {
-	$index = 0;
 	print STDERR "Executing command:\n$mash_exec dist -t $type_strain_path mash_paths > $tmp_mash_out_file\n";
 	`$mash_exec dist -t $type_strain_path $mash_paths > $tmp_mash_out_file`;
 	if (!(-e $tmp_mash_out_file) || !(-s $tmp_mash_out_file)) {
 	    die ( "ERROR: mash dist command failed: $tmp_mash_out_file does not exist or is zero size!\n");
+	}
+	my $batch_size = `wc -l < $tmp_mash_out_file`;
+	$index++;
+	if ($batch_size != $index ) {
+	    die ( "ERROR: mash dist command failed: $tmp_mash_out_file has $batch_size lines - expecting $index lines!\n");
 	}
 	if ($first) {
 	    `cat $tmp_mash_out_file > $mash_out_file`;
@@ -368,6 +382,7 @@ while (my $genome_path = <$input_fh>) {
 	}
 	unlink $tmp_mash_out_file;
 	$mash_paths = "";
+	$index = 0;
     }
 }
 if ($num_cur_genomes == 0) {
@@ -376,11 +391,15 @@ if ($num_cur_genomes == 0) {
 %hash_genome_paths = (); #free memory
 close($input_fh);
 if ($index) {
-    $index = 0;
     print STDERR "Executing command:\n$mash_exec dist -t $type_strain_path mash_paths > $tmp_mash_out_file\n";
     `$mash_exec dist -t $type_strain_path $mash_paths > $tmp_mash_out_file`;
     if (!(-e $tmp_mash_out_file) || !(-s $tmp_mash_out_file)) {
 	die ( "ERROR: mash dist command failed: $tmp_mash_out_file does not exist or is zero size!\n");
+    }
+    my $batch_size = `wc -l < $tmp_mash_out_file`;
+    $index++;
+    if ($batch_size != $index ) {
+	die ( "ERROR: mash dist command failed: $tmp_mash_out_file has $batch_size lines - expecting $index lines!\n");
     }
     if ($first) {
 	`cat $tmp_mash_out_file > $mash_out_file`;
@@ -389,6 +408,7 @@ if ($index) {
     }
     unlink $tmp_mash_out_file;
     $mash_paths = "";
+    $index = 0;
 }
 
 if ($max_reps ne "") { 
